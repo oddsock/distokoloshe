@@ -14,7 +14,7 @@ if [ -f "$ENV_FILE" ]; then
   exit 1
 fi
 
-LIVEKIT_API_KEY="distokoloshe"
+LIVEKIT_API_KEY="API$(openssl rand -hex 8)"
 LIVEKIT_API_SECRET="$(generate_secret)"
 JWT_SECRET="$(generate_secret)"
 E2EE_SECRET="$(generate_secret)"
@@ -32,9 +32,15 @@ LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
 JWT_SECRET=${JWT_SECRET}
 E2EE_SECRET=${E2EE_SECRET}
 
-# ── Ports (dev defaults, override to avoid conflicts) ───
-# WEB_PORT=3080
-# WEB_TLS_PORT=3443
+# ── Ports ────────────────────────────────────────────────
+# Dev defaults (used when lines below are commented out):
+#   WEB_PORT=3080   → http://localhost:3080
+#   WEB_TLS_PORT=3443
+#   LK_PORT=7881
+#
+# For production, uncomment and set to standard ports:
+# WEB_PORT=80
+# WEB_TLS_PORT=443
 # LK_PORT=7881
 EOF
 
