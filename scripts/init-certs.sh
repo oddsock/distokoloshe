@@ -63,8 +63,9 @@ echo "Requesting Let's Encrypt certificate for: ${DOMAIN}"
 echo "ACME email: ${ACME_EMAIL}"
 echo ""
 
-# Ensure webroot directory exists
+# Ensure data directories exist
 mkdir -p "./data/certbot/www"
+mkdir -p "./data/certs"
 
 # Stop any running containers to free ports
 echo "Stopping existing containers..."

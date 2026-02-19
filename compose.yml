@@ -13,10 +13,6 @@ networks:
   app_net:
     driver: bridge
 
-volumes:
-  certs:
-    name: distokoloshe_certs
-
 services:
 
   # ── Web (nginx — SPA + reverse proxy + TLS) ────────────
@@ -35,7 +31,7 @@ services:
       - "${WEB_TLS_PORT:-3443}:443/tcp"
       - "${WEB_TLS_PORT:-3443}:443/udp"   # HTTP/3 (QUIC)
     volumes:
-      - certs:/etc/letsencrypt:ro
+      - ./data/certs:/etc/letsencrypt:ro
       - ./data/certbot/www:/var/www/certbot:ro
     depends_on:
       - api
@@ -78,7 +74,7 @@ services:
       - "LIVEKIT_KEYS=${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}"
       - DOMAIN=${DOMAIN:-localhost}
     volumes:
-      - certs:/etc/letsencrypt:ro
+      - ./data/certs:/etc/letsencrypt:ro
 
   # ── Certbot (Let's Encrypt cert renewal) ────────────────
   # Only needed in production. Renews certs every 12 hours.
@@ -87,7 +83,7 @@ services:
     container_name: distokoloshe_certbot
     restart: unless-stopped
     volumes:
-      - certs:/etc/letsencrypt
+      - ./data/certs:/etc/letsencrypt
       - ./data/certbot/www:/var/www/certbot
     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done'"
     profiles:
