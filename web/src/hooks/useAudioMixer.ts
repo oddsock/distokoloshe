@@ -51,16 +51,38 @@ export function useAudioMixer() {
 
   const attachTrack = useCallback(
     (participant: RemoteParticipant, publication: RemoteTrackPublication) => {
-      if (publication.kind !== Track.Kind.Audio || !publication.track) return;
+      console.log('[AudioMixer] attachTrack called for', participant.identity, {
+        kind: publication.kind,
+        hasTrack: !!publication.track,
+        source: publication.source,
+      });
+
+      if (publication.kind !== Track.Kind.Audio || !publication.track) {
+        console.warn('[AudioMixer] skipping — not audio or no track');
+        return;
+      }
 
       const track = publication.track;
       const mediaStreamTrack = track.mediaStreamTrack;
-      if (!mediaStreamTrack) return;
+      console.log('[AudioMixer] mediaStreamTrack:', {
+        exists: !!mediaStreamTrack,
+        readyState: mediaStreamTrack?.readyState,
+        enabled: mediaStreamTrack?.enabled,
+        muted: mediaStreamTrack?.muted,
+        id: mediaStreamTrack?.id,
+      });
+
+      if (!mediaStreamTrack) {
+        console.warn('[AudioMixer] no mediaStreamTrack — skipping detach, falling back to LiveKit audio');
+        return;
+      }
 
       // Detach LiveKit's default audio element
       track.detach();
 
       const ctx = getContext();
+      console.log('[AudioMixer] AudioContext state:', ctx.state, 'sampleRate:', ctx.sampleRate);
+
       const stream = new MediaStream([mediaStreamTrack]);
       const source = ctx.createMediaStreamSource(stream);
       const gain = ctx.createGain();
@@ -74,6 +96,7 @@ export function useAudioMixer() {
       gain.connect(ctx.destination);
 
       nodesRef.current.set(participant.identity, { source, gain, volume });
+      console.log('[AudioMixer] audio pipeline connected for', participant.identity, 'volume:', volume);
     },
     [getContext],
   );

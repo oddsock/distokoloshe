@@ -170,6 +170,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
       publication: RemoteTrackPublication,
       participant: RemoteParticipant,
     ) => {
+      console.log('[Room] TrackSubscribed:', participant.identity, publication.source, publication.kind);
       if (publication.kind === Track.Kind.Audio) {
         attachTrack(participant, publication);
       }
