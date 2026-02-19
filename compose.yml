@@ -1,0 +1,95 @@
+# disTokoloshe Docker Compose
+# Usage:
+#   1. Run ./scripts/init.sh to generate .env with secrets
+#   2. docker compose build
+#   3. docker compose up -d
+#
+# For production TLS:
+#   4. Set DOMAIN and ACME_EMAIL in .env
+#   5. Run ./scripts/init-certs.sh to get initial Let's Encrypt cert
+#   6. docker compose up -d  (certbot container handles renewal)
+
+networks:
+  app_net:
+    driver: bridge
+
+volumes:
+  certs:
+
+services:
+
+  # ── Web (nginx — SPA + reverse proxy + TLS) ────────────
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: distokoloshe_web
+    restart: unless-stopped
+    environment:
+      - DOMAIN=${DOMAIN:-localhost}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${WEB_PORT:-3080}:80"
+      - "${WEB_TLS_PORT:-3443}:443/tcp"
+      - "${WEB_TLS_PORT:-3443}:443/udp"   # HTTP/3 (QUIC)
+    volumes:
+      - certs:/etc/letsencrypt:ro
+      - ./data/certbot/www:/var/www/certbot:ro
+    depends_on:
+      - api
+    networks:
+      - app_net
+
+  # ── API (Node.js — auth + rooms + LiveKit tokens) ──────
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: distokoloshe_api
+    restart: unless-stopped
+    environment:
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
+      - JWT_SECRET=${JWT_SECRET}
+      - E2EE_SECRET=${E2EE_SECRET:-}
+      - LIVEKIT_URL=ws://host.docker.internal:${LK_PORT:-7881}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./data/api:/app/data
+    expose:
+      - "3000"
+    networks:
+      - app_net
+
+  # ── LiveKit SFU (WebRTC media relay + built-in TURN) ───
+  # Uses host networking so WebRTC ICE candidates work correctly.
+  # Ports bound directly: 7881 (WS), 50201-50400 (UDP), 3478 (TURN), 5349 (TURN/TLS)
+  livekit:
+    build:
+      context: ./livekit
+      dockerfile: Dockerfile
+    container_name: distokoloshe_livekit
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - "LIVEKIT_KEYS=${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}"
+      - DOMAIN=${DOMAIN:-localhost}
+    volumes:
+      - certs:/etc/letsencrypt:ro
+
+  # ── Certbot (Let's Encrypt cert renewal) ────────────────
+  # Only needed in production. Renews certs every 12 hours.
+  certbot:
+    image: certbot/certbot:latest
+    container_name: distokoloshe_certbot
+    restart: unless-stopped
+    volumes:
+      - certs:/etc/letsencrypt
+      - ./data/certbot/www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done'"
+    profiles:
+      - production
+    networks:
+      - app_net

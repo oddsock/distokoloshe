@@ -1,0 +1,10 @@
+i want to create an opensource self hosted realtime video/voice call + screenshare web application. this is called disTokoloshe and it needs to meet the following:
+
+1. a voice/video room, so when connecting to the system you are automatically connected to the last room you were in (no lurkers).
+2. UI needs to be modern and simple. mute toggle, per user volume controls, personal audio settings (mic/speakers selection, volume gain etc etc).
+3. where possible use opensource maintained software, not deprecated or low maintained, something that i can have running as LTS.
+4. i only know of opus voice codec being the best but any newer and improved opensource ones will be acceptable.
+5. for screensharing (no remote control only broadcast viewing to room), i want to be able to support and display 144hz monitors. this should be a togglable feature where it will use gpu for encode/decode (AV1 for example) to allow for high framerate sharing.
+6. authentication for now can be a simple sqlite db (or anything else that you deem suitable)
+7. end-to-end encryption if possible, failing that if the server is used for communication, ensure that client to server and server to client traffic is encrypted to ensure no eaves dropping, this is very important if we are expecting to allow screensharing.
+8. no metrics collection or identifiers if possible.
