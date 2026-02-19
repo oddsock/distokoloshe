@@ -29,13 +29,16 @@ function detectEngine(): 'firefox' | 'chromium' | 'safari' | 'unknown' {
  *   - Firefox + E2EE: AV1 works (uses different insertable-streams path)
  *   - Safari: no VP9 encode, no AV1 — H.264/VP8 only (backupCodec handles fallback)
  */
-export function getScreenShareCodec(wantAV1: boolean): { codec: VideoCodecChoice; backup: VideoCodecChoice | false } {
+// LiveKit backupCodec only accepts 'vp8' or 'h264'
+export type BackupCodec = 'vp8' | 'h264';
+
+export function getScreenShareCodec(wantAV1: boolean): { codec: VideoCodecChoice; backup: BackupCodec | false } {
   const engine = detectEngine();
 
   // Firefox: AV1 if requested + hardware available, otherwise VP9
   if (engine === 'firefox') {
     if (wantAV1 && detectAV1Encode()) {
-      return { codec: 'av1', backup: 'vp9' };
+      return { codec: 'av1', backup: 'vp8' };
     }
     return { codec: 'vp9', backup: 'vp8' };
   }
