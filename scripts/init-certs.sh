@@ -84,6 +84,7 @@ echo ""
 echo "Requesting certificate from Let's Encrypt..."
 docker compose run --rm \
   --no-deps \
+  --entrypoint "certbot" \
   certbot certonly \
     --webroot \
     -w /var/www/certbot \
