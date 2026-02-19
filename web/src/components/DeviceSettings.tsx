@@ -88,6 +88,8 @@ export function DeviceSettings({ room, onClose }: DeviceSettingsProps) {
     setPlayingTone(true);
     try {
       const ctx = new AudioContext();
+      // Resume context — browsers block AudioContext until user gesture
+      await ctx.resume();
       if (selectedSpeakerId && 'setSinkId' in ctx) {
         try {
           await (ctx as unknown as { setSinkId: (id: string) => Promise<void> }).setSinkId(
@@ -110,6 +112,7 @@ export function DeviceSettings({ room, onClose }: DeviceSettingsProps) {
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
       gain.gain.setValueAtTime(0.3, now + 0.5);
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
+      osc.start();
       osc.stop(now + 0.7);
 
       setTimeout(() => {
