@@ -4,6 +4,10 @@ set -euo pipefail
 # Generate initial Let's Encrypt certificates.
 # Run ONCE before first production deployment.
 #
+# Usage:
+#   ./scripts/init-certs.sh              # Request real certificate
+#   ./scripts/init-certs.sh --dry-run    # Test without hitting rate limits
+#
 # Prerequisites:
 #   - DNS A record pointing DOMAIN to this server's public IP
 #   - Port 80 reachable from the internet (not blocked by firewall)
@@ -13,6 +17,13 @@ set -euo pipefail
 #   1. Start nginx on port 80 for the ACME HTTP-01 challenge
 #   2. Request a certificate from Let's Encrypt
 #   3. Restart all services with TLS on ports 80 (redirect) + 443
+
+DRY_RUN=""
+if [[ "${1:-}" == "--dry-run" ]]; then
+  DRY_RUN="--dry-run"
+  echo "=== DRY RUN MODE — no real certificate will be issued ==="
+  echo ""
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
@@ -81,7 +92,11 @@ done
 
 # Request certificate via certbot container
 echo ""
-echo "Requesting certificate from Let's Encrypt..."
+if [ -n "$DRY_RUN" ]; then
+  echo "Requesting certificate from Let's Encrypt (DRY RUN)..."
+else
+  echo "Requesting certificate from Let's Encrypt..."
+fi
 docker compose run --rm \
   --no-deps \
   --entrypoint "certbot" \
@@ -92,7 +107,17 @@ docker compose run --rm \
     --email "$ACME_EMAIL" \
     --agree-tos \
     --no-eff-email \
-    --non-interactive
+    --non-interactive \
+    $DRY_RUN
+
+# If dry run, stop and exit
+if [ -n "$DRY_RUN" ]; then
+  echo ""
+  echo "Dry run succeeded! ACME challenge verification works."
+  echo "Run without --dry-run to get a real certificate."
+  docker compose down
+  exit 0
+fi
 
 echo ""
 echo "Certificate obtained! Restarting all services with TLS..."
