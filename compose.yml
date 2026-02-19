@@ -15,6 +15,7 @@ networks:
 
 volumes:
   certs:
+    name: distokoloshe_certs
 
 services:
 
