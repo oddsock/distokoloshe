@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import db from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { addClient, removeClient, broadcast, isUserOnline, isUserInRoom, canAddClient } from '../events.js';
+import { removeFromChain } from '../whispers.js';
 
 const router = Router();
 
@@ -60,6 +61,13 @@ router.get('/', requireAuth, (req: Request, res: Response) => {
         'SELECT id, username, display_name FROM users WHERE id = ?',
       ).get(userId) as { id: number; username: string; display_name: string };
       broadcast('user:room_leave', { user, roomId: removed.roomId });
+
+      // If the room is in whispers mode, remove user from chain
+      const room = db.prepare('SELECT mode FROM rooms WHERE id = ?').get(removed.roomId) as { mode: string } | undefined;
+      if (room?.mode === 'whispers') {
+        const chain = removeFromChain(removed.roomId, userId);
+        broadcast('whispers:chain_updated', { roomId: removed.roomId, chain, reason: 'user_left' });
+      }
     }
 
     // If no more connections for this user, they're offline

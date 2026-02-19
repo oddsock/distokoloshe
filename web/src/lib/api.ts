@@ -78,6 +78,10 @@ export interface Room {
   name: string;
   type: 'voice' | 'video';
   created_at: string;
+  mode?: 'normal' | 'whispers';
+  is_jail?: number;
+  created_by?: number | null;
+  jail_source_room_id?: number | null;
 }
 
 export interface JoinRoomResponse {
@@ -128,4 +132,69 @@ export interface RoomMember {
 
 export function listRoomMembers() {
   return request<{ members: Record<string, RoomMember[]> }>('/rooms/members');
+}
+
+// Votes
+export interface Vote {
+  id: number;
+  sourceRoomId: number;
+  targetUserId: number;
+  targetUsername: string;
+  targetDisplayName: string;
+  initiatedBy: { id: number; username: string; displayName: string };
+  durationSecs: number;
+  eligibleCount: number;
+  expiresAt: string;
+}
+
+export function startVote(targetUserId: number, durationSecs: number) {
+  return request<{ vote: Vote }>('/votes', {
+    method: 'POST',
+    body: JSON.stringify({ targetUserId, durationSecs }),
+  });
+}
+
+export function castBallot(voteId: number, voteYes: boolean) {
+  return request<{ voteId: number; yesCount: number; noCount: number; eligibleCount: number }>(
+    `/votes/${voteId}/ballot`,
+    { method: 'POST', body: JSON.stringify({ voteYes }) },
+  );
+}
+
+// Punishments
+export interface Punishment {
+  id: number;
+  sourceRoomId: number;
+  sourceRoomName: string;
+  jailRoomId: number;
+  jailRoomName: string;
+  durationSecs: number;
+  expiresAt: string;
+}
+
+export function getActivePunishments() {
+  return request<{ punishments: Punishment[] }>('/punishments/active');
+}
+
+export function liftPunishment(punishmentId: number) {
+  return request<{ lifted: boolean }>(`/punishments/${punishmentId}/lift`, { method: 'POST' });
+}
+
+// Room mode
+export function setRoomMode(roomId: number, mode: 'normal' | 'whispers') {
+  return request<{ mode: string; chain?: ChainEntry[] }>(`/rooms/${roomId}/mode`, {
+    method: 'POST',
+    body: JSON.stringify({ mode }),
+  });
+}
+
+export interface ChainEntry {
+  userId: number;
+  username: string;
+  displayName: string;
+  position: number;
+}
+
+export function getRoomChain(roomId: number) {
+  return request<{ chain: ChainEntry[] }>(`/rooms/${roomId}/chain`);
 }

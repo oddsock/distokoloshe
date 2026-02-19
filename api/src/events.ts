@@ -7,7 +7,16 @@ export type EventType =
   | 'user:offline'
   | 'user:registered'
   | 'user:room_join'
-  | 'user:room_leave';
+  | 'user:room_leave'
+  | 'vote:started'
+  | 'vote:ballot_cast'
+  | 'vote:resolved'
+  | 'punishment:started'
+  | 'punishment:expired'
+  | 'punishment:lifted'
+  | 'whispers:activated'
+  | 'whispers:deactivated'
+  | 'whispers:chain_updated';
 
 interface SSEClient {
   userId: number;

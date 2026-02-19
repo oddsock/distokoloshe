@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { ConnectionState, Track, RoomEvent } from 'livekit-client';
 import type { RemoteTrackPublication, RemoteParticipant, TrackPublication } from 'livekit-client';
 import { useLiveKitRoom, type RoomConnection } from '../hooks/useLiveKitRoom';
@@ -17,6 +17,19 @@ interface RoomPageProps {
   onLogout: () => void;
 }
 
+const DURATION_OPTIONS = [
+  { label: '1 min', secs: 60 },
+  { label: '5 min', secs: 300 },
+  { label: '15 min', secs: 900 },
+  { label: '30 min', secs: 1800 },
+];
+
+function formatCountdown(secs: number): string {
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
 export function RoomPage({ user, onLogout }: RoomPageProps) {
   const [rooms, setRooms] = useState<api.Room[]>([]);
   const [users, setUsers] = useState<api.UserListItem[]>([]);
@@ -26,6 +39,27 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
   const [showSettings, setShowSettings] = useState(false);
   const [showVolumes, setShowVolumes] = useState(false);
   const [theme, setThemeState] = useState<'dark' | 'light'>(getTheme);
+
+  // Vote state
+  const [activeVote, setActiveVote] = useState<(api.Vote & { yesCount: number; noCount: number }) | null>(null);
+  const [myBallot, setMyBallot] = useState<boolean | null>(null);
+  const [voteCountdown, setVoteCountdown] = useState(0);
+  const [showDurationPicker, setShowDurationPicker] = useState<number | null>(null);
+  const [voteResult, setVoteResult] = useState<{ passed: boolean; targetDisplayName: string } | null>(null);
+
+  // Punishment state
+  const [activePunishment, setActivePunishment] = useState<api.Punishment | null>(null);
+  const [punishmentCountdown, setPunishmentCountdown] = useState(0);
+  const [punishmentChecked, setPunishmentChecked] = useState(false);
+
+  // Jailed users (for room creator lift UI)
+  const [jailedUsers, setJailedUsers] = useState<Array<{
+    punishmentId: number; userId: number; displayName: string;
+  }>>([]);
+
+  // Whisper state
+  const [whisperChain, setWhisperChain] = useState<api.ChainEntry[]>([]);
+  const [isWhispersMode, setIsWhispersMode] = useState(false);
 
   const {
     room,
@@ -51,6 +85,9 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
   const [shareViewMode, setShareViewMode] = useState<'spotlight' | 'grid'>('spotlight');
   const [spotlightIndex, setSpotlightIndex] = useState(0);
 
+  // Ref for handleJoinRoom so SSE handlers can access latest version
+  const handleJoinRoomRef = useRef<(roomId: number) => Promise<void>>();
+
   // Collect all screen shares from remote participants
   const screenShares: Array<{ participant: RemoteParticipant; publication: RemoteTrackPublication }> = [];
   for (const p of remoteParticipants) {
@@ -73,16 +110,34 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     ? Math.min(spotlightIndex, screenShares.length - 1)
     : 0;
 
+  // Filter rooms: hide jail rooms unless it's our current room
+  const visibleRooms = rooms.filter((r) => !r.is_jail || r.id === currentRoom?.id);
+
+  // Find my whisper source
+  const myChainEntry = whisperChain.find((e) => e.userId === user.id);
+  const whisperSource = isWhispersMode && myChainEntry && whisperChain.length > 1
+    ? whisperChain.find((e) => e.position === (myChainEntry.position - 1 + whisperChain.length) % whisperChain.length)
+    : null;
+
+  // Check if current user is the room creator
+  const isRoomCreator = currentRoom?.created_by === user.id;
+
   // Load initial data
   useEffect(() => {
     api.listRooms().then(({ rooms }) => setRooms(rooms)).catch(() => {});
     api.listUsers().then(({ users }) => setUsers(users)).catch(() => {});
     api.listRoomMembers().then(({ members }) => {
-      // API returns string keys, convert to number keys
       const parsed: Record<number, api.RoomMember[]> = {};
       for (const [k, v] of Object.entries(members)) parsed[Number(k)] = v;
       setRoomMembers(parsed);
     }).catch(() => {});
+    // Check for active punishments
+    api.getActivePunishments().then(({ punishments }) => {
+      if (punishments.length > 0) {
+        setActivePunishment(punishments[0]);
+      }
+      setPunishmentChecked(true);
+    }).catch(() => setPunishmentChecked(true));
   }, []);
 
   // SSE events for real-time updates
@@ -102,7 +157,6 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
       const { user: onlineUser } = data as { user: { id: number; username: string; display_name: string } };
       setUsers((prev) => {
         const updated = prev.map((u) => u.id === onlineUser.id ? { ...u, is_online: true } : u);
-        // If user not in list (new registration), add them
         if (!prev.some((u) => u.id === onlineUser.id)) {
           updated.push({ ...onlineUser, last_seen: null, is_online: true });
         }
@@ -129,12 +183,10 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
       const { user: joinUser, roomId } = data as { user: api.RoomMember; roomId: number };
       setRoomMembers((prev) => {
         const next = { ...prev };
-        // Remove from any previous room
         for (const rid of Object.keys(next)) {
           next[Number(rid)] = next[Number(rid)].filter((m) => m.id !== joinUser.id);
           if (next[Number(rid)].length === 0) delete next[Number(rid)];
         }
-        // Add to new room
         next[roomId] = [...(next[roomId] || []), joinUser];
         return next;
       });
@@ -150,6 +202,146 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
         return next;
       });
     },
+    'vote:started': (data) => {
+      const { vote } = data as { vote: api.Vote };
+      if (currentRoom && vote.sourceRoomId === currentRoom.id) {
+        setActiveVote({ ...vote, yesCount: 1, noCount: 0 });
+        setMyBallot(vote.initiatedBy.id === user.id ? true : null);
+        setVoteResult(null);
+      }
+    },
+    'vote:ballot_cast': (data) => {
+      const { voteId, yesCount, noCount } = data as {
+        voteId: number; sourceRoomId: number; yesCount: number; noCount: number; eligibleCount: number;
+      };
+      setActiveVote((prev) => {
+        if (!prev || prev.id !== voteId) return prev;
+        return { ...prev, yesCount, noCount };
+      });
+    },
+    'vote:resolved': (data) => {
+      const resolved = data as {
+        voteId: number; passed: boolean; targetDisplayName: string;
+        yesCount: number; noCount: number; eligibleCount: number;
+        targetUserId: number; targetUsername: string; sourceRoomId: number;
+      };
+      setActiveVote((prev) => {
+        if (prev?.id === resolved.voteId) {
+          setVoteResult({ passed: resolved.passed, targetDisplayName: resolved.targetDisplayName });
+          setTimeout(() => setVoteResult(null), 4000);
+          return null;
+        }
+        return prev;
+      });
+      setMyBallot(null);
+    },
+    'punishment:started': (data) => {
+      const { punishment, jailConnection } = data as {
+        punishment: {
+          id: number; targetUserId: number; targetUsername: string; targetDisplayName: string;
+          sourceRoomId: number; sourceRoomName: string;
+          jailRoomId: number; jailRoomName: string;
+          durationSecs: number; expiresAt: string;
+        };
+        jailConnection: {
+          token: string; e2eeKey: string;
+          room: { id: number; name: string; type: string };
+          wsUrl: string;
+        };
+      };
+      // Track jailed user for room creator lift UI
+      if (currentRoom && punishment.sourceRoomId === currentRoom.id) {
+        setJailedUsers((prev) => [
+          ...prev.filter((j) => j.userId !== punishment.targetUserId),
+          { punishmentId: punishment.id, userId: punishment.targetUserId, displayName: punishment.targetDisplayName },
+        ]);
+      }
+      if (punishment.targetUserId === user.id) {
+        setActivePunishment({
+          id: punishment.id,
+          sourceRoomId: punishment.sourceRoomId,
+          sourceRoomName: punishment.sourceRoomName,
+          jailRoomId: punishment.jailRoomId,
+          jailRoomName: punishment.jailRoomName,
+          durationSecs: punishment.durationSecs,
+          expiresAt: punishment.expiresAt,
+        });
+        setActiveVote(null);
+        setMyBallot(null);
+        setIsWhispersMode(false);
+        setWhisperChain([]);
+        disconnect().then(() => {
+          const jailRoom: api.Room = {
+            id: jailConnection.room.id,
+            name: jailConnection.room.name,
+            type: jailConnection.room.type as 'voice' | 'video',
+            created_at: '',
+            is_jail: 1,
+            jail_source_room_id: punishment.sourceRoomId,
+          };
+          setCurrentRoom(jailRoom);
+          setRooms((prev) => {
+            if (prev.some((r) => r.id === jailRoom.id)) return prev;
+            return [...prev, jailRoom];
+          });
+          connect({
+            wsUrl: jailConnection.wsUrl,
+            token: jailConnection.token,
+            e2eeKey: jailConnection.e2eeKey,
+          });
+        });
+      }
+    },
+    'punishment:expired': (data) => {
+      const { punishmentId, targetUserId, sourceRoomId } = data as {
+        punishmentId: number; targetUserId: number; sourceRoomId: number; sourceRoomName: string;
+      };
+      setJailedUsers((prev) => prev.filter((j) => j.punishmentId !== punishmentId));
+      if (targetUserId === user.id) {
+        setActivePunishment((prev) => {
+          if (prev?.id === punishmentId) {
+            handleJoinRoomRef.current?.(sourceRoomId);
+            return null;
+          }
+          return prev;
+        });
+      }
+    },
+    'punishment:lifted': (data) => {
+      const { punishmentId, targetUserId, sourceRoomId } = data as {
+        punishmentId: number; targetUserId: number; sourceRoomId: number; sourceRoomName: string;
+      };
+      setJailedUsers((prev) => prev.filter((j) => j.punishmentId !== punishmentId));
+      if (targetUserId === user.id) {
+        setActivePunishment((prev) => {
+          if (prev?.id === punishmentId) {
+            handleJoinRoomRef.current?.(sourceRoomId);
+            return null;
+          }
+          return prev;
+        });
+      }
+    },
+    'whispers:activated': (data) => {
+      const { roomId, chain } = data as { roomId: number; chain: api.ChainEntry[] };
+      if (currentRoom?.id === roomId) {
+        setIsWhispersMode(true);
+        setWhisperChain(chain);
+      }
+    },
+    'whispers:deactivated': (data) => {
+      const { roomId } = data as { roomId: number };
+      if (currentRoom?.id === roomId) {
+        setIsWhispersMode(false);
+        setWhisperChain([]);
+      }
+    },
+    'whispers:chain_updated': (data) => {
+      const { roomId, chain } = data as { roomId: number; chain: api.ChainEntry[] };
+      if (currentRoom?.id === roomId) {
+        setWhisperChain(chain);
+      }
+    },
   });
 
   // Close quality menu on outside click
@@ -162,6 +354,17 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
       document.removeEventListener('click', close);
     };
   }, [showQualityMenu]);
+
+  // Close duration picker on outside click
+  useEffect(() => {
+    if (showDurationPicker === null) return;
+    const close = () => setShowDurationPicker(null);
+    const id = setTimeout(() => document.addEventListener('click', close), 0);
+    return () => {
+      clearTimeout(id);
+      document.removeEventListener('click', close);
+    };
+  }, [showDurationPicker]);
 
   // Attach audio tracks for per-user volume control
   useEffect(() => {
@@ -205,15 +408,76 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     };
   }, [room, attachTrack, detachTrack]);
 
-  // Auto-join last room
+  // Vote countdown timer
   useEffect(() => {
-    if (user.last_room_id && rooms.length > 0 && !currentRoom) {
+    if (!activeVote) {
+      setVoteCountdown(0);
+      return;
+    }
+    const update = () => {
+      const remaining = Math.max(0, Math.ceil((new Date(activeVote.expiresAt + 'Z').getTime() - Date.now()) / 1000));
+      setVoteCountdown(remaining);
+    };
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [activeVote]);
+
+  // Punishment countdown timer
+  useEffect(() => {
+    if (!activePunishment) {
+      setPunishmentCountdown(0);
+      return;
+    }
+    const update = () => {
+      const remaining = Math.max(0, Math.ceil((new Date(activePunishment.expiresAt + 'Z').getTime() - Date.now()) / 1000));
+      setPunishmentCountdown(remaining);
+    };
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [activePunishment]);
+
+  // Whisper audio muting — mute everyone except my source in the chain
+  useEffect(() => {
+    if (!isWhispersMode || whisperChain.length === 0) {
+      // Whispers off: restore user mute preferences
+      for (const p of remoteParticipants) {
+        setMuted(p.identity, mutedUsers.has(p.identity));
+      }
+      return;
+    }
+
+    const myEntry = whisperChain.find((e) => e.userId === user.id);
+    if (!myEntry) return;
+
+    const sourcePos = (myEntry.position - 1 + whisperChain.length) % whisperChain.length;
+    const sourceEntry = whisperChain.find((e) => e.position === sourcePos);
+
+    for (const p of remoteParticipants) {
+      if (p.identity === sourceEntry?.username) {
+        // Source: respect user mute preference
+        setMuted(p.identity, mutedUsers.has(p.identity));
+      } else {
+        // Non-source: always mute in whispers mode
+        setMuted(p.identity, true);
+      }
+    }
+  }, [isWhispersMode, whisperChain, remoteParticipants, user.id, setMuted, mutedUsers]);
+
+  // Auto-join last room OR jail room (waits for punishment check)
+  useEffect(() => {
+    if (!punishmentChecked || rooms.length === 0 || currentRoom) return;
+
+    if (activePunishment) {
+      handleJoinRoom(activePunishment.jailRoomId);
+    } else if (user.last_room_id) {
       const lastRoom = rooms.find((r) => r.id === user.last_room_id);
       if (lastRoom) {
         handleJoinRoom(lastRoom.id);
       }
     }
-  }, [user.last_room_id, rooms]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [punishmentChecked, rooms]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleJoinRoom = useCallback(
     async (roomId: number) => {
@@ -222,6 +486,20 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
         await disconnect();
         const res = await api.joinRoom(roomId);
         setCurrentRoom(res.room);
+        // Handle whisper state for the new room
+        if (res.room.mode === 'whispers') {
+          setIsWhispersMode(true);
+          api.getRoomChain(roomId).then(({ chain }) => setWhisperChain(chain)).catch(() => {});
+        } else {
+          setIsWhispersMode(false);
+          setWhisperChain([]);
+        }
+        // Clear vote/punishment state
+        setActiveVote(null);
+        setMyBallot(null);
+        setVoteResult(null);
+        setJailedUsers([]);
+
         const connection: RoomConnection = {
           wsUrl: res.wsUrl,
           token: res.token,
@@ -235,13 +513,13 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     },
     [connect, disconnect],
   );
+  handleJoinRoomRef.current = handleJoinRoom;
 
   const handleCreateRoom = useCallback(async () => {
     const name = prompt('Room name:');
     if (!name) return;
     try {
       const { room: newRoom } = await api.createRoom(name);
-      // SSE will push the update, but also join immediately
       handleJoinRoom(newRoom.id);
     } catch (err) {
       const msg = err instanceof api.ApiError ? err.message : 'Failed to create room';
@@ -262,6 +540,49 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
       return next;
     });
   }, [isMuted, setMuted]);
+
+  // Vote actions
+  const handleStartVote = useCallback(async (targetUserId: number, durationSecs: number) => {
+    try {
+      setShowDurationPicker(null);
+      await api.startVote(targetUserId, durationSecs);
+    } catch (err) {
+      const msg = err instanceof api.ApiError ? err.message : 'Failed to start vote';
+      setError(msg);
+    }
+  }, []);
+
+  const handleCastBallot = useCallback(async (voteId: number, voteYes: boolean) => {
+    try {
+      await api.castBallot(voteId, voteYes);
+      setMyBallot(voteYes);
+    } catch (err) {
+      const msg = err instanceof api.ApiError ? err.message : 'Failed to cast vote';
+      setError(msg);
+    }
+  }, []);
+
+  // Toggle whispers mode (room creator only)
+  const handleToggleWhispers = useCallback(async () => {
+    if (!currentRoom) return;
+    const newMode = isWhispersMode ? 'normal' : 'whispers';
+    try {
+      await api.setRoomMode(currentRoom.id, newMode);
+    } catch (err) {
+      const msg = err instanceof api.ApiError ? err.message : 'Failed to change mode';
+      setError(msg);
+    }
+  }, [currentRoom, isWhispersMode]);
+
+  // Lift punishment (room creator only)
+  const handleLiftPunishment = useCallback(async (punishmentId: number) => {
+    try {
+      await api.liftPunishment(punishmentId);
+    } catch (err) {
+      const msg = err instanceof api.ApiError ? err.message : 'Failed to lift punishment';
+      setError(msg);
+    }
+  }, []);
 
   return (
     <div className="min-h-screen bg-zinc-100 dark:bg-zinc-900 text-zinc-900 dark:text-white flex">
@@ -290,24 +611,32 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
             </button>
           </div>
 
-          {rooms.map((r) => (
+          {visibleRooms.map((r) => (
             <div key={r.id} className="mb-1">
               <button
-                onClick={() => handleJoinRoom(r.id)}
+                onClick={() => {
+                  if (activePunishment && r.id !== activePunishment.jailRoomId) {
+                    setError('You are currently jailed and cannot switch rooms');
+                    return;
+                  }
+                  handleJoinRoom(r.id);
+                }}
                 className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 ${
                   currentRoom?.id === r.id
-                    ? 'bg-indigo-600 text-white'
+                    ? r.is_jail ? 'bg-red-600 text-white' : 'bg-indigo-600 text-white'
                     : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
                 }`}
               >
                 <span
                   className={`w-7 h-7 rounded-md flex items-center justify-center text-xs font-bold shrink-0 ${
                     currentRoom?.id === r.id
-                      ? 'bg-indigo-500 text-white'
-                      : 'bg-zinc-200 dark:bg-zinc-600 text-zinc-600 dark:text-zinc-300'
+                      ? r.is_jail ? 'bg-red-500 text-white' : 'bg-indigo-500 text-white'
+                      : r.is_jail
+                        ? 'bg-red-600/30 text-red-400'
+                        : 'bg-zinc-200 dark:bg-zinc-600 text-zinc-600 dark:text-zinc-300'
                   }`}
                 >
-                  {getRoomInitials(r.name)}
+                  {r.is_jail ? '!' : getRoomInitials(r.name)}
                 </span>
                 <span className="truncate">{r.name}</span>
               </button>
@@ -375,16 +704,37 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
         {/* Header */}
         <header className="h-14 flex items-center px-6 border-b border-zinc-200 dark:border-zinc-700 bg-white/50 dark:bg-zinc-800/50 shrink-0">
           {currentRoom ? (
-            <div className="flex items-center gap-3">
-              <span className="w-8 h-8 rounded-md bg-indigo-600 flex items-center justify-center text-xs font-bold text-white">
-                {getRoomInitials(currentRoom.name)}
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              <span className={`w-8 h-8 rounded-md flex items-center justify-center text-xs font-bold text-white shrink-0 ${
+                currentRoom.is_jail ? 'bg-red-600' : 'bg-indigo-600'
+              }`}>
+                {currentRoom.is_jail ? '!' : getRoomInitials(currentRoom.name)}
               </span>
-              <span className="font-semibold">{currentRoom.name}</span>
+              <span className="font-semibold truncate">{currentRoom.name}</span>
               <span className="text-xs text-zinc-500">
                 {connectionState === ConnectionState.Connected
                   ? `${remoteParticipants.length + 1} participant${remoteParticipants.length !== 0 ? 's' : ''}`
                   : connectionState}
               </span>
+              {isWhispersMode && (
+                <span className="text-xs bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded-full">
+                  Whispers{whisperSource ? ` \u2014 You hear: ${whisperSource.displayName}` : ''}
+                </span>
+              )}
+              {/* Mode toggle for room creator */}
+              {isRoomCreator && !currentRoom.is_jail && connectionState === ConnectionState.Connected && (
+                <button
+                  onClick={handleToggleWhispers}
+                  className={`ml-auto text-xs px-2 py-1 rounded transition-colors ${
+                    isWhispersMode
+                      ? 'bg-purple-500/20 text-purple-400 hover:bg-purple-500/30'
+                      : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-500 hover:bg-zinc-300 dark:hover:bg-zinc-600'
+                  }`}
+                  title={isWhispersMode ? 'Disable Chinese Whispers' : 'Enable Chinese Whispers'}
+                >
+                  {isWhispersMode ? 'Disable Whispers' : 'Enable Whispers'}
+                </button>
+              )}
             </div>
           ) : (
             <span className="text-zinc-500">Select a room to join</span>
@@ -394,8 +744,96 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
         {/* Participant area */}
         <div className="flex-1 p-6 overflow-y-auto">
           {error && (
-            <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-300 text-sm">
-              {error}
+            <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-300 text-sm flex items-center">
+              <span className="flex-1">{error}</span>
+              <button onClick={() => setError(null)} className="ml-2 text-red-400 hover:text-red-300">&times;</button>
+            </div>
+          )}
+
+          {/* Punishment banner */}
+          {activePunishment && (
+            <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-sm">
+              <span className="text-red-300 font-semibold">Jailed from {activePunishment.sourceRoomName}!</span>
+              <span className="text-red-400 ml-2">{formatCountdown(punishmentCountdown)} remaining</span>
+            </div>
+          )}
+
+          {/* Jailed users — room creator can lift punishments */}
+          {isRoomCreator && jailedUsers.length > 0 && (
+            <div className="mb-4 p-3 bg-orange-500/10 border border-orange-500/30 rounded-lg text-sm">
+              <span className="text-orange-400 font-semibold text-xs uppercase">Jailed from this room</span>
+              {jailedUsers.map((j) => (
+                <div key={j.punishmentId} className="flex items-center justify-between mt-1">
+                  <span className="text-orange-300">{j.displayName}</span>
+                  <button
+                    onClick={() => handleLiftPunishment(j.punishmentId)}
+                    className="text-xs px-2 py-0.5 rounded bg-green-500/20 text-green-400 hover:bg-green-500/30 transition-colors"
+                  >
+                    Lift
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Vote result toast */}
+          {voteResult && (
+            <div className={`mb-4 p-3 rounded-lg text-sm font-medium ${
+              voteResult.passed
+                ? 'bg-red-500/20 border border-red-500/50 text-red-300'
+                : 'bg-green-500/20 border border-green-500/50 text-green-300'
+            }`}>
+              Vote {voteResult.passed ? 'passed' : 'failed'}: {voteResult.targetDisplayName}
+              {voteResult.passed ? ' has been sent to jail!' : ' stays.'}
+            </div>
+          )}
+
+          {/* Active vote banner */}
+          {activeVote && connectionState === ConnectionState.Connected && (
+            <div className="mb-4 p-4 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-sm">
+                  <span className="text-amber-400 font-semibold">Vote to punish: </span>
+                  <span className="text-amber-300">{activeVote.targetDisplayName}</span>
+                  <span className="text-zinc-500 ml-2">({formatCountdown(activeVote.durationSecs)} punishment)</span>
+                </div>
+                <span className="text-xs text-amber-400 tabular-nums">{formatCountdown(voteCountdown)} left</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="flex-1 flex items-center gap-2">
+                  <div className="flex-1 bg-zinc-700 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="h-full bg-green-500 transition-all"
+                      style={{ width: `${activeVote.eligibleCount > 0 ? (activeVote.yesCount / activeVote.eligibleCount) * 100 : 0}%` }}
+                    />
+                  </div>
+                  <span className="text-xs text-zinc-400 whitespace-nowrap">
+                    {activeVote.yesCount} yes / {activeVote.noCount} no / {activeVote.eligibleCount} eligible
+                  </span>
+                </div>
+                {activeVote.targetUserId !== user.id && myBallot === null && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleCastBallot(activeVote.id, true)}
+                      className="px-3 py-1 text-xs rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
+                    >
+                      Yes, Punish
+                    </button>
+                    <button
+                      onClick={() => handleCastBallot(activeVote.id, false)}
+                      className="px-3 py-1 text-xs rounded bg-green-500/20 text-green-400 hover:bg-green-500/30 transition-colors"
+                    >
+                      No
+                    </button>
+                  </div>
+                )}
+                {myBallot !== null && (
+                  <span className="text-xs text-zinc-500">Voted {myBallot ? 'Yes' : 'No'}</span>
+                )}
+                {activeVote.targetUserId === user.id && (
+                  <span className="text-xs text-red-400">You are being voted on!</span>
+                )}
+              </div>
             </div>
           )}
 
@@ -507,25 +945,65 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
               {remoteParticipants.map((p) => {
                 const userMuted = mutedUsers.has(p.identity);
                 const speaking = activeSpeakers.includes(p.identity);
+                // Find user id for this participant (for vote button)
+                const memberEntry = currentRoom ? roomMembers[currentRoom.id]?.find((m) => m.username === p.identity) : null;
+                // In whispers mode: dim participants who aren't my source
+                const isMyWhisperSource = whisperSource?.username === p.identity;
+                const whisperDimmed = isWhispersMode && !isMyWhisperSource;
+
                 return (
                   <div
                     key={p.identity}
-                    className={`bg-white dark:bg-zinc-800 rounded-xl p-4 border border-zinc-200 dark:border-zinc-700 ring-2 transition-shadow ${
-                      speaking && !userMuted ? 'ring-blue-400 shadow-[0_0_12px_rgba(96,165,250,0.5)]' : 'ring-transparent'
-                    }`}
+                    className={`group bg-white dark:bg-zinc-800 rounded-xl p-4 border border-zinc-200 dark:border-zinc-700 ring-2 transition-all ${
+                      speaking && !userMuted && !whisperDimmed ? 'ring-blue-400 shadow-[0_0_12px_rgba(96,165,250,0.5)]' : 'ring-transparent'
+                    } ${whisperDimmed ? 'opacity-40' : ''}`}
                   >
-                    <div className="aspect-video bg-zinc-200 dark:bg-zinc-700 rounded-lg mb-3 flex items-center justify-center">
-                      <div className={`w-16 h-16 rounded-full bg-zinc-500 flex items-center justify-center text-2xl font-bold text-white transition-shadow ${
-                        speaking && !userMuted ? 'shadow-[0_0_16px_rgba(96,165,250,0.6)]' : ''
-                      }`}>
+                    <div className="aspect-video bg-zinc-200 dark:bg-zinc-700 rounded-lg mb-3 flex items-center justify-center relative">
+                      <div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold text-white transition-shadow ${
+                        isMyWhisperSource ? 'bg-purple-600' : 'bg-zinc-500'
+                      } ${speaking && !userMuted && !whisperDimmed ? 'shadow-[0_0_16px_rgba(96,165,250,0.6)]' : ''}`}>
                         {(p.name || p.identity).charAt(0).toUpperCase()}
                       </div>
+                      {isMyWhisperSource && (
+                        <span className="absolute top-1 right-1 text-[10px] bg-purple-500/30 text-purple-300 px-1.5 py-0.5 rounded">
+                          Your source
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium truncate">
                         {p.name || p.identity}
                       </span>
                       <div className="flex items-center gap-1.5">
+                        {/* Vote button — only when no active vote, not in jail, and we know the user id */}
+                        {!activeVote && !currentRoom?.is_jail && memberEntry && (
+                          <div className="relative">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setShowDurationPicker(showDurationPicker === memberEntry.id ? null : memberEntry.id);
+                              }}
+                              className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors opacity-0 group-hover:opacity-100"
+                              title="Vote to punish"
+                            >
+                              Vote
+                            </button>
+                            {showDurationPicker === memberEntry.id && (
+                              <div className="absolute bottom-full mb-1 right-0 bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg py-1 min-w-[140px] z-50">
+                                <div className="px-2 py-1 text-[10px] text-zinc-500 uppercase">Punishment</div>
+                                {DURATION_OPTIONS.map((opt) => (
+                                  <button
+                                    key={opt.secs}
+                                    onClick={() => handleStartVote(memberEntry.id, opt.secs)}
+                                    className="w-full text-left px-3 py-1.5 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-600 transition-colors"
+                                  >
+                                    {opt.label}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
                         <button
                           onClick={() => toggleMuteUser(p.identity)}
                           className={`text-sm px-2 py-1 rounded-md transition-colors ${

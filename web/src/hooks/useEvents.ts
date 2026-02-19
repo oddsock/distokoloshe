@@ -20,39 +20,47 @@ export function useEvents(handlers: Record<string, EventHandler>) {
     const es = new EventSource(`/api/events?token=${encodeURIComponent(token)}`);
     eventSourceRef.current = es;
 
-    es.addEventListener('room:created', (e) => {
-      handlersRef.current['room:created']?.(JSON.parse(e.data));
-    });
+    // Use a generic message handler that routes by event type.
+    // SSE `event:` field becomes MessageEvent.type when using addEventListener,
+    // but we need to know which events to listen for. Instead, use onmessage
+    // which fires for unnamed events. Since our server uses named events,
+    // we listen to all known handler keys dynamically.
+    const registeredTypes = new Set<string>();
 
-    es.addEventListener('room:deleted', (e) => {
-      handlersRef.current['room:deleted']?.(JSON.parse(e.data));
-    });
+    const syncListeners = () => {
+      const currentKeys = Object.keys(handlersRef.current);
+      for (const key of currentKeys) {
+        if (!registeredTypes.has(key)) {
+          registeredTypes.add(key);
+          es.addEventListener(key, ((e: MessageEvent) => {
+            handlersRef.current[key]?.(JSON.parse(e.data));
+          }) as EventListener);
+        }
+      }
+    };
 
-    es.addEventListener('user:online', (e) => {
-      handlersRef.current['user:online']?.(JSON.parse(e.data));
-    });
+    // Register initial handlers
+    syncListeners();
 
-    es.addEventListener('user:offline', (e) => {
-      handlersRef.current['user:offline']?.(JSON.parse(e.data));
-    });
-
-    es.addEventListener('user:room_join', (e) => {
-      handlersRef.current['user:room_join']?.(JSON.parse(e.data));
-    });
-
-    es.addEventListener('user:room_leave', (e) => {
-      handlersRef.current['user:room_leave']?.(JSON.parse(e.data));
-    });
+    // Re-sync periodically in case new handlers are added after mount
+    const syncInterval = setInterval(syncListeners, 2000);
 
     es.onerror = () => {
       // EventSource auto-reconnects, no action needed
     };
+
+    // Store the interval so we can clean it up
+    (es as unknown as { _syncInterval: ReturnType<typeof setInterval> })._syncInterval = syncInterval;
   }, []);
 
   useEffect(() => {
     connect();
     return () => {
-      eventSourceRef.current?.close();
+      const es = eventSourceRef.current;
+      if (es) {
+        clearInterval((es as unknown as { _syncInterval: ReturnType<typeof setInterval> })._syncInterval);
+        es.close();
+      }
     };
   }, [connect]);
 }

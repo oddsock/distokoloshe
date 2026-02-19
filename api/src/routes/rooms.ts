@@ -3,6 +3,7 @@ import db from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { generateRoomToken, deriveRoomE2EEKey } from '../livekit.js';
 import { broadcast, setUserRoom, getUserRoomId, getRoomMembers } from '../events.js';
+import { getChain, shuffleChain, addToChain, clearChain } from '../whispers.js';
 
 const router = Router();
 
@@ -12,6 +13,9 @@ interface RoomRow {
   type: string;
   created_by: number | null;
   created_at: string;
+  mode: string;
+  is_jail: number;
+  jail_source_room_id: number | null;
 }
 
 interface UserRow {
@@ -46,8 +50,8 @@ router.post('/', requireAuth, (req: Request, res: Response) => {
     return;
   }
 
-  // Cap total rooms to prevent abuse
-  const totalRooms = db.prepare('SELECT COUNT(*) as count FROM rooms').get() as { count: number };
+  // Cap total rooms to prevent abuse (exclude jail rooms)
+  const totalRooms = db.prepare('SELECT COUNT(*) as count FROM rooms WHERE is_jail = 0').get() as { count: number };
   if (totalRooms.count >= 100) {
     res.status(400).json({ error: 'Maximum number of rooms reached' });
     return;
@@ -102,6 +106,21 @@ router.post('/:id/join', requireAuth, async (req: Request, res: Response) => {
     return;
   }
 
+  // Check for active punishment blocking this room
+  const activePunishment = db.prepare(
+    "SELECT * FROM punishments WHERE target_user_id = ? AND source_room_id = ? AND active = 1 AND expires_at > datetime('now')",
+  ).get(req.user!.sub, roomId) as { jail_room_id: number; expires_at: string } | undefined;
+  if (activePunishment) {
+    res.status(403).json({
+      error: 'You are currently punished from this room',
+      punishment: {
+        expiresAt: activePunishment.expires_at,
+        jailRoomId: activePunishment.jail_room_id,
+      },
+    });
+    return;
+  }
+
   // Update user's last room
   db.prepare('UPDATE users SET last_room_id = ? WHERE id = ?').run(roomId, req.user!.sub);
 
@@ -122,6 +141,12 @@ router.post('/:id/join', requireAuth, async (req: Request, res: Response) => {
     roomId,
   });
 
+  // If room is in whispers mode, add user to chain
+  if (room.mode === 'whispers') {
+    const chain = addToChain(roomId, req.user!.sub);
+    broadcast('whispers:chain_updated', { roomId, chain, reason: 'user_joined' });
+  }
+
   try {
     const token = await generateRoomToken(
       req.user!.username,
@@ -133,13 +158,80 @@ router.post('/:id/join', requireAuth, async (req: Request, res: Response) => {
     res.json({
       token,
       e2eeKey,
-      room: { id: room.id, name: room.name, type: room.type },
+      room: { id: room.id, name: room.name, type: room.type, mode: room.mode, is_jail: room.is_jail, created_by: room.created_by },
       wsUrl: '/livekit/',
     });
   } catch (err) {
     console.error('Failed to generate LiveKit token:', err);
     res.status(500).json({ error: 'Failed to join room' });
   }
+});
+
+// POST /api/rooms/:id/mode — Toggle room mode (room creator only)
+router.post('/:id/mode', requireAuth, (req: Request, res: Response) => {
+  const roomId = parseInt(req.params.id, 10);
+  const { mode } = req.body;
+
+  if (isNaN(roomId)) {
+    res.status(400).json({ error: 'Invalid room ID' });
+    return;
+  }
+
+  if (mode !== 'normal' && mode !== 'whispers') {
+    res.status(400).json({ error: 'mode must be "normal" or "whispers"' });
+    return;
+  }
+
+  const room = db.prepare('SELECT * FROM rooms WHERE id = ?').get(roomId) as RoomRow | undefined;
+  if (!room) {
+    res.status(404).json({ error: 'Room not found' });
+    return;
+  }
+
+  if (room.created_by !== req.user!.sub) {
+    res.status(403).json({ error: 'Only the room creator can change the mode' });
+    return;
+  }
+
+  if (room.is_jail) {
+    res.status(400).json({ error: 'Cannot change mode of jail rooms' });
+    return;
+  }
+
+  db.prepare('UPDATE rooms SET mode = ? WHERE id = ?').run(mode, roomId);
+
+  if (mode === 'whispers') {
+    // Get current room members and shuffle into a chain
+    const roomMembers = getRoomMembers();
+    const memberIds = roomMembers[roomId] || [];
+
+    if (memberIds.length < 2) {
+      // Need at least 2 people for whispers
+      db.prepare("UPDATE rooms SET mode = 'normal' WHERE id = ?").run(roomId);
+      res.status(400).json({ error: 'Need at least 2 participants for Chinese Whispers' });
+      return;
+    }
+
+    const chain = shuffleChain(roomId, memberIds);
+    broadcast('whispers:activated', { roomId, chain });
+    res.json({ mode, chain });
+  } else {
+    clearChain(roomId);
+    broadcast('whispers:deactivated', { roomId });
+    res.json({ mode });
+  }
+});
+
+// GET /api/rooms/:id/chain — Get whisper chain for a room
+router.get('/:id/chain', requireAuth, (req: Request, res: Response) => {
+  const roomId = parseInt(req.params.id, 10);
+  if (isNaN(roomId)) {
+    res.status(400).json({ error: 'Invalid room ID' });
+    return;
+  }
+
+  const chain = getChain(roomId);
+  res.json({ chain });
 });
 
 // DELETE /api/rooms/:id — delete a room

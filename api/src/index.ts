@@ -11,10 +11,13 @@ for (const key of REQUIRED_ENV) {
 }
 
 import './db.js'; // Initialize database on startup
+import { restoreTimers } from './timers.js';
 import authRoutes from './routes/auth.js';
 import roomRoutes from './routes/rooms.js';
 import userRoutes from './routes/users.js';
 import eventRoutes from './routes/events.js';
+import voteRoutes from './routes/votes.js';
+import punishmentRoutes from './routes/punishments.js';
 
 const app = express();
 
@@ -34,6 +37,11 @@ app.use('/api/auth', authRoutes);
 app.use('/api/rooms', roomRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/events', eventRoutes);
+app.use('/api/votes', voteRoutes);
+app.use('/api/punishments', punishmentRoutes);
+
+// Restore active vote/punishment timers from DB (handles API restarts)
+restoreTimers();
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
