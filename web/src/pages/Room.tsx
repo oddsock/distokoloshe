@@ -31,6 +31,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     room,
     localParticipant,
     remoteParticipants,
+    activeSpeakers,
     connectionState,
     connect,
     disconnect,
@@ -302,15 +303,35 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
               {/* Connected members */}
               {roomMembers[r.id] && roomMembers[r.id].length > 0 && (
                 <div className="ml-5 pl-4 border-l border-zinc-300 dark:border-zinc-600 mt-0.5">
-                  {roomMembers[r.id].map((m) => (
-                    <div
-                      key={m.id}
-                      className="flex items-center gap-1.5 py-0.5 text-xs text-zinc-500 dark:text-zinc-400"
-                    >
-                      <span className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
-                      <span className="truncate">{m.display_name}</span>
-                    </div>
-                  ))}
+                  {roomMembers[r.id].map((m) => {
+                    const memberSpeaking = activeSpeakers.includes(m.username);
+                    const memberMuted = mutedUsers.has(m.username);
+                    const isMe = m.id === user.id;
+                    return (
+                      <div
+                        key={m.id}
+                        className="flex items-center gap-1.5 py-0.5 text-xs text-zinc-500 dark:text-zinc-400 group"
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 transition-colors ${
+                          memberSpeaking && !memberMuted ? 'bg-blue-400 shadow-[0_0_4px_rgba(96,165,250,0.8)]' : 'bg-green-500'
+                        }`} />
+                        <span className="truncate flex-1">{m.display_name}</span>
+                        {!isMe && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); toggleMuteUser(m.username); }}
+                            className={`opacity-0 group-hover:opacity-100 transition-opacity text-[10px] px-1 rounded ${
+                              memberMuted
+                                ? 'text-red-400 opacity-100'
+                                : 'text-zinc-400 hover:text-zinc-200'
+                            }`}
+                            title={memberMuted ? 'Unmute' : 'Mute'}
+                          >
+                            {memberMuted ? '\u{1F507}' : '\u{1F50A}'}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -448,32 +469,44 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
           {connectionState === ConnectionState.Connected && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {/* Local participant */}
-              {localParticipant && (
-                <div className="bg-white dark:bg-zinc-800 rounded-xl p-4 border border-zinc-200 dark:border-zinc-700 ring-2 ring-indigo-500/30">
-                  <div className="aspect-video bg-zinc-200 dark:bg-zinc-700 rounded-lg mb-3 flex items-center justify-center">
-                    <div className="w-16 h-16 rounded-full bg-indigo-600 flex items-center justify-center text-2xl font-bold text-white">
-                      {(localParticipant.name || localParticipant.identity).charAt(0).toUpperCase()}
+              {localParticipant && (() => {
+                const localSpeaking = activeSpeakers.includes(localParticipant.identity);
+                return (
+                  <div className={`bg-white dark:bg-zinc-800 rounded-xl p-4 border border-zinc-200 dark:border-zinc-700 ring-2 transition-shadow ${
+                    localSpeaking ? 'ring-blue-400 shadow-[0_0_12px_rgba(96,165,250,0.5)]' : 'ring-indigo-500/30'
+                  }`}>
+                    <div className="aspect-video bg-zinc-200 dark:bg-zinc-700 rounded-lg mb-3 flex items-center justify-center">
+                      <div className={`w-16 h-16 rounded-full bg-indigo-600 flex items-center justify-center text-2xl font-bold text-white transition-shadow ${
+                        localSpeaking ? 'shadow-[0_0_16px_rgba(96,165,250,0.6)]' : ''
+                      }`}>
+                        {(localParticipant.name || localParticipant.identity).charAt(0).toUpperCase()}
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium truncate">
+                        {localParticipant.name || localParticipant.identity} (You)
+                      </span>
+                      <span className="text-xs">{micMuted ? '\u{1F507}' : '\u{1F3A4}'}</span>
                     </div>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium truncate">
-                      {localParticipant.name || localParticipant.identity} (You)
-                    </span>
-                    <span className="text-xs">{micMuted ? '\u{1F507}' : '\u{1F3A4}'}</span>
-                  </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* Remote participants */}
               {remoteParticipants.map((p) => {
                 const userMuted = mutedUsers.has(p.identity);
+                const speaking = activeSpeakers.includes(p.identity);
                 return (
                   <div
                     key={p.identity}
-                    className="bg-white dark:bg-zinc-800 rounded-xl p-4 border border-zinc-200 dark:border-zinc-700"
+                    className={`bg-white dark:bg-zinc-800 rounded-xl p-4 border border-zinc-200 dark:border-zinc-700 ring-2 transition-shadow ${
+                      speaking && !userMuted ? 'ring-blue-400 shadow-[0_0_12px_rgba(96,165,250,0.5)]' : 'ring-transparent'
+                    }`}
                   >
                     <div className="aspect-video bg-zinc-200 dark:bg-zinc-700 rounded-lg mb-3 flex items-center justify-center">
-                      <div className="w-16 h-16 rounded-full bg-zinc-500 flex items-center justify-center text-2xl font-bold text-white">
+                      <div className={`w-16 h-16 rounded-full bg-zinc-500 flex items-center justify-center text-2xl font-bold text-white transition-shadow ${
+                        speaking && !userMuted ? 'shadow-[0_0_16px_rgba(96,165,250,0.6)]' : ''
+                      }`}>
                         {(p.name || p.identity).charAt(0).toUpperCase()}
                       </div>
                     </div>
@@ -481,13 +514,13 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                       <span className="text-sm font-medium truncate">
                         {p.name || p.identity}
                       </span>
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => toggleMuteUser(p.identity)}
-                          className={`text-xs px-1.5 py-0.5 rounded transition-colors ${
+                          className={`text-sm px-2 py-1 rounded-md transition-colors ${
                             userMuted
                               ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
-                              : 'text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                              : 'bg-zinc-100 dark:bg-zinc-700 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-600'
                           }`}
                           title={userMuted ? 'Unmute (local)' : 'Mute (local)'}
                         >

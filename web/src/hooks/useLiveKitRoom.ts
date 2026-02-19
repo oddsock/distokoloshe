@@ -5,6 +5,7 @@ import {
   ConnectionState,
   RemoteParticipant,
   LocalParticipant,
+  Participant,
   ExternalE2EEKeyProvider,
 } from 'livekit-client';
 
@@ -18,6 +19,7 @@ interface LiveKitRoomState {
   room: Room | null;
   localParticipant: LocalParticipant | null;
   remoteParticipants: RemoteParticipant[];
+  activeSpeakers: string[];
   connectionState: ConnectionState;
   e2eeEnabled: boolean;
   stateVersion: number;
@@ -36,6 +38,7 @@ export function useLiveKitRoom() {
     room: null,
     localParticipant: null,
     remoteParticipants: [],
+    activeSpeakers: [],
     connectionState: ConnectionState.Disconnected,
     e2eeEnabled: false,
     stateVersion: 0,
@@ -122,6 +125,12 @@ export function useLiveKitRoom() {
       room.on(RoomEvent.LocalTrackUnpublished, updateParticipants);
       room.on(RoomEvent.TrackMuted, updateParticipants);
       room.on(RoomEvent.TrackUnmuted, updateParticipants);
+      room.on(RoomEvent.ActiveSpeakersChanged, (speakers: Participant[]) => {
+        setState((s) => ({
+          ...s,
+          activeSpeakers: speakers.map((p) => p.identity),
+        }));
+      });
 
       // Resolve WebSocket URL relative to current origin
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -171,6 +180,7 @@ export function useLiveKitRoom() {
       room: null,
       localParticipant: null,
       remoteParticipants: [],
+      activeSpeakers: [],
       connectionState: ConnectionState.Disconnected,
       e2eeEnabled: false,
       stateVersion: 0,
