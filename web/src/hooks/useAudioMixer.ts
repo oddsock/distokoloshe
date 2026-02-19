@@ -3,9 +3,9 @@ import type { RemoteTrackPublication, RemoteParticipant } from 'livekit-client';
 import { Track } from 'livekit-client';
 
 interface ParticipantAudio {
-  source: MediaStreamAudioSourceNode;
-  gain: GainNode;
+  elements: HTMLMediaElement[];
   volume: number;
+  muted: boolean;
 }
 
 const VOLUMES_KEY = 'distokoloshe_volumes';
@@ -23,103 +23,53 @@ function saveVolumes(volumes: Record<string, number>) {
 }
 
 export function useAudioMixer() {
-  const contextRef = useRef<AudioContext | null>(null);
   const nodesRef = useRef<Map<string, ParticipantAudio>>(new Map());
-  const resumeListenerRef = useRef(false);
-
-  const getContext = useCallback(() => {
-    if (!contextRef.current) {
-      contextRef.current = new AudioContext();
-    }
-    // Resume suspended context (browser autoplay policy)
-    if (contextRef.current.state === 'suspended') {
-      contextRef.current.resume().catch(() => {});
-      // Register a one-time click listener to resume on user gesture
-      if (!resumeListenerRef.current) {
-        resumeListenerRef.current = true;
-        const resume = () => {
-          contextRef.current?.resume().catch(() => {});
-          document.removeEventListener('click', resume);
-          document.removeEventListener('keydown', resume);
-        };
-        document.addEventListener('click', resume, { once: true });
-        document.addEventListener('keydown', resume, { once: true });
-      }
-    }
-    return contextRef.current;
-  }, []);
 
   const attachTrack = useCallback(
     (participant: RemoteParticipant, publication: RemoteTrackPublication) => {
-      console.log('[AudioMixer] attachTrack called for', participant.identity, {
-        kind: publication.kind,
-        hasTrack: !!publication.track,
-        source: publication.source,
-      });
-
-      if (publication.kind !== Track.Kind.Audio || !publication.track) {
-        console.warn('[AudioMixer] skipping — not audio or no track');
-        return;
-      }
+      if (publication.kind !== Track.Kind.Audio || !publication.track) return;
 
       const track = publication.track;
-      const mediaStreamTrack = track.mediaStreamTrack;
-      console.log('[AudioMixer] mediaStreamTrack:', {
-        exists: !!mediaStreamTrack,
-        readyState: mediaStreamTrack?.readyState,
-        enabled: mediaStreamTrack?.enabled,
-        muted: mediaStreamTrack?.muted,
-        id: mediaStreamTrack?.id,
-      });
 
-      if (!mediaStreamTrack) {
-        console.warn('[AudioMixer] no mediaStreamTrack — skipping detach, falling back to LiveKit audio');
-        return;
+      // Ensure track is attached to a native <audio> element.
+      // LiveKit handles element creation, autoplay, and browser policy negotiation.
+      let elements = track.attachedElements;
+      if (elements.length === 0) {
+        track.attach();
+        elements = track.attachedElements;
       }
 
-      // Detach LiveKit's default audio element
-      track.detach();
-
-      const ctx = getContext();
-      console.log('[AudioMixer] AudioContext state:', ctx.state, 'sampleRate:', ctx.sampleRate);
-
-      const stream = new MediaStream([mediaStreamTrack]);
-      const source = ctx.createMediaStreamSource(stream);
-      const gain = ctx.createGain();
-
-      // Load saved volume or default to 1.0
+      // Apply saved per-user volume (0–1)
       const saved = loadSavedVolumes();
-      const volume = saved[participant.identity] ?? 1.0;
-      gain.gain.value = volume;
+      const volume = Math.max(0, Math.min(1, saved[participant.identity] ?? 1.0));
+      for (const el of elements) {
+        (el as HTMLAudioElement).volume = volume;
+      }
 
-      source.connect(gain);
-      gain.connect(ctx.destination);
-
-      nodesRef.current.set(participant.identity, { source, gain, volume });
-      console.log('[AudioMixer] audio pipeline connected for', participant.identity, 'volume:', volume);
+      nodesRef.current.set(participant.identity, { elements: [...elements], volume, muted: false });
     },
-    [getContext],
+    [],
   );
 
   const detachTrack = useCallback((participant: RemoteParticipant) => {
-    const node = nodesRef.current.get(participant.identity);
-    if (node) {
-      node.source.disconnect();
-      node.gain.disconnect();
-      nodesRef.current.delete(participant.identity);
-    }
+    nodesRef.current.delete(participant.identity);
   }, []);
 
   const setVolume = useCallback((identity: string, volume: number) => {
+    const clamped = Math.max(0, Math.min(1, volume));
     const node = nodesRef.current.get(identity);
     if (node) {
-      const clamped = Math.max(0, Math.min(2, volume));
-      node.gain.gain.setValueAtTime(clamped, node.gain.context.currentTime);
       node.volume = clamped;
+      // Only apply to element if not locally muted
+      if (!node.muted) {
+        for (const el of node.elements) {
+          (el as HTMLAudioElement).volume = clamped;
+        }
+      }
     }
     // Persist
     const saved = loadSavedVolumes();
-    saved[identity] = volume;
+    saved[identity] = clamped;
     saveVolumes(saved);
   }, []);
 
@@ -127,20 +77,30 @@ export function useAudioMixer() {
     const node = nodesRef.current.get(identity);
     if (node) return node.volume;
     const saved = loadSavedVolumes();
-    return saved[identity] ?? 1.0;
+    return Math.min(1, saved[identity] ?? 1.0);
+  }, []);
+
+  const setMuted = useCallback((identity: string, muted: boolean) => {
+    const node = nodesRef.current.get(identity);
+    if (node) {
+      node.muted = muted;
+      for (const el of node.elements) {
+        (el as HTMLAudioElement).volume = muted ? 0 : node.volume;
+      }
+    }
+  }, []);
+
+  const isMuted = useCallback((identity: string): boolean => {
+    const node = nodesRef.current.get(identity);
+    return node?.muted ?? false;
   }, []);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      nodesRef.current.forEach((node) => {
-        node.source.disconnect();
-        node.gain.disconnect();
-      });
       nodesRef.current.clear();
-      contextRef.current?.close();
     };
   }, []);
 
-  return { attachTrack, detachTrack, setVolume, getVolume, prewarmAudio: getContext };
+  return { attachTrack, detachTrack, setVolume, getVolume, setMuted, isMuted };
 }

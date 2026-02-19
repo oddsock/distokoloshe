@@ -36,7 +36,8 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     disconnect,
   } = useLiveKitRoom();
 
-  const { attachTrack, detachTrack, setVolume, getVolume, prewarmAudio } = useAudioMixer();
+  const { attachTrack, detachTrack, setVolume, getVolume, setMuted, isMuted } = useAudioMixer();
+  const [mutedUsers, setMutedUsers] = useState<Set<string>>(new Set());
   const {
     isSharing,
     shareQuality,
@@ -170,7 +171,6 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
       publication: RemoteTrackPublication,
       participant: RemoteParticipant,
     ) => {
-      console.log('[Room] TrackSubscribed:', participant.identity, publication.source, publication.kind);
       if (publication.kind === Track.Kind.Audio) {
         attachTrack(participant, publication);
       }
@@ -206,9 +206,6 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
   const handleJoinRoom = useCallback(
     async (roomId: number) => {
       setError(null);
-      // Pre-warm AudioContext during user gesture (before async API call)
-      // so LiveKit's acquireAudioContext succeeds after the await
-      prewarmAudio();
       try {
         disconnect();
         const res = await api.joinRoom(roomId);
@@ -224,7 +221,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
         setError(msg);
       }
     },
-    [connect, disconnect, prewarmAudio],
+    [connect, disconnect],
   );
 
   const handleCreateRoom = useCallback(async () => {
@@ -240,8 +237,19 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     }
   }, [handleJoinRoom]);
 
-  const isMuted = localParticipant ? !localParticipant.isMicrophoneEnabled : true;
+  const micMuted = localParticipant ? !localParticipant.isMicrophoneEnabled : true;
   const isCameraOn = localParticipant ? localParticipant.isCameraEnabled : false;
+
+  const toggleMuteUser = useCallback((identity: string) => {
+    const muted = !isMuted(identity);
+    setMuted(identity, muted);
+    setMutedUsers((prev) => {
+      const next = new Set(prev);
+      if (muted) next.add(identity);
+      else next.delete(identity);
+      return next;
+    });
+  }, [isMuted, setMuted]);
 
   return (
     <div className="min-h-screen bg-zinc-100 dark:bg-zinc-900 text-zinc-900 dark:text-white flex">
@@ -451,32 +459,48 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                     <span className="text-sm font-medium truncate">
                       {localParticipant.name || localParticipant.identity} (You)
                     </span>
-                    <span className="text-xs">{isMuted ? '\u{1F507}' : '\u{1F3A4}'}</span>
+                    <span className="text-xs">{micMuted ? '\u{1F507}' : '\u{1F3A4}'}</span>
                   </div>
                 </div>
               )}
 
               {/* Remote participants */}
-              {remoteParticipants.map((p) => (
-                <div
-                  key={p.identity}
-                  className="bg-white dark:bg-zinc-800 rounded-xl p-4 border border-zinc-200 dark:border-zinc-700"
-                >
-                  <div className="aspect-video bg-zinc-200 dark:bg-zinc-700 rounded-lg mb-3 flex items-center justify-center">
-                    <div className="w-16 h-16 rounded-full bg-zinc-500 flex items-center justify-center text-2xl font-bold text-white">
-                      {(p.name || p.identity).charAt(0).toUpperCase()}
+              {remoteParticipants.map((p) => {
+                const userMuted = mutedUsers.has(p.identity);
+                return (
+                  <div
+                    key={p.identity}
+                    className="bg-white dark:bg-zinc-800 rounded-xl p-4 border border-zinc-200 dark:border-zinc-700"
+                  >
+                    <div className="aspect-video bg-zinc-200 dark:bg-zinc-700 rounded-lg mb-3 flex items-center justify-center">
+                      <div className="w-16 h-16 rounded-full bg-zinc-500 flex items-center justify-center text-2xl font-bold text-white">
+                        {(p.name || p.identity).charAt(0).toUpperCase()}
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium truncate">
+                        {p.name || p.identity}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => toggleMuteUser(p.identity)}
+                          className={`text-xs px-1.5 py-0.5 rounded transition-colors ${
+                            userMuted
+                              ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
+                              : 'text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                          }`}
+                          title={userMuted ? 'Unmute (local)' : 'Mute (local)'}
+                        >
+                          {userMuted ? '\u{1F507}' : '\u{1F50A}'}
+                        </button>
+                        <span className="text-xs">
+                          {p.isMicrophoneEnabled ? '\u{1F3A4}' : '\u{1F507}'}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium truncate">
-                      {p.name || p.identity}
-                    </span>
-                    <span className="text-xs">
-                      {p.isMicrophoneEnabled ? '\u{1F3A4}' : '\u{1F507}'}
-                    </span>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
@@ -499,12 +523,12 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
             <button
               onClick={() => room.localParticipant.setMicrophoneEnabled(!room.localParticipant.isMicrophoneEnabled)}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                isMuted
+                micMuted
                   ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
                   : 'bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600'
               }`}
             >
-              {isMuted ? '\u{1F507} Unmute' : '\u{1F3A4} Mute'}
+              {micMuted ? '\u{1F507} Unmute' : '\u{1F3A4} Mute'}
             </button>
 
             <button

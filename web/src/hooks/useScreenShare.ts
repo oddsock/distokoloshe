@@ -42,12 +42,12 @@ export const QUALITY_PRESETS: Record<ShareQuality, QualityPreset> = {
     preferAV1: false,
   },
   ultra: {
-    label: 'Ultra (Native/Max)',
-    resolution: { width: 4096, height: 2160, frameRate: 240 },
-    bitrate: 10_000_000,
+    label: 'Ultra (Native 120fps)',
+    resolution: { width: 4096, height: 2160, frameRate: 120 },
+    bitrate: 8_000_000,
     contentHint: 'motion',
     scalabilityMode: 'L1T3',
-    preferAV1: true,
+    preferAV1: false,
   },
 };
 

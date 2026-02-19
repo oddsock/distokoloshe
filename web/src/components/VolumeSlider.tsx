@@ -34,7 +34,7 @@ export function VolumeSlider({ displayName, volume, onChange, compact }: VolumeS
       <input
         type="range"
         min="0"
-        max="200"
+        max="100"
         value={percentage}
         onChange={handleChange}
         className="flex-1 h-1 accent-indigo-500 cursor-pointer"
