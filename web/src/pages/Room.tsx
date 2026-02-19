@@ -36,7 +36,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     disconnect,
   } = useLiveKitRoom();
 
-  const { attachTrack, detachTrack, setVolume, getVolume } = useAudioMixer();
+  const { attachTrack, detachTrack, setVolume, getVolume, prewarmAudio } = useAudioMixer();
   const {
     isSharing,
     shareQuality,
@@ -205,6 +205,9 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
   const handleJoinRoom = useCallback(
     async (roomId: number) => {
       setError(null);
+      // Pre-warm AudioContext during user gesture (before async API call)
+      // so LiveKit's acquireAudioContext succeeds after the await
+      prewarmAudio();
       try {
         disconnect();
         const res = await api.joinRoom(roomId);
@@ -220,7 +223,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
         setError(msg);
       }
     },
-    [connect, disconnect],
+    [connect, disconnect, prewarmAudio],
   );
 
   const handleCreateRoom = useCallback(async () => {

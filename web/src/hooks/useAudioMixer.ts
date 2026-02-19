@@ -119,5 +119,5 @@ export function useAudioMixer() {
     };
   }, []);
 
-  return { attachTrack, detachTrack, setVolume, getVolume };
+  return { attachTrack, detachTrack, setVolume, getVolume, prewarmAudio: getContext };
 }
