@@ -167,7 +167,7 @@ router.post('/:id/join', requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-// POST /api/rooms/:id/mode — Toggle room mode (room creator only)
+// POST /api/rooms/:id/mode — Toggle room mode (any room member)
 router.post('/:id/mode', requireAuth, (req: Request, res: Response) => {
   const roomId = parseInt(req.params.id, 10);
   const { mode } = req.body;
@@ -185,11 +185,6 @@ router.post('/:id/mode', requireAuth, (req: Request, res: Response) => {
   const room = db.prepare('SELECT * FROM rooms WHERE id = ?').get(roomId) as RoomRow | undefined;
   if (!room) {
     res.status(404).json({ error: 'Room not found' });
-    return;
-  }
-
-  if (room.created_by !== req.user!.sub) {
-    res.status(403).json({ error: 'Only the room creator can change the mode' });
     return;
   }
 
@@ -220,6 +215,37 @@ router.post('/:id/mode', requireAuth, (req: Request, res: Response) => {
     broadcast('whispers:deactivated', { roomId });
     res.json({ mode });
   }
+});
+
+// GET /api/rooms/:id/punishments — Get active punishments for a room
+router.get('/:id/punishments', requireAuth, (req: Request, res: Response) => {
+  const roomId = parseInt(req.params.id, 10);
+  if (isNaN(roomId)) {
+    res.status(400).json({ error: 'Invalid room ID' });
+    return;
+  }
+
+  const punishments = db.prepare(`
+    SELECT p.id, p.target_user_id, p.duration_secs, p.expires_at,
+           u.username as target_username, u.display_name as target_display_name
+    FROM punishments p
+    JOIN users u ON u.id = p.target_user_id
+    WHERE p.source_room_id = ? AND p.active = 1 AND p.expires_at > datetime('now')
+  `).all(roomId) as Array<{
+    id: number; target_user_id: number; duration_secs: number; expires_at: string;
+    target_username: string; target_display_name: string;
+  }>;
+
+  res.json({
+    punishments: punishments.map((p) => ({
+      id: p.id,
+      targetUserId: p.target_user_id,
+      targetUsername: p.target_username,
+      targetDisplayName: p.target_display_name,
+      durationSecs: p.duration_secs,
+      expiresAt: p.expires_at,
+    })),
+  });
 });
 
 // GET /api/rooms/:id/chain — Get whisper chain for a room

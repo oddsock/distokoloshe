@@ -62,12 +62,7 @@ router.post('/:id/lift', requireAuth, (req: Request, res: Response) => {
     return;
   }
 
-  // Only the source room's creator can lift
   const sourceRoom = db.prepare('SELECT * FROM rooms WHERE id = ?').get(punishment.source_room_id) as RoomRow | undefined;
-  if (!sourceRoom || sourceRoom.created_by !== req.user!.sub) {
-    res.status(403).json({ error: 'Only the room creator can lift punishments' });
-    return;
-  }
 
   // Lift the punishment
   db.prepare(
@@ -80,7 +75,7 @@ router.post('/:id/lift', requireAuth, (req: Request, res: Response) => {
     punishmentId: punishment.id,
     targetUserId: punishment.target_user_id,
     sourceRoomId: punishment.source_room_id,
-    sourceRoomName: sourceRoom.name,
+    sourceRoomName: sourceRoom?.name ?? 'Unknown',
     liftedBy: {
       id: req.user!.sub,
       username: req.user!.username,

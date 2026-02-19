@@ -180,6 +180,19 @@ export function liftPunishment(punishmentId: number) {
   return request<{ lifted: boolean }>(`/punishments/${punishmentId}/lift`, { method: 'POST' });
 }
 
+export interface RoomPunishment {
+  id: number;
+  targetUserId: number;
+  targetUsername: string;
+  targetDisplayName: string;
+  durationSecs: number;
+  expiresAt: string;
+}
+
+export function getRoomPunishments(roomId: number) {
+  return request<{ punishments: RoomPunishment[] }>(`/rooms/${roomId}/punishments`);
+}
+
 // Room mode
 export function setRoomMode(roomId: number, mode: 'normal' | 'whispers') {
   return request<{ mode: string; chain?: ChainEntry[] }>(`/rooms/${roomId}/mode`, {

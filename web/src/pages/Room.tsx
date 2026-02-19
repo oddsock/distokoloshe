@@ -119,9 +119,6 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     ? whisperChain.find((e) => e.position === (myChainEntry.position - 1 + whisperChain.length) % whisperChain.length)
     : null;
 
-  // Check if current user is the room creator
-  const isRoomCreator = currentRoom?.created_by === user.id;
-
   // Load initial data
   useEffect(() => {
     api.listRooms().then(({ rooms }) => setRooms(rooms)).catch(() => {});
@@ -498,7 +495,14 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
         setActiveVote(null);
         setMyBallot(null);
         setVoteResult(null);
-        setJailedUsers([]);
+        // Load active punishments for this room
+        api.getRoomPunishments(roomId).then(({ punishments }) => {
+          setJailedUsers(punishments.map((p) => ({
+            punishmentId: p.id,
+            userId: p.targetUserId,
+            displayName: p.targetDisplayName,
+          })));
+        }).catch(() => setJailedUsers([]));
 
         const connection: RoomConnection = {
           wsUrl: res.wsUrl,
@@ -721,8 +725,8 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                   Whispers{whisperSource ? ` \u2014 You hear: ${whisperSource.displayName}` : ''}
                 </span>
               )}
-              {/* Mode toggle for room creator */}
-              {isRoomCreator && !currentRoom.is_jail && connectionState === ConnectionState.Connected && (
+              {/* Mode toggle — any room member */}
+              {!currentRoom.is_jail && connectionState === ConnectionState.Connected && (
                 <button
                   onClick={handleToggleWhispers}
                   className={`ml-auto text-xs px-2 py-1 rounded transition-colors ${
@@ -758,8 +762,8 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
             </div>
           )}
 
-          {/* Jailed users — room creator can lift punishments */}
-          {isRoomCreator && jailedUsers.length > 0 && (
+          {/* Jailed users — any room member can lift */}
+          {jailedUsers.length > 0 && (
             <div className="mb-4 p-3 bg-orange-500/10 border border-orange-500/30 rounded-lg text-sm">
               <span className="text-orange-400 font-semibold text-xs uppercase">Jailed from this room</span>
               {jailedUsers.map((j) => (
