@@ -188,6 +188,17 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     room.on(RoomEvent.TrackSubscribed, handleTrackSubscribed);
     room.on(RoomEvent.TrackUnsubscribed, handleTrackUnsubscribed);
 
+    // Catch-up: attach audio tracks that were already subscribed before
+    // this effect ran. This happens when tracks arrive during room.connect()
+    // before React state updates trigger this useEffect.
+    for (const p of room.remoteParticipants.values()) {
+      for (const pub of p.trackPublications.values()) {
+        if (pub.kind === Track.Kind.Audio && pub.isSubscribed && pub.track) {
+          attachTrack(p, pub as RemoteTrackPublication);
+        }
+      }
+    }
+
     return () => {
       room.off(RoomEvent.TrackSubscribed, handleTrackSubscribed);
       room.off(RoomEvent.TrackUnsubscribed, handleTrackUnsubscribed);

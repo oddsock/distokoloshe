@@ -3,7 +3,7 @@ import type { RemoteTrackPublication, RemoteParticipant } from 'livekit-client';
 import { Track } from 'livekit-client';
 
 interface ParticipantAudio {
-  elements: HTMLMediaElement[];
+  element: HTMLAudioElement;
   volume: number;
   muted: boolean;
 }
@@ -30,29 +30,45 @@ export function useAudioMixer() {
       if (publication.kind !== Track.Kind.Audio || !publication.track) return;
 
       const track = publication.track;
+      const identity = participant.identity;
 
-      // Ensure track is attached to a native <audio> element.
-      // LiveKit handles element creation, autoplay, and browser policy negotiation.
-      let elements = track.attachedElements;
-      if (elements.length === 0) {
-        track.attach();
-        elements = track.attachedElements;
-      }
+      // Skip if already attached for this participant
+      if (nodesRef.current.has(identity)) return;
+
+      // Create an <audio> element in the DOM ourselves for maximum
+      // browser autoplay compatibility. LiveKit's track.attach(el)
+      // wires the MediaStream into our element.
+      const el = document.createElement('audio');
+      el.autoplay = true;
+      el.dataset.participant = identity;
+      document.body.appendChild(el);
+
+      // Let LiveKit set up srcObject on our element
+      track.attach(el);
 
       // Apply saved per-user volume (0–1)
       const saved = loadSavedVolumes();
-      const volume = Math.max(0, Math.min(1, saved[participant.identity] ?? 1.0));
-      for (const el of elements) {
-        (el as HTMLAudioElement).volume = volume;
-      }
+      const volume = Math.max(0, Math.min(1, saved[identity] ?? 1.0));
+      el.volume = volume;
 
-      nodesRef.current.set(participant.identity, { elements: [...elements], volume, muted: false });
+      // Explicitly play to ensure audio starts
+      el.play().catch((err) => {
+        console.warn(`Audio play failed for ${identity}:`, err);
+      });
+
+      nodesRef.current.set(identity, { element: el, volume, muted: false });
     },
     [],
   );
 
   const detachTrack = useCallback((participant: RemoteParticipant) => {
-    nodesRef.current.delete(participant.identity);
+    const node = nodesRef.current.get(participant.identity);
+    if (node) {
+      node.element.pause();
+      node.element.srcObject = null;
+      node.element.remove();
+      nodesRef.current.delete(participant.identity);
+    }
   }, []);
 
   const setVolume = useCallback((identity: string, volume: number) => {
@@ -60,14 +76,10 @@ export function useAudioMixer() {
     const node = nodesRef.current.get(identity);
     if (node) {
       node.volume = clamped;
-      // Only apply to element if not locally muted
       if (!node.muted) {
-        for (const el of node.elements) {
-          (el as HTMLAudioElement).volume = clamped;
-        }
+        node.element.volume = clamped;
       }
     }
-    // Persist
     const saved = loadSavedVolumes();
     saved[identity] = clamped;
     saveVolumes(saved);
@@ -84,9 +96,7 @@ export function useAudioMixer() {
     const node = nodesRef.current.get(identity);
     if (node) {
       node.muted = muted;
-      for (const el of node.elements) {
-        (el as HTMLAudioElement).volume = muted ? 0 : node.volume;
-      }
+      node.element.volume = muted ? 0 : node.volume;
     }
   }, []);
 
@@ -95,9 +105,14 @@ export function useAudioMixer() {
     return node?.muted ?? false;
   }, []);
 
-  // Cleanup on unmount
+  // Cleanup on unmount: remove all audio elements from DOM
   useEffect(() => {
     return () => {
+      for (const node of nodesRef.current.values()) {
+        node.element.pause();
+        node.element.srcObject = null;
+        node.element.remove();
+      }
       nodesRef.current.clear();
     };
   }, []);
