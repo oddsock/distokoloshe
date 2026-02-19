@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import type { Room, LocalTrackPublication, ScalabilityMode } from 'livekit-client';
-import { detectAV1Encode } from '../lib/codec';
+import { getScreenShareCodec } from '../lib/codec';
 
 export type ShareQuality = 'low' | 'medium' | 'high' | 'ultra';
 
@@ -47,7 +47,7 @@ export const QUALITY_PRESETS: Record<ShareQuality, QualityPreset> = {
     bitrate: 8_000_000,
     contentHint: 'motion',
     scalabilityMode: 'L1T3',
-    preferAV1: false,
+    preferAV1: true,
   },
 };
 
@@ -62,8 +62,6 @@ export function useScreenShare(room: Room | null) {
     return localStorage.getItem(AUDIO_KEY) === 'true';
   });
   const tracksRef = useRef<LocalTrackPublication[]>([]);
-
-  const av1Supported = detectAV1Encode();
 
   const setShareQuality = useCallback((quality: ShareQuality) => {
     setShareQualityState(quality);
@@ -80,7 +78,7 @@ export function useScreenShare(room: Room | null) {
 
     const effectiveQuality = quality ?? shareQuality;
     const preset = QUALITY_PRESETS[effectiveQuality];
-    const useAV1 = preset.preferAV1 && av1Supported;
+    const { codec, backup } = getScreenShareCodec(preset.preferAV1);
 
     try {
       await room.localParticipant.setScreenShareEnabled(true, {
@@ -88,8 +86,8 @@ export function useScreenShare(room: Room | null) {
         contentHint: preset.contentHint,
         audio: shareAudio,
       }, {
-        videoCodec: useAV1 ? 'av1' : 'vp9',
-        backupCodec: true,
+        videoCodec: codec,
+        backupCodec: backup ? { codec: backup } : false,
         screenShareEncoding: {
           maxBitrate: preset.bitrate,
           maxFramerate: preset.resolution.frameRate,
@@ -105,7 +103,7 @@ export function useScreenShare(room: Room | null) {
       console.error('Screen share failed:', err);
       setIsSharing(false);
     }
-  }, [room, shareQuality, shareAudio, av1Supported, setShareQuality]);
+  }, [room, shareQuality, shareAudio, setShareQuality]);
 
   const stopScreenShare = useCallback(async () => {
     if (!room) return;

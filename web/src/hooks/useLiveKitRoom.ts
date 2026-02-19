@@ -163,6 +163,7 @@ export function useLiveKitRoom() {
         room,
         localParticipant: room.localParticipant,
         remoteParticipants: Array.from(room.remoteParticipants.values()),
+        activeSpeakers: [],
         connectionState: room.state,
         e2eeEnabled: e2eeActive,
         stateVersion: s.stateVersion + 1,
