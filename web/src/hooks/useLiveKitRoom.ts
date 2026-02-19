@@ -60,9 +60,9 @@ export function useLiveKitRoom() {
 
   const connect = useCallback(
     async (connection: RoomConnection) => {
-      // Disconnect existing room
+      // Disconnect existing room and wait for teardown
       if (roomRef.current) {
-        roomRef.current.disconnect();
+        await roomRef.current.disconnect();
         roomRef.current = null;
       }
 
@@ -172,9 +172,9 @@ export function useLiveKitRoom() {
     [updateParticipants],
   );
 
-  const disconnect = useCallback(() => {
+  const disconnect = useCallback(async () => {
     if (roomRef.current) {
-      roomRef.current.disconnect();
+      await roomRef.current.disconnect();
       roomRef.current = null;
     }
     setState({

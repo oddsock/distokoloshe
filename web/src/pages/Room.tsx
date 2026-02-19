@@ -208,7 +208,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     async (roomId: number) => {
       setError(null);
       try {
-        disconnect();
+        await disconnect();
         const res = await api.joinRoom(roomId);
         setCurrentRoom(res.room);
         const connection: RoomConnection = {
