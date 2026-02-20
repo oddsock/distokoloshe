@@ -7,7 +7,8 @@ interface UserListProps {
 
 function formatLastSeen(lastSeen: string | null): string {
   if (!lastSeen) return 'Never';
-  const date = new Date(lastSeen + 'Z'); // SQLite datetime is UTC
+  // SQLite datetimes lack 'Z'; ISO strings from the frontend already have it
+  const date = new Date(lastSeen.endsWith('Z') ? lastSeen : lastSeen + 'Z');
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMins = Math.floor(diffMs / 60000);
@@ -28,7 +29,7 @@ export function UserList({ users, currentUserId }: UserListProps) {
 
   return (
     <aside className="w-52 bg-white dark:bg-zinc-800 border-l border-zinc-200 dark:border-zinc-700 flex flex-col">
-      <div className="p-3 border-b border-zinc-200 dark:border-zinc-700">
+      <div className="h-14 px-3 border-b border-zinc-200 dark:border-zinc-700 flex items-center shrink-0">
         <h3 className="text-xs font-semibold uppercase text-zinc-500">Members</h3>
       </div>
 

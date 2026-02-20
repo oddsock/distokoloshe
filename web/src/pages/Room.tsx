@@ -179,10 +179,12 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
 
     const handleTrackUnsubscribed = (
       _track: unknown,
-      _publication: RemoteTrackPublication,
+      publication: RemoteTrackPublication,
       participant: RemoteParticipant,
     ) => {
-      detachTrack(participant);
+      if (publication.kind === Track.Kind.Audio) {
+        detachTrack(participant);
+      }
     };
 
     room.on(RoomEvent.TrackSubscribed, handleTrackSubscribed);
@@ -267,7 +269,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     <div className="min-h-screen bg-zinc-100 dark:bg-zinc-900 text-zinc-900 dark:text-white flex">
       {/* Left sidebar — Rooms */}
       <aside className="w-60 bg-white dark:bg-zinc-800 border-r border-zinc-200 dark:border-zinc-700 flex flex-col">
-        <div className="p-4 border-b border-zinc-200 dark:border-zinc-700 flex items-center justify-between">
+        <div className="h-14 px-4 border-b border-zinc-200 dark:border-zinc-700 flex items-center justify-between shrink-0">
           <h2 className="text-lg font-bold">disTokoloshe</h2>
           <button
             onClick={() => setThemeState(toggleTheme())}
@@ -350,7 +352,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
         </div>
 
         {/* User bar */}
-        <div className="p-3 border-t border-zinc-200 dark:border-zinc-700 flex items-center justify-between">
+        <div className="h-16 px-3 border-t border-zinc-200 dark:border-zinc-700 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-xs font-bold text-white shrink-0">
               {user.display_name.charAt(0).toUpperCase()}
