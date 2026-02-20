@@ -51,6 +51,7 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - E2EE_SECRET=${E2EE_SECRET:-}
       - LIVEKIT_URL=ws://host.docker.internal:${LK_PORT:-7881}
+      - SERVER_CITY=${SERVER_CITY:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

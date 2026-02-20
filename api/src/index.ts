@@ -33,6 +33,14 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
+app.get('/api/ping', (_req, res) => {
+  res.json({ t: Date.now() });
+});
+
+app.get('/api/server-info', (_req, res) => {
+  res.json({ city: process.env.SERVER_CITY || null });
+});
+
 app.use('/api/auth', authRoutes);
 app.use('/api/rooms', roomRoutes);
 app.use('/api/users', userRoutes);

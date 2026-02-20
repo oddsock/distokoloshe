@@ -10,6 +10,8 @@ import { VolumeSlider } from '../components/VolumeSlider';
 import { ScreenShareView } from '../components/ScreenShareView';
 import { VideoTrackView } from '../components/VideoTrackView';
 import { UserList } from '../components/UserList';
+import { SignalStrength } from '../components/SignalStrength';
+import { useConnectionStats } from '../hooks/useConnectionStats';
 import { getRoomInitials, toggleTheme, getTheme } from '../lib/utils';
 import * as api from '../lib/api';
 
@@ -85,6 +87,10 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
   const [showQualityMenu, setShowQualityMenu] = useState(false);
   const [spotlight, setSpotlight] = useState<{ identity: string; source: 'screen_share' | 'camera' } | null>(null);
 
+  // Connection stats (RTT / jitter)
+  const connectionStats = useConnectionStats(room);
+  const [serverCity, setServerCity] = useState<string | null>(null);
+
   // Responsive sidebar state
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
@@ -110,6 +116,13 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
   const whisperSource = isWhispersMode && myChainEntry && whisperChain.length > 1
     ? whisperChain.find((e) => e.position === (myChainEntry.position - 1 + whisperChain.length) % whisperChain.length)
     : null;
+
+  // Fetch server city once on mount
+  useEffect(() => {
+    fetch('/api/server-info').then((r) => r.json()).then((d) => {
+      if (d.city) setServerCity(d.city);
+    }).catch(() => {});
+  }, []);
 
   // Load initial data
   useEffect(() => {
@@ -713,9 +726,10 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
               <p className="text-xs text-zinc-500 truncate">@{user.username}</p>
             </div>
           </div>
+          <SignalStrength stats={connectionStats} serverCity={serverCity} />
           <button
             onClick={onLogout}
-            className="text-xs text-zinc-500 hover:text-red-400 transition-colors"
+            className="text-xs text-zinc-500 hover:text-red-400 transition-colors flex-shrink-0"
             title="Logout"
           >
             Logout
@@ -921,7 +935,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
               <div className="mb-4">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs text-zinc-500">
-                    {name}&apos;s {source === 'screen_share' ? 'screen share' : 'camera'}
+                    {name === 'You' ? 'Your' : <>{name}&apos;s</>} {source === 'screen_share' ? 'screen share' : 'camera'}
                   </span>
                   <button
                     onClick={() => setSpotlight(null)}
@@ -978,9 +992,9 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                       onClick={hasScreenShare && !localCameraPub ? () => setSpotlight({ identity: localParticipant.identity, source: 'screen_share' }) : undefined}
                     >
                       {localCameraPub ? (
-                        <VideoTrackView publication={localCameraPub} mirror />
+                        <VideoTrackView key={spotlight?.identity === localParticipant.identity ? 's' : 'c'} publication={localCameraPub} mirror />
                       ) : hasScreenShare ? (
-                        <VideoTrackView publication={localScreenShare!} fit="contain" />
+                        <VideoTrackView key={spotlight?.identity === localParticipant.identity ? 's' : 'c'} publication={localScreenShare!} fit="contain" />
                       ) : (
                         <div className={`w-16 h-16 rounded-full bg-indigo-600 flex items-center justify-center text-2xl font-bold text-white transition-shadow ${
                           localSpeaking ? 'shadow-[0_0_16px_rgba(96,165,250,0.6)]' : ''
@@ -996,7 +1010,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                         className="w-full rounded-lg overflow-hidden border-2 transition-colors mb-3 border-zinc-600 hover:border-indigo-500 bg-black"
                       >
                         <div className="aspect-video flex items-center justify-center">
-                          <VideoTrackView publication={localScreenShare!} fit="contain" />
+                          <VideoTrackView key={spotlight?.identity === localParticipant.identity ? 's' : 'c'} publication={localScreenShare!} fit="contain" />
                         </div>
                       </button>
                     )}
@@ -1039,9 +1053,9 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                       onClick={screenSharePub && !cameraPub ? () => setSpotlight({ identity: p.identity, source: 'screen_share' }) : undefined}
                     >
                       {cameraPub ? (
-                        <VideoTrackView publication={cameraPub} />
+                        <VideoTrackView key={spotlight?.identity === p.identity ? 's' : 'c'} publication={cameraPub} />
                       ) : screenSharePub ? (
-                        <VideoTrackView publication={screenSharePub} fit="contain" />
+                        <VideoTrackView key={spotlight?.identity === p.identity ? 's' : 'c'} publication={screenSharePub} fit="contain" />
                       ) : (
                         <div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold text-white transition-shadow ${
                           isMyWhisperSource ? 'bg-purple-600' : 'bg-zinc-500'
@@ -1062,7 +1076,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                         className="w-full rounded-lg overflow-hidden border-2 transition-colors mb-3 border-zinc-600 hover:border-indigo-500 bg-black"
                       >
                         <div className="aspect-video flex items-center justify-center">
-                          <VideoTrackView publication={screenSharePub} fit="contain" />
+                          <VideoTrackView key={spotlight?.identity === p.identity ? 's' : 'c'} publication={screenSharePub} fit="contain" />
                         </div>
                       </button>
                     )}
