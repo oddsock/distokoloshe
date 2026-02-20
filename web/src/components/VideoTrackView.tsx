@@ -4,10 +4,11 @@ import type { TrackPublication } from 'livekit-client';
 interface VideoTrackViewProps {
   publication: TrackPublication;
   mirror?: boolean;
+  fit?: 'cover' | 'contain';
   className?: string;
 }
 
-export function VideoTrackView({ publication, mirror, className }: VideoTrackViewProps) {
+export function VideoTrackView({ publication, mirror, fit = 'cover', className }: VideoTrackViewProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -27,7 +28,7 @@ export function VideoTrackView({ publication, mirror, className }: VideoTrackVie
       autoPlay
       playsInline
       muted
-      className={`w-full h-full object-cover ${mirror ? 'scale-x-[-1]' : ''} ${className ?? ''}`}
+      className={`w-full h-full ${fit === 'contain' ? 'object-contain' : 'object-cover'} ${mirror ? 'scale-x-[-1]' : ''} ${className ?? ''}`}
     />
   );
 }

@@ -83,7 +83,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     stopScreenShare,
   } = useScreenShare(room);
   const [showQualityMenu, setShowQualityMenu] = useState(false);
-  const [spotlightIdentity, setSpotlightIdentity] = useState<string | null>(null);
+  const [spotlight, setSpotlight] = useState<{ identity: string; source: 'screen_share' | 'camera' } | null>(null);
 
   // Responsive sidebar state
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
@@ -474,7 +474,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     async (roomId: number) => {
       setError(null);
       setLeftSidebarOpen(false);
-      setSpotlightIdentity(null);
+      setSpotlight(null);
       try {
         await disconnect();
         const res = await api.joinRoom(roomId);
@@ -530,20 +530,25 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
   const micMuted = localParticipant ? !localParticipant.isMicrophoneEnabled : true;
   const isCameraOn = localParticipant ? localParticipant.isCameraEnabled : false;
 
-  // Auto-dismiss spotlight when the screen share track disappears
+  // Auto-dismiss spotlight when the spotlighted track disappears
   useEffect(() => {
-    if (!spotlightIdentity) return;
-    if (spotlightIdentity === localParticipant?.identity) {
-      if (!localScreenShare) setSpotlightIdentity(null);
+    if (!spotlight) return;
+    const { identity, source } = spotlight;
+    if (identity === localParticipant?.identity) {
+      const hasPub = source === 'screen_share' ? !!localScreenShare : Array.from(localParticipant!.trackPublications.values()).some(
+        (pub) => pub.source === Track.Source.Camera && pub.track,
+      );
+      if (!hasPub) setSpotlight(null);
       return;
     }
-    const remote = remoteParticipants.find((p) => p.identity === spotlightIdentity);
-    if (!remote) { setSpotlightIdentity(null); return; }
-    const hasShare = Array.from(remote.trackPublications.values()).some(
-      (pub) => pub.source === Track.Source.ScreenShare && pub.isSubscribed && pub.track,
+    const remote = remoteParticipants.find((p) => p.identity === identity);
+    if (!remote) { setSpotlight(null); return; }
+    const trackSource = source === 'screen_share' ? Track.Source.ScreenShare : Track.Source.Camera;
+    const hasTrack = Array.from(remote.trackPublications.values()).some(
+      (pub) => pub.source === trackSource && pub.isSubscribed && pub.track,
     );
-    if (!hasShare) setSpotlightIdentity(null);
-  }, [spotlightIdentity, localParticipant, localScreenShare, remoteParticipants]);
+    if (!hasTrack) setSpotlight(null);
+  }, [spotlight, localParticipant, localScreenShare, remoteParticipants]);
 
   const toggleMuteUser = useCallback((identity: string) => {
     const muted = !isMuted(identity);
@@ -878,33 +883,76 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
             </div>
           )}
 
-          {/* Spotlighted screen share */}
-          {spotlightIdentity && (() => {
-            const spotlightPub = (() => {
-              if (spotlightIdentity === localParticipant?.identity && localScreenShare) {
-                return { publication: localScreenShare, name: 'You' };
+          {/* Spotlighted view */}
+          {spotlight && (() => {
+            const { identity, source } = spotlight;
+            const isLocal = identity === localParticipant?.identity;
+            const remote = !isLocal ? remoteParticipants.find((p) => p.identity === identity) : null;
+            const name = isLocal ? 'You' : (remote?.name || remote?.identity || identity);
+
+            // Helper to find a track by source
+            const findPub = (src: 'screen_share' | 'camera') => {
+              if (src === 'screen_share') {
+                if (isLocal) return localScreenShare || null;
+                if (!remote) return null;
+                return Array.from(remote.trackPublications.values()).find(
+                  (pub) => pub.source === Track.Source.ScreenShare && pub.isSubscribed && pub.track,
+                ) || null;
               }
-              const remote = remoteParticipants.find((p) => p.identity === spotlightIdentity);
-              if (!remote) return null;
-              const pub = Array.from(remote.trackPublications.values()).find(
-                (pub) => pub.source === Track.Source.ScreenShare && pub.isSubscribed && pub.track,
-              );
-              if (!pub) return null;
-              return { publication: pub, name: remote.name || remote.identity };
-            })();
-            if (!spotlightPub) return null;
+              if (isLocal && localParticipant) {
+                return Array.from(localParticipant.trackPublications.values()).find(
+                  (pub) => pub.source === Track.Source.Camera && pub.track,
+                ) || null;
+              }
+              if (remote) {
+                return Array.from(remote.trackPublications.values()).find(
+                  (pub) => pub.source === Track.Source.Camera && pub.isSubscribed && pub.track,
+                ) || null;
+              }
+              return null;
+            };
+
+            const mainPub = findPub(source);
+            const altSource = source === 'screen_share' ? 'camera' as const : 'screen_share' as const;
+            const altPub = findPub(altSource);
+
+            if (!mainPub) return null;
             return (
               <div className="mb-4">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs text-zinc-500">{spotlightPub.name}&apos;s screen share</span>
+                  <span className="text-xs text-zinc-500">
+                    {name}&apos;s {source === 'screen_share' ? 'screen share' : 'camera'}
+                  </span>
                   <button
-                    onClick={() => setSpotlightIdentity(null)}
+                    onClick={() => setSpotlight(null)}
                     className="text-xs text-zinc-400 hover:text-zinc-200 px-2 py-0.5 rounded bg-zinc-200 dark:bg-zinc-700"
                   >
                     Dismiss
                   </button>
                 </div>
-                <ScreenShareView publication={spotlightPub.publication} participantName={spotlightPub.name} />
+                <div className="relative">
+                  {source === 'screen_share' ? (
+                    <ScreenShareView publication={mainPub} participantName={name} />
+                  ) : (
+                    <div className="bg-black rounded-xl overflow-hidden">
+                      <VideoTrackView publication={mainPub} mirror={isLocal} fit="contain" className="max-h-[70vh]" />
+                    </div>
+                  )}
+                  {/* PIP of alternate source — click to swap */}
+                  {altPub && (
+                    <button
+                      onClick={() => setSpotlight({ identity, source: altSource })}
+                      className="absolute bottom-3 right-3 w-40 h-24 rounded-lg overflow-hidden border-2 border-zinc-500 hover:border-indigo-500 transition-colors shadow-lg bg-black z-10"
+                      title={`Switch to ${altSource === 'screen_share' ? 'screen share' : 'camera'}`}
+                    >
+                      <VideoTrackView
+                        publication={altPub}
+                        mirror={isLocal && altSource === 'camera'}
+                        fit={altSource === 'screen_share' ? 'contain' : 'cover'}
+                      />
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })()}
@@ -917,13 +965,22 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                 const localCameraPub = Array.from(localParticipant.trackPublications.values()).find(
                   (pub) => pub.source === Track.Source.Camera && pub.track,
                 );
+                const hasScreenShare = !!localScreenShare;
                 return (
                   <div className={`bg-white dark:bg-zinc-800 rounded-xl p-4 border border-zinc-200 dark:border-zinc-700 ring-2 transition-shadow ${
                     localSpeaking ? 'ring-blue-400 shadow-[0_0_12px_rgba(96,165,250,0.5)]' : 'ring-indigo-500/30'
                   }`}>
-                    <div className="aspect-video bg-zinc-200 dark:bg-zinc-700 rounded-lg mb-3 flex items-center justify-center overflow-hidden">
+                    {/* Main video area: camera > screen share > avatar */}
+                    <div
+                      className={`aspect-video bg-zinc-200 dark:bg-zinc-700 rounded-lg mb-3 flex items-center justify-center overflow-hidden ${
+                        hasScreenShare && !localCameraPub ? 'cursor-pointer ring-1 ring-zinc-600 hover:ring-indigo-500 transition-all' : ''
+                      }`}
+                      onClick={hasScreenShare && !localCameraPub ? () => setSpotlight({ identity: localParticipant.identity, source: 'screen_share' }) : undefined}
+                    >
                       {localCameraPub ? (
                         <VideoTrackView publication={localCameraPub} mirror />
+                      ) : hasScreenShare ? (
+                        <VideoTrackView publication={localScreenShare!} fit="contain" />
                       ) : (
                         <div className={`w-16 h-16 rounded-full bg-indigo-600 flex items-center justify-center text-2xl font-bold text-white transition-shadow ${
                           localSpeaking ? 'shadow-[0_0_16px_rgba(96,165,250,0.6)]' : ''
@@ -932,15 +989,15 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                         </div>
                       )}
                     </div>
-                    {/* Local screen share thumbnail */}
-                    {localScreenShare && (
+                    {/* Screen share thumbnail — only shown when camera is ON (otherwise it's in the main area) */}
+                    {hasScreenShare && localCameraPub && (
                       <button
-                        onClick={() => setSpotlightIdentity(spotlightIdentity === localParticipant.identity ? null : localParticipant.identity)}
-                        className={`w-full rounded-lg overflow-hidden border-2 transition-colors mb-3 ${
-                          spotlightIdentity === localParticipant.identity ? 'border-indigo-500' : 'border-zinc-600 hover:border-zinc-400'
-                        }`}
+                        onClick={() => setSpotlight({ identity: localParticipant.identity, source: 'screen_share' })}
+                        className="w-full rounded-lg overflow-hidden border-2 transition-colors mb-3 border-zinc-600 hover:border-indigo-500 bg-black"
                       >
-                        <ScreenShareView publication={localScreenShare} participantName="You" compact />
+                        <div className="aspect-video flex items-center justify-center">
+                          <VideoTrackView publication={localScreenShare!} fit="contain" />
+                        </div>
                       </button>
                     )}
                     <div className="flex items-center justify-between">
@@ -974,9 +1031,17 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                       speaking && !userMuted && !whisperDimmed ? 'ring-blue-400 shadow-[0_0_12px_rgba(96,165,250,0.5)]' : 'ring-transparent'
                     } ${whisperDimmed ? 'opacity-40' : ''}`}
                   >
-                    <div className="aspect-video bg-zinc-200 dark:bg-zinc-700 rounded-lg mb-3 flex items-center justify-center relative overflow-hidden">
+                    {/* Main video area: camera > screen share > avatar */}
+                    <div
+                      className={`aspect-video bg-zinc-200 dark:bg-zinc-700 rounded-lg mb-3 flex items-center justify-center relative overflow-hidden ${
+                        screenSharePub && !cameraPub ? 'cursor-pointer ring-1 ring-zinc-600 hover:ring-indigo-500 transition-all' : ''
+                      }`}
+                      onClick={screenSharePub && !cameraPub ? () => setSpotlight({ identity: p.identity, source: 'screen_share' }) : undefined}
+                    >
                       {cameraPub ? (
                         <VideoTrackView publication={cameraPub} />
+                      ) : screenSharePub ? (
+                        <VideoTrackView publication={screenSharePub} fit="contain" />
                       ) : (
                         <div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold text-white transition-shadow ${
                           isMyWhisperSource ? 'bg-purple-600' : 'bg-zinc-500'
@@ -990,15 +1055,15 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                         </span>
                       )}
                     </div>
-                    {/* Remote screen share thumbnail */}
-                    {screenSharePub && (
+                    {/* Screen share thumbnail — only shown when camera is ON */}
+                    {screenSharePub && cameraPub && (
                       <button
-                        onClick={() => setSpotlightIdentity(spotlightIdentity === p.identity ? null : p.identity)}
-                        className={`w-full rounded-lg overflow-hidden border-2 transition-colors mb-3 ${
-                          spotlightIdentity === p.identity ? 'border-indigo-500' : 'border-zinc-600 hover:border-zinc-400'
-                        }`}
+                        onClick={() => setSpotlight({ identity: p.identity, source: 'screen_share' })}
+                        className="w-full rounded-lg overflow-hidden border-2 transition-colors mb-3 border-zinc-600 hover:border-indigo-500 bg-black"
                       >
-                        <ScreenShareView publication={screenSharePub} participantName={p.name || p.identity} compact />
+                        <div className="aspect-video flex items-center justify-center">
+                          <VideoTrackView publication={screenSharePub} fit="contain" />
+                        </div>
                       </button>
                     )}
                     <div className="flex items-center justify-between">
