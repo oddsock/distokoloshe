@@ -15,10 +15,12 @@ export function VideoTrackView({ publication, mirror, fit = 'cover', className }
     const track = publication.track;
     if (!track || !videoRef.current) return;
 
-    track.attach(videoRef.current);
+    const el = videoRef.current;
+    track.attach(el);
 
     return () => {
-      track.detach(videoRef.current!);
+      // Must pass the actual element — track.detach(undefined/null) detaches ALL elements
+      track.detach(el);
     };
   }, [publication.track]);
 

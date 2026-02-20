@@ -27,16 +27,16 @@ export function useConnectionStats(room: Room | null): ConnectionStats {
 
     const poll = async () => {
       try {
-        // Access the underlying RTCPeerConnection via the engine
-        const pc = (room.engine as any)?.client?.publisher?.pc as RTCPeerConnection | undefined
-          ?? (room.engine as any)?.client?.subscriber?.pc as RTCPeerConnection | undefined;
-        if (!pc) return;
+        // Access PCTransport via engine.pcManager (livekit-client ^2.17)
+        const pcManager = (room.engine as any)?.pcManager;
+        const transport = pcManager?.publisher ?? pcManager?.subscriber;
+        if (!transport?.getStats) return;
 
-        const report = await pc.getStats();
+        const report = await transport.getStats();
         let rttSec: number | null = null;
         let jitterSec: number | null = null;
 
-        report.forEach((entry) => {
+        report.forEach((entry: Record<string, any>) => {
           if (entry.type === 'candidate-pair' && entry.state === 'succeeded' && entry.currentRoundTripTime != null) {
             rttSec = entry.currentRoundTripTime;
           }

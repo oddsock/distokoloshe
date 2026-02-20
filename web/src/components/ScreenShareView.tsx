@@ -17,10 +17,12 @@ export function ScreenShareView({ publication, participantName, compact }: Scree
     const track = publication.track;
     if (!track || !videoRef.current) return;
 
-    track.attach(videoRef.current);
+    const el = videoRef.current;
+    track.attach(el);
 
     return () => {
-      track.detach(videoRef.current!);
+      // Must pass the actual element — track.detach(undefined/null) detaches ALL elements
+      track.detach(el);
     };
   }, [publication.track]);
 
@@ -53,7 +55,7 @@ export function ScreenShareView({ publication, participantName, compact }: Scree
       <div className={`flex items-center justify-between px-3 ${compact ? 'py-1' : 'py-1.5'} bg-zinc-800 text-xs text-zinc-400 shrink-0`}>
         <div className="flex items-center gap-2">
           <span>{'\u{1F5B5}'}</span>
-          <span>{compact ? participantName : `${participantName} is sharing their screen`}</span>
+          <span>{compact ? participantName : participantName === 'You' ? 'You are sharing your screen' : `${participantName} is sharing their screen`}</span>
         </div>
         {!compact && (
           <button

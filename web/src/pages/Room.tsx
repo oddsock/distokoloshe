@@ -814,7 +814,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
         </header>
 
         {/* Participant area */}
-        <div className="flex-1 p-6 overflow-y-auto">
+        <div className="flex-1 p-6 pb-20 overflow-y-auto">
           {error && (
             <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-300 text-sm flex items-center">
               <span className="flex-1">{error}</span>
@@ -1004,9 +1004,9 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                       onClick={hasScreenShare && !localCameraPub ? () => setSpotlight({ identity: localParticipant.identity, source: 'screen_share' }) : undefined}
                     >
                       {localCameraPub ? (
-                        <VideoTrackView key={spotlight?.identity === localParticipant.identity ? 's' : 'c'} publication={localCameraPub} mirror />
+                        <VideoTrackView publication={localCameraPub} mirror />
                       ) : hasScreenShare ? (
-                        <VideoTrackView key={spotlight?.identity === localParticipant.identity ? 's' : 'c'} publication={localScreenShare!} fit="contain" />
+                        <VideoTrackView publication={localScreenShare!} fit="contain" />
                       ) : (
                         <div className={`w-16 h-16 rounded-full bg-indigo-600 flex items-center justify-center text-2xl font-bold text-white transition-shadow ${
                           localSpeaking ? 'shadow-[0_0_16px_rgba(96,165,250,0.6)]' : ''
@@ -1022,7 +1022,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                         className="w-full rounded-lg overflow-hidden border-2 transition-colors mb-3 border-zinc-600 hover:border-indigo-500 bg-black"
                       >
                         <div className="aspect-video flex items-center justify-center">
-                          <VideoTrackView key={spotlight?.identity === localParticipant.identity ? 's' : 'c'} publication={localScreenShare!} fit="contain" />
+                          <VideoTrackView publication={localScreenShare!} fit="contain" />
                         </div>
                       </button>
                     )}
@@ -1065,9 +1065,9 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                       onClick={screenSharePub && !cameraPub ? () => setSpotlight({ identity: p.identity, source: 'screen_share' }) : undefined}
                     >
                       {cameraPub ? (
-                        <VideoTrackView key={spotlight?.identity === p.identity ? 's' : 'c'} publication={cameraPub} />
+                        <VideoTrackView publication={cameraPub} />
                       ) : screenSharePub ? (
-                        <VideoTrackView key={spotlight?.identity === p.identity ? 's' : 'c'} publication={screenSharePub} fit="contain" />
+                        <VideoTrackView publication={screenSharePub} fit="contain" />
                       ) : (
                         <div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold text-white transition-shadow ${
                           isMyWhisperSource ? 'bg-purple-600' : 'bg-zinc-500'
@@ -1088,7 +1088,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                         className="w-full rounded-lg overflow-hidden border-2 transition-colors mb-3 border-zinc-600 hover:border-indigo-500 bg-black"
                       >
                         <div className="aspect-video flex items-center justify-center">
-                          <VideoTrackView key={spotlight?.identity === p.identity ? 's' : 'c'} publication={screenSharePub} fit="contain" />
+                          <VideoTrackView publication={screenSharePub} fit="contain" />
                         </div>
                       </button>
                     )}
@@ -1160,9 +1160,9 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
           )}
         </div>
 
-        {/* Control bar */}
+        {/* Floating control bar */}
         {connectionState === ConnectionState.Connected && room && (
-          <div className="flex flex-wrap items-center justify-center gap-2 md:gap-3 border-t border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 md:px-6 py-2 shrink-0">
+          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 flex flex-wrap items-center justify-center gap-2 md:gap-3 bg-white/80 dark:bg-zinc-800/80 backdrop-blur-xl rounded-2xl px-4 py-2.5 shadow-lg border border-zinc-200/50 dark:border-zinc-700/50">
             <button
               onClick={() => room.localParticipant.setMicrophoneEnabled(!room.localParticipant.isMicrophoneEnabled)}
               className={`px-3 md:px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -1256,13 +1256,41 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
               )}
             </div>
 
-            <button
-              onClick={() => setShowVolumes(!showVolumes)}
-              className="px-3 md:px-4 py-2 rounded-lg text-sm font-medium bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors"
-              title="Volume controls"
-            >
-              {'\u{1F50A}'}<span className="hidden sm:inline ml-1">Volumes</span>
-            </button>
+            <div className="relative">
+              <button
+                onClick={() => setShowVolumes(!showVolumes)}
+                className="px-3 md:px-4 py-2 rounded-lg text-sm font-medium bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors"
+                title="Volume controls"
+              >
+                {'\u{1F50A}'}<span className="hidden sm:inline ml-1">Volumes</span>
+              </button>
+              {showVolumes && (
+                <div className="absolute bottom-full mb-2 right-0 bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg py-2 px-3 min-w-[200px] z-50">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold uppercase text-zinc-500">Volume</span>
+                    <button
+                      onClick={() => setShowVolumes(false)}
+                      className="text-zinc-400 hover:text-zinc-200 text-sm"
+                    >
+                      &times;
+                    </button>
+                  </div>
+                  {remoteParticipants.length === 0 ? (
+                    <p className="text-xs text-zinc-500 py-1">No other participants</p>
+                  ) : (
+                    remoteParticipants.map((p) => (
+                      <VolumeSlider
+                        key={p.identity}
+                        identity={p.identity}
+                        displayName={p.name || p.identity}
+                        volume={getVolume(p.identity)}
+                        onChange={(v) => setVolume(p.identity, v)}
+                      />
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
 
             <button
               onClick={() => setShowSettings(true)}
@@ -1271,34 +1299,6 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
               {'\u2699'}<span className="hidden sm:inline ml-1">Settings</span>
             </button>
 
-          </div>
-        )}
-
-        {/* Volume panel (slide-up) */}
-        {showVolumes && connectionState === ConnectionState.Connected && (
-          <div className="border-t border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-6 py-3">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold uppercase text-zinc-500">Volume Controls</span>
-              <button
-                onClick={() => setShowVolumes(false)}
-                className="text-zinc-400 hover:text-zinc-200 text-sm"
-              >
-                &times;
-              </button>
-            </div>
-            {remoteParticipants.length === 0 ? (
-              <p className="text-xs text-zinc-500 py-1">No other participants</p>
-            ) : (
-              remoteParticipants.map((p) => (
-                <VolumeSlider
-                  key={p.identity}
-                  identity={p.identity}
-                  displayName={p.name || p.identity}
-                  volume={getVolume(p.identity)}
-                  onChange={(v) => setVolume(p.identity, v)}
-                />
-              ))
-            )}
           </div>
         )}
       </main>
