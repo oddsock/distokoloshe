@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import type { Room, LocalTrackPublication, ScalabilityMode } from 'livekit-client';
 import { getScreenShareCodec } from '../lib/codec';
 
@@ -62,6 +62,12 @@ export function useScreenShare(room: Room | null) {
     return localStorage.getItem(AUDIO_KEY) === 'true';
   });
   const tracksRef = useRef<LocalTrackPublication[]>([]);
+
+  // Reset sharing state when room instance changes (e.g. room switch)
+  useEffect(() => {
+    setIsSharing(false);
+    tracksRef.current = [];
+  }, [room]);
 
   const setShareQuality = useCallback((quality: ShareQuality) => {
     setShareQualityState(quality);

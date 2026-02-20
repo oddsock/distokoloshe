@@ -85,6 +85,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     stopScreenShare,
   } = useScreenShare(room);
   const [showQualityMenu, setShowQualityMenu] = useState(false);
+  const [showStopShareConfirm, setShowStopShareConfirm] = useState(false);
   const [spotlight, setSpotlight] = useState<{ identity: string; source: 'screen_share' | 'camera' } | null>(null);
 
   // Connection stats (RTT / jitter)
@@ -357,6 +358,17 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     };
   }, [showQualityMenu]);
 
+  // Close stop-share confirm on outside click
+  useEffect(() => {
+    if (!showStopShareConfirm) return;
+    const close = () => setShowStopShareConfirm(false);
+    const id = setTimeout(() => document.addEventListener('click', close), 0);
+    return () => {
+      clearTimeout(id);
+      document.removeEventListener('click', close);
+    };
+  }, [showStopShareConfirm]);
+
   // Close duration picker on outside click
   useEffect(() => {
     if (showDurationPicker === null) return;
@@ -549,7 +561,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     const { identity, source } = spotlight;
     if (identity === localParticipant?.identity) {
       const hasPub = source === 'screen_share' ? !!localScreenShare : Array.from(localParticipant!.trackPublications.values()).some(
-        (pub) => pub.source === Track.Source.Camera && pub.track,
+        (pub) => pub.source === Track.Source.Camera && pub.track && !pub.isMuted,
       );
       if (!hasPub) setSpotlight(null);
       return;
@@ -558,7 +570,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     if (!remote) { setSpotlight(null); return; }
     const trackSource = source === 'screen_share' ? Track.Source.ScreenShare : Track.Source.Camera;
     const hasTrack = Array.from(remote.trackPublications.values()).some(
-      (pub) => pub.source === trackSource && pub.isSubscribed && pub.track,
+      (pub) => pub.source === trackSource && pub.isSubscribed && pub.track && !pub.isMuted,
     );
     if (!hasTrack) setSpotlight(null);
   }, [spotlight, localParticipant, localScreenShare, remoteParticipants]);
@@ -915,12 +927,12 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
               }
               if (isLocal && localParticipant) {
                 return Array.from(localParticipant.trackPublications.values()).find(
-                  (pub) => pub.source === Track.Source.Camera && pub.track,
+                  (pub) => pub.source === Track.Source.Camera && pub.track && !pub.isMuted,
                 ) || null;
               }
               if (remote) {
                 return Array.from(remote.trackPublications.values()).find(
-                  (pub) => pub.source === Track.Source.Camera && pub.isSubscribed && pub.track,
+                  (pub) => pub.source === Track.Source.Camera && pub.isSubscribed && pub.track && !pub.isMuted,
                 ) || null;
               }
               return null;
@@ -977,7 +989,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
               {localParticipant && (() => {
                 const localSpeaking = activeSpeakers.includes(localParticipant.identity);
                 const localCameraPub = Array.from(localParticipant.trackPublications.values()).find(
-                  (pub) => pub.source === Track.Source.Camera && pub.track,
+                  (pub) => pub.source === Track.Source.Camera && pub.track && !pub.isMuted,
                 );
                 const hasScreenShare = !!localScreenShare;
                 return (
@@ -1032,7 +1044,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                 const isMyWhisperSource = whisperSource?.username === p.identity;
                 const whisperDimmed = isWhispersMode && !isMyWhisperSource;
                 const cameraPub = Array.from(p.trackPublications.values()).find(
-                  (pub) => pub.source === Track.Source.Camera && pub.isSubscribed && pub.track,
+                  (pub) => pub.source === Track.Source.Camera && pub.isSubscribed && pub.track && !pub.isMuted,
                 );
                 const screenSharePub = Array.from(p.trackPublications.values()).find(
                   (pub) => pub.source === Track.Source.ScreenShare && pub.isSubscribed && pub.track,
@@ -1178,7 +1190,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
               <button
                 onClick={() => {
                   if (isSharing) {
-                    stopScreenShare();
+                    setShowStopShareConfirm(!showStopShareConfirm);
                   } else {
                     setShowQualityMenu(!showQualityMenu);
                   }
@@ -1191,6 +1203,25 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
               >
                 {'\u{1F5B5}'}<span className="hidden sm:inline ml-1">{isSharing ? `Stop (${shareQuality.charAt(0).toUpperCase() + shareQuality.slice(1)})` : 'Share'}</span>
               </button>
+              {showStopShareConfirm && isSharing && (
+                <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg p-3 min-w-[160px] z-50">
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-2 text-center">Stop sharing?</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setShowStopShareConfirm(false)}
+                      className="flex-1 px-2 py-1.5 text-xs rounded bg-zinc-200 dark:bg-zinc-600 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-300 dark:hover:bg-zinc-500 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => { setShowStopShareConfirm(false); stopScreenShare(); }}
+                      className="flex-1 px-2 py-1.5 text-xs rounded bg-red-500 text-white hover:bg-red-600 transition-colors"
+                    >
+                      Stop
+                    </button>
+                  </div>
+                </div>
+              )}
               {showQualityMenu && !isSharing && (
                 <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg py-1 min-w-[180px] z-50">
                   {(Object.entries(QUALITY_PRESETS) as [ShareQuality, (typeof QUALITY_PRESETS)[ShareQuality]][]).map(
