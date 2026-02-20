@@ -109,8 +109,8 @@ router.post('/', requireAuth, (req: Request, res: Response) => {
   const memberIds = roomMembers[callerRoomId] || [];
   const eligibleCount = memberIds.filter((id) => id !== targetUserId).length;
 
-  if (eligibleCount < 1) {
-    res.status(400).json({ error: 'Not enough participants to vote' });
+  if (eligibleCount < 2) {
+    res.status(400).json({ error: 'Need at least 3 people in the room to start a vote' });
     return;
   }
 
