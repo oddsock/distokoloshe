@@ -12,6 +12,7 @@ import { VideoTrackView } from '../components/VideoTrackView';
 import { UserList } from '../components/UserList';
 import { SignalStrength } from '../components/SignalStrength';
 import { useConnectionStats } from '../hooks/useConnectionStats';
+import { useHotkeys } from '../hooks/useHotkeys';
 import { getRoomInitials, toggleTheme, getTheme } from '../lib/utils';
 import * as api from '../lib/api';
 
@@ -38,7 +39,8 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
   const [users, setUsers] = useState<api.UserListItem[]>([]);
   const [roomMembers, setRoomMembers] = useState<Record<number, api.RoomMember[]>>({});
   const [currentRoom, setCurrentRoom] = useState<api.Room | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ msg: string; roomId?: number } | null>(null);
+  const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showVolumes, setShowVolumes] = useState(false);
   const [theme, setThemeState] = useState<'dark' | 'light'>(getTheme);
@@ -74,7 +76,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     disconnect,
   } = useLiveKitRoom();
 
-  const { attachTrack, detachTrack, setVolume, getVolume, setMuted, isMuted } = useAudioMixer();
+  const { attachTrack, detachTrack, setVolume, getVolume, setMuted, isMuted, deafened, setDeafened } = useAudioMixer();
   const [mutedUsers, setMutedUsers] = useState<Set<string>>(new Set());
   const {
     isSharing,
@@ -91,6 +93,19 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
   // Connection stats (RTT / jitter)
   const connectionStats = useConnectionStats(room);
   const [serverCity, setServerCity] = useState<string | null>(null);
+
+  // Global hotkeys
+  const handleToggleMute = useCallback(() => {
+    room?.localParticipant.setMicrophoneEnabled(!room.localParticipant.isMicrophoneEnabled);
+  }, [room]);
+  const handleToggleDeafen = useCallback(() => {
+    setDeafened(!deafened);
+  }, [deafened, setDeafened]);
+  const { bindings: hotkeyBindings, setBindings: setHotkeyBindings } = useHotkeys({
+    onToggleMute: handleToggleMute,
+    onToggleDeafen: handleToggleDeafen,
+    enabled: connectionState === ConnectionState.Connected,
+  });
 
   // Responsive sidebar state
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
@@ -369,6 +384,28 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     };
   }, [showStopShareConfirm]);
 
+  // Close settings popover on outside click
+  useEffect(() => {
+    if (!showSettings) return;
+    const close = () => setShowSettings(false);
+    const id = setTimeout(() => document.addEventListener('click', close), 0);
+    return () => {
+      clearTimeout(id);
+      document.removeEventListener('click', close);
+    };
+  }, [showSettings]);
+
+  // Close volumes popover on outside click
+  useEffect(() => {
+    if (!showVolumes) return;
+    const close = () => setShowVolumes(false);
+    const id = setTimeout(() => document.addEventListener('click', close), 0);
+    return () => {
+      clearTimeout(id);
+      document.removeEventListener('click', close);
+    };
+  }, [showVolumes]);
+
   // Close duration picker on outside click
   useEffect(() => {
     if (showDurationPicker === null) return;
@@ -497,6 +534,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
 
   const handleJoinRoom = useCallback(
     async (roomId: number) => {
+      if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
       setError(null);
       setLeftSidebarOpen(false);
       setSpotlight(null);
@@ -532,11 +570,14 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
         };
         await connect(connection);
       } catch (err) {
-        const msg = err instanceof api.ApiError ? err.message : 'Failed to join room';
-        setError(msg);
+        const roomName = rooms.find((r) => r.id === roomId)?.name;
+        const base = err instanceof api.ApiError ? err.message : 'Failed to join room';
+        const msg = roomName ? `${base} (${roomName})` : base;
+        setError({ msg, roomId });
+        errorTimerRef.current = setTimeout(() => setError(null), 5000);
       }
     },
-    [connect, disconnect],
+    [connect, disconnect, rooms],
   );
   handleJoinRoomRef.current = handleJoinRoom;
 
@@ -548,7 +589,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
       handleJoinRoom(newRoom.id);
     } catch (err) {
       const msg = err instanceof api.ApiError ? err.message : 'Failed to create room';
-      setError(msg);
+      setError({ msg });
     }
   }, [handleJoinRoom]);
 
@@ -593,7 +634,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
       await api.startVote(targetUserId, durationSecs);
     } catch (err) {
       const msg = err instanceof api.ApiError ? err.message : 'Failed to start vote';
-      setError(msg);
+      setError({ msg });
     }
   }, []);
 
@@ -603,7 +644,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
       setMyBallot(voteYes);
     } catch (err) {
       const msg = err instanceof api.ApiError ? err.message : 'Failed to cast vote';
-      setError(msg);
+      setError({ msg });
     }
   }, []);
 
@@ -615,7 +656,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
       await api.setRoomMode(currentRoom.id, newMode);
     } catch (err) {
       const msg = err instanceof api.ApiError ? err.message : 'Failed to change mode';
-      setError(msg);
+      setError({ msg });
     }
   }, [currentRoom, isWhispersMode]);
 
@@ -625,7 +666,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
       await api.liftPunishment(punishmentId);
     } catch (err) {
       const msg = err instanceof api.ApiError ? err.message : 'Failed to lift punishment';
-      setError(msg);
+      setError({ msg });
     }
   }, []);
 
@@ -665,7 +706,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
               <button
                 onClick={() => {
                   if (activePunishment && r.id !== activePunishment.jailRoomId) {
-                    setError('You are currently jailed and cannot switch rooms');
+                    setError({ msg: 'You are currently jailed and cannot switch rooms' });
                     return;
                   }
                   handleJoinRoom(r.id);
@@ -815,9 +856,9 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
 
         {/* Participant area */}
         <div className="flex-1 p-6 pb-20 overflow-y-auto">
-          {error && (
-            <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-300 text-sm flex items-center">
-              <span className="flex-1">{error}</span>
+          {error && (!error.roomId || error.roomId === currentRoom?.id) && (
+            <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-300 text-sm flex items-center animate-[fadeIn_0.2s_ease-out]">
+              <span className="flex-1">{error.msg}</span>
               <button onClick={() => setError(null)} className="ml-2 text-red-400 hover:text-red-300">&times;</button>
             </div>
           )}
@@ -1030,7 +1071,10 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                       <span className="text-sm font-medium truncate">
                         {localParticipant.name || localParticipant.identity} (You)
                       </span>
-                      <span className="text-xs">{micMuted ? '\u{1F507}' : '\u{1F3A4}'}</span>
+                      <div className="flex items-center gap-1">
+                        {deafened && <span className="text-xs text-red-400" title="Deafened">{'\u{1F515}'}</span>}
+                        <span className="text-xs">{micMuted ? '\u{1F507}' : '\u{1F3A4}'}</span>
+                      </div>
                     </div>
                   </div>
                 );
@@ -1185,6 +1229,18 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
               {'\u{1F4F7}'}<span className="hidden sm:inline ml-1">{isCameraOn ? 'Cam Off' : 'Cam On'}</span>
             </button>
 
+            <button
+              onClick={handleToggleDeafen}
+              className={`px-3 md:px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                deafened
+                  ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
+                  : 'bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600'
+              }`}
+              title={deafened ? 'Undeafen' : 'Deafen'}
+            >
+              {deafened ? '\u{1F515}' : '\u{1F514}'}<span className="hidden sm:inline ml-1">{deafened ? 'Deafened' : 'Deafen'}</span>
+            </button>
+
             {/* Screen share with quality picker */}
             <div className="relative">
               <button
@@ -1265,16 +1321,8 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                 {'\u{1F50A}'}<span className="hidden sm:inline ml-1">Volumes</span>
               </button>
               {showVolumes && (
-                <div className="absolute bottom-full mb-2 right-0 bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg py-2 px-3 min-w-[200px] z-50">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-semibold uppercase text-zinc-500">Volume</span>
-                    <button
-                      onClick={() => setShowVolumes(false)}
-                      className="text-zinc-400 hover:text-zinc-200 text-sm"
-                    >
-                      &times;
-                    </button>
-                  </div>
+                <div className="absolute bottom-full mb-2 right-0 bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg py-2 px-3 min-w-[200px] z-50" onClick={(e) => e.stopPropagation()}>
+                  <span className="text-xs font-semibold uppercase text-zinc-500 block mb-2">Volume</span>
                   {remoteParticipants.length === 0 ? (
                     <p className="text-xs text-zinc-500 py-1">No other participants</p>
                   ) : (
@@ -1292,12 +1340,17 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
               )}
             </div>
 
-            <button
-              onClick={() => setShowSettings(true)}
-              className="px-3 md:px-4 py-2 rounded-lg text-sm font-medium bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors"
-            >
-              {'\u2699'}<span className="hidden sm:inline ml-1">Settings</span>
-            </button>
+            <div className="relative">
+              <button
+                onClick={() => setShowSettings(!showSettings)}
+                className="px-3 md:px-4 py-2 rounded-lg text-sm font-medium bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors"
+              >
+                {'\u2699'}<span className="hidden sm:inline ml-1">Settings</span>
+              </button>
+              {showSettings && room && (
+                <DeviceSettings room={room} hotkeyBindings={hotkeyBindings} onHotkeyChange={setHotkeyBindings} />
+              )}
+            </div>
 
           </div>
         )}
@@ -1305,11 +1358,6 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
 
       {/* Right sidebar — User list */}
       <UserList users={users} currentUserId={user.id} open={rightSidebarOpen} onClose={() => setRightSidebarOpen(false)} />
-
-      {/* Device settings modal */}
-      {showSettings && room && (
-        <DeviceSettings room={room} onClose={() => setShowSettings(false)} />
-      )}
     </div>
   );
 }

@@ -29,21 +29,50 @@ export function useConnectionStats(room: Room | null): ConnectionStats {
       try {
         // Access PCTransport via engine.pcManager (livekit-client ^2.17)
         const pcManager = (room.engine as any)?.pcManager;
-        const transport = pcManager?.publisher ?? pcManager?.subscriber;
-        if (!transport?.getStats) return;
+        // Try both transports — subscriber has inbound stats, publisher has outbound
+        const transports = [pcManager?.subscriber, pcManager?.publisher].filter(Boolean);
+        if (transports.length === 0) return;
 
-        const report = await transport.getStats();
         let rttSec: number | null = null;
         let jitterSec: number | null = null;
 
-        report.forEach((entry: Record<string, any>) => {
-          if (entry.type === 'candidate-pair' && entry.state === 'succeeded' && entry.currentRoundTripTime != null) {
-            rttSec = entry.currentRoundTripTime;
+        for (const transport of transports) {
+          if (!transport?.getStats) continue;
+          const report = await transport.getStats();
+          // Fallbacks for Firefox: totalRoundTripTime/responsesReceived, remote-inbound-rtp
+          let totalRtt = 0;
+          let responseCount = 0;
+          let remoteInboundRtt: number | null = null;
+
+          report.forEach((entry: Record<string, any>) => {
+            if (entry.type === 'candidate-pair' && entry.state === 'succeeded') {
+              if (entry.currentRoundTripTime != null && entry.currentRoundTripTime > 0) {
+                rttSec = entry.currentRoundTripTime;
+              }
+              // Cumulative counters — works when currentRoundTripTime is 0 (Firefox)
+              if (entry.totalRoundTripTime != null && entry.responsesReceived > 0) {
+                totalRtt = entry.totalRoundTripTime;
+                responseCount = entry.responsesReceived;
+              }
+            }
+            if (entry.type === 'remote-inbound-rtp' && entry.roundTripTime != null && entry.roundTripTime > 0) {
+              remoteInboundRtt = entry.roundTripTime;
+            }
+            if (entry.type === 'inbound-rtp' && entry.kind === 'audio' && entry.jitter != null) {
+              jitterSec = entry.jitter;
+            }
+          });
+
+          // Use best available RTT source
+          if (rttSec === null && remoteInboundRtt !== null) {
+            rttSec = remoteInboundRtt;
           }
-          if (entry.type === 'inbound-rtp' && entry.kind === 'audio' && entry.jitter != null) {
-            jitterSec = entry.jitter;
+          if (rttSec === null && responseCount > 0) {
+            rttSec = totalRtt / responseCount;
           }
-        });
+          // Stop once we have RTT from any transport
+          if (rttSec !== null) break;
+        }
 
         if (rttSec !== null) {
           const rttMs = rttSec * 1000;

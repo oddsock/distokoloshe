@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect } from 'react';
+import { useRef, useCallback, useEffect, useState } from 'react';
 import type { RemoteTrackPublication, RemoteParticipant } from 'livekit-client';
 import { Track } from 'livekit-client';
 
@@ -24,6 +24,8 @@ function saveVolumes(volumes: Record<string, number>) {
 
 export function useAudioMixer() {
   const nodesRef = useRef<Map<string, ParticipantAudio>>(new Map());
+  const [deafened, setDeafenedState] = useState(false);
+  const deafenedRef = useRef(false);
 
   const attachTrack = useCallback(
     (participant: RemoteParticipant, publication: RemoteTrackPublication) => {
@@ -46,10 +48,10 @@ export function useAudioMixer() {
       // Let LiveKit set up srcObject on our element
       track.attach(el);
 
-      // Apply saved per-user volume (0–1)
+      // Apply saved per-user volume (0–1), respecting deafen state
       const saved = loadSavedVolumes();
       const volume = Math.max(0, Math.min(1, saved[identity] ?? 1.0));
-      el.volume = volume;
+      el.volume = deafenedRef.current ? 0 : volume;
 
       // Explicitly play to ensure audio starts
       el.play().catch((err) => {
@@ -105,6 +107,14 @@ export function useAudioMixer() {
     return node?.muted ?? false;
   }, []);
 
+  const setDeafened = useCallback((deaf: boolean) => {
+    deafenedRef.current = deaf;
+    setDeafenedState(deaf);
+    for (const node of nodesRef.current.values()) {
+      node.element.volume = deaf ? 0 : (node.muted ? 0 : node.volume);
+    }
+  }, []);
+
   // Cleanup on unmount: remove all audio elements from DOM
   useEffect(() => {
     return () => {
@@ -117,5 +127,5 @@ export function useAudioMixer() {
     };
   }, []);
 
-  return { attachTrack, detachTrack, setVolume, getVolume, setMuted, isMuted };
+  return { attachTrack, detachTrack, setVolume, getVolume, setMuted, isMuted, deafened, setDeafened };
 }
