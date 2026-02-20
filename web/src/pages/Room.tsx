@@ -8,6 +8,7 @@ import { useEvents } from '../hooks/useEvents';
 import { DeviceSettings } from '../components/DeviceSettings';
 import { VolumeSlider } from '../components/VolumeSlider';
 import { ScreenShareView } from '../components/ScreenShareView';
+import { VideoTrackView } from '../components/VideoTrackView';
 import { UserList } from '../components/UserList';
 import { getRoomInitials, toggleTheme, getTheme } from '../lib/utils';
 import * as api from '../lib/api';
@@ -82,21 +83,15 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     stopScreenShare,
   } = useScreenShare(room);
   const [showQualityMenu, setShowQualityMenu] = useState(false);
-  const [shareViewMode, setShareViewMode] = useState<'spotlight' | 'grid'>('spotlight');
-  const [spotlightIndex, setSpotlightIndex] = useState(0);
+  const [spotlightIdentity, setSpotlightIdentity] = useState<string | null>(null);
+
+  // Responsive sidebar state
+  const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
+  const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
 
   // Ref for handleJoinRoom so SSE handlers can access latest version
   const handleJoinRoomRef = useRef<(roomId: number) => Promise<void>>();
 
-  // Collect all screen shares from remote participants
-  const screenShares: Array<{ participant: RemoteParticipant; publication: RemoteTrackPublication }> = [];
-  for (const p of remoteParticipants) {
-    for (const pub of p.trackPublications.values()) {
-      if (pub.source === Track.Source.ScreenShare && pub.isSubscribed) {
-        screenShares.push({ participant: p, publication: pub });
-      }
-    }
-  }
 
   // Local screen share track for self-preview
   const localScreenShare: TrackPublication | undefined = isSharing && room
@@ -105,10 +100,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
       )
     : undefined;
 
-  // Clamp spotlight index
-  const effectiveSpotlight = screenShares.length > 0
-    ? Math.min(spotlightIndex, screenShares.length - 1)
-    : 0;
+
 
   // Filter rooms: hide jail rooms unless it's our current room
   const visibleRooms = rooms.filter((r) => !r.is_jail || r.id === currentRoom?.id);
@@ -481,6 +473,8 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
   const handleJoinRoom = useCallback(
     async (roomId: number) => {
       setError(null);
+      setLeftSidebarOpen(false);
+      setSpotlightIdentity(null);
       try {
         await disconnect();
         const res = await api.joinRoom(roomId);
@@ -535,6 +529,21 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
 
   const micMuted = localParticipant ? !localParticipant.isMicrophoneEnabled : true;
   const isCameraOn = localParticipant ? localParticipant.isCameraEnabled : false;
+
+  // Auto-dismiss spotlight when the screen share track disappears
+  useEffect(() => {
+    if (!spotlightIdentity) return;
+    if (spotlightIdentity === localParticipant?.identity) {
+      if (!localScreenShare) setSpotlightIdentity(null);
+      return;
+    }
+    const remote = remoteParticipants.find((p) => p.identity === spotlightIdentity);
+    if (!remote) { setSpotlightIdentity(null); return; }
+    const hasShare = Array.from(remote.trackPublications.values()).some(
+      (pub) => pub.source === Track.Source.ScreenShare && pub.isSubscribed && pub.track,
+    );
+    if (!hasShare) setSpotlightIdentity(null);
+  }, [spotlightIdentity, localParticipant, localScreenShare, remoteParticipants]);
 
   const toggleMuteUser = useCallback((identity: string) => {
     const muted = !isMuted(identity);
@@ -592,8 +601,12 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
 
   return (
     <div className="min-h-screen bg-zinc-100 dark:bg-zinc-900 text-zinc-900 dark:text-white flex">
+      {/* Left sidebar backdrop (mobile) */}
+      {leftSidebarOpen && (
+        <div className="fixed inset-0 bg-black/50 z-30 md:hidden" onClick={() => setLeftSidebarOpen(false)} />
+      )}
       {/* Left sidebar — Rooms */}
-      <aside className="w-60 bg-white dark:bg-zinc-800 border-r border-zinc-200 dark:border-zinc-700 flex flex-col">
+      <aside className={`fixed inset-y-0 left-0 z-40 w-60 bg-white dark:bg-zinc-800 border-r border-zinc-200 dark:border-zinc-700 flex flex-col transform transition-transform duration-200 ease-in-out md:relative md:translate-x-0 md:z-auto ${leftSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
         <div className="h-14 px-4 border-b border-zinc-200 dark:border-zinc-700 flex items-center justify-between shrink-0">
           <h2 className="text-lg font-bold">disTokoloshe</h2>
           <button
@@ -665,9 +678,9 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                         {!isMe && (
                           <button
                             onClick={(e) => { e.stopPropagation(); toggleMuteUser(m.username); }}
-                            className={`opacity-0 group-hover:opacity-100 transition-opacity text-[10px] px-1 rounded ${
+                            className={`md:opacity-0 md:group-hover:opacity-100 transition-opacity text-[10px] px-1 rounded ${
                               memberMuted
-                                ? 'text-red-400 opacity-100'
+                                ? 'text-red-400 md:opacity-100'
                                 : 'text-zinc-400 hover:text-zinc-200'
                             }`}
                             title={memberMuted ? 'Unmute' : 'Mute'}
@@ -708,9 +721,20 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
       {/* Main content */}
       <main className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <header className="h-14 flex items-center px-6 border-b border-zinc-200 dark:border-zinc-700 bg-white/50 dark:bg-zinc-800/50 shrink-0">
+        <header className="h-14 flex items-center px-3 md:px-6 border-b border-zinc-200 dark:border-zinc-700 bg-white/50 dark:bg-zinc-800/50 shrink-0">
+          {/* Left sidebar toggle — mobile only */}
+          <button
+            onClick={() => setLeftSidebarOpen(!leftSidebarOpen)}
+            className="mr-2 p-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 md:hidden shrink-0"
+            title="Toggle rooms"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+
           {currentRoom ? (
-            <div className="flex items-center gap-3 flex-1 min-w-0">
+            <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
               <span className={`w-8 h-8 rounded-md flex items-center justify-center text-xs font-bold text-white shrink-0 ${
                 currentRoom.is_jail ? 'bg-red-600' : 'bg-indigo-600'
               }`}>
@@ -743,8 +767,19 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
               )}
             </div>
           ) : (
-            <span className="text-zinc-500">Select a room to join</span>
+            <span className="text-zinc-500 flex-1">Select a room to join</span>
           )}
+
+          {/* Right sidebar toggle — mobile only */}
+          <button
+            onClick={() => setRightSidebarOpen(!rightSidebarOpen)}
+            className="ml-2 p-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 md:hidden shrink-0"
+            title="Toggle members"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
         </header>
 
         {/* Participant area */}
@@ -843,100 +878,71 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
             </div>
           )}
 
-          {/* Screen shares */}
-          {connectionState === ConnectionState.Connected && screenShares.length > 0 && (
-            <div className="mb-4">
-              {/* Layout controls */}
-              {screenShares.length > 1 && (
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-xs text-zinc-500">{screenShares.length} screen shares</span>
+          {/* Spotlighted screen share */}
+          {spotlightIdentity && (() => {
+            const spotlightPub = (() => {
+              if (spotlightIdentity === localParticipant?.identity && localScreenShare) {
+                return { publication: localScreenShare, name: 'You' };
+              }
+              const remote = remoteParticipants.find((p) => p.identity === spotlightIdentity);
+              if (!remote) return null;
+              const pub = Array.from(remote.trackPublications.values()).find(
+                (pub) => pub.source === Track.Source.ScreenShare && pub.isSubscribed && pub.track,
+              );
+              if (!pub) return null;
+              return { publication: pub, name: remote.name || remote.identity };
+            })();
+            if (!spotlightPub) return null;
+            return (
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-zinc-500">{spotlightPub.name}&apos;s screen share</span>
                   <button
-                    onClick={() => setShareViewMode('spotlight')}
-                    className={`text-xs px-2 py-0.5 rounded transition-colors ${
-                      shareViewMode === 'spotlight'
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-400'
-                    }`}
+                    onClick={() => setSpotlightIdentity(null)}
+                    className="text-xs text-zinc-400 hover:text-zinc-200 px-2 py-0.5 rounded bg-zinc-200 dark:bg-zinc-700"
                   >
-                    Spotlight
-                  </button>
-                  <button
-                    onClick={() => setShareViewMode('grid')}
-                    className={`text-xs px-2 py-0.5 rounded transition-colors ${
-                      shareViewMode === 'grid'
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-400'
-                    }`}
-                  >
-                    Grid
+                    Dismiss
                   </button>
                 </div>
-              )}
-
-              {/* Spotlight mode (or single share) */}
-              {(shareViewMode === 'spotlight' || screenShares.length === 1) ? (
-                <>
-                  <ScreenShareView
-                    publication={screenShares[effectiveSpotlight].publication}
-                    participantName={
-                      screenShares[effectiveSpotlight].participant.name ||
-                      screenShares[effectiveSpotlight].participant.identity
-                    }
-                  />
-                  {/* Thumbnails for other shares */}
-                  {screenShares.length > 1 && (
-                    <div className="flex gap-2 mt-2 overflow-x-auto pb-1">
-                      {screenShares.map((ss, idx) => (
-                        <button
-                          key={ss.participant.identity}
-                          onClick={() => setSpotlightIndex(idx)}
-                          className={`w-40 shrink-0 rounded-lg overflow-hidden border-2 transition-colors ${
-                            idx === effectiveSpotlight ? 'border-indigo-500' : 'border-zinc-700 hover:border-zinc-500'
-                          }`}
-                        >
-                          <ScreenShareView
-                            publication={ss.publication}
-                            participantName={ss.participant.name || ss.participant.identity}
-                            compact
-                          />
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </>
-              ) : (
-                /* Grid mode */
-                <div className={`grid gap-2 ${
-                  screenShares.length === 2 ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-3'
-                }`}>
-                  {screenShares.map((ss) => (
-                    <ScreenShareView
-                      key={ss.participant.identity}
-                      publication={ss.publication}
-                      participantName={ss.participant.name || ss.participant.identity}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+                <ScreenShareView publication={spotlightPub.publication} participantName={spotlightPub.name} />
+              </div>
+            );
+          })()}
 
           {connectionState === ConnectionState.Connected && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {/* Local participant */}
               {localParticipant && (() => {
                 const localSpeaking = activeSpeakers.includes(localParticipant.identity);
+                const localCameraPub = Array.from(localParticipant.trackPublications.values()).find(
+                  (pub) => pub.source === Track.Source.Camera && pub.track,
+                );
                 return (
                   <div className={`bg-white dark:bg-zinc-800 rounded-xl p-4 border border-zinc-200 dark:border-zinc-700 ring-2 transition-shadow ${
                     localSpeaking ? 'ring-blue-400 shadow-[0_0_12px_rgba(96,165,250,0.5)]' : 'ring-indigo-500/30'
                   }`}>
-                    <div className="aspect-video bg-zinc-200 dark:bg-zinc-700 rounded-lg mb-3 flex items-center justify-center">
-                      <div className={`w-16 h-16 rounded-full bg-indigo-600 flex items-center justify-center text-2xl font-bold text-white transition-shadow ${
-                        localSpeaking ? 'shadow-[0_0_16px_rgba(96,165,250,0.6)]' : ''
-                      }`}>
-                        {(localParticipant.name || localParticipant.identity).charAt(0).toUpperCase()}
-                      </div>
+                    <div className="aspect-video bg-zinc-200 dark:bg-zinc-700 rounded-lg mb-3 flex items-center justify-center overflow-hidden">
+                      {localCameraPub ? (
+                        <VideoTrackView publication={localCameraPub} mirror />
+                      ) : (
+                        <div className={`w-16 h-16 rounded-full bg-indigo-600 flex items-center justify-center text-2xl font-bold text-white transition-shadow ${
+                          localSpeaking ? 'shadow-[0_0_16px_rgba(96,165,250,0.6)]' : ''
+                        }`}>
+                          {(localParticipant.name || localParticipant.identity).charAt(0).toUpperCase()}
+                        </div>
+                      )}
                     </div>
+                    {/* Local screen share thumbnail */}
+                    {localScreenShare && (
+                      <button
+                        onClick={() => setSpotlightIdentity(spotlightIdentity === localParticipant.identity ? null : localParticipant.identity)}
+                        className={`w-full rounded-lg overflow-hidden border-2 transition-colors mb-3 ${
+                          spotlightIdentity === localParticipant.identity ? 'border-indigo-500' : 'border-zinc-600 hover:border-zinc-400'
+                        }`}
+                      >
+                        <ScreenShareView publication={localScreenShare} participantName="You" compact />
+                      </button>
+                    )}
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium truncate">
                         {localParticipant.name || localParticipant.identity} (You)
@@ -951,11 +957,15 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
               {remoteParticipants.map((p) => {
                 const userMuted = mutedUsers.has(p.identity);
                 const speaking = activeSpeakers.includes(p.identity);
-                // Find user id for this participant (for vote button)
                 const memberEntry = currentRoom ? roomMembers[currentRoom.id]?.find((m) => m.username === p.identity) : null;
-                // In whispers mode: dim participants who aren't my source
                 const isMyWhisperSource = whisperSource?.username === p.identity;
                 const whisperDimmed = isWhispersMode && !isMyWhisperSource;
+                const cameraPub = Array.from(p.trackPublications.values()).find(
+                  (pub) => pub.source === Track.Source.Camera && pub.isSubscribed && pub.track,
+                );
+                const screenSharePub = Array.from(p.trackPublications.values()).find(
+                  (pub) => pub.source === Track.Source.ScreenShare && pub.isSubscribed && pub.track,
+                );
 
                 return (
                   <div
@@ -964,24 +974,38 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                       speaking && !userMuted && !whisperDimmed ? 'ring-blue-400 shadow-[0_0_12px_rgba(96,165,250,0.5)]' : 'ring-transparent'
                     } ${whisperDimmed ? 'opacity-40' : ''}`}
                   >
-                    <div className="aspect-video bg-zinc-200 dark:bg-zinc-700 rounded-lg mb-3 flex items-center justify-center relative">
-                      <div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold text-white transition-shadow ${
-                        isMyWhisperSource ? 'bg-purple-600' : 'bg-zinc-500'
-                      } ${speaking && !userMuted && !whisperDimmed ? 'shadow-[0_0_16px_rgba(96,165,250,0.6)]' : ''}`}>
-                        {(p.name || p.identity).charAt(0).toUpperCase()}
-                      </div>
+                    <div className="aspect-video bg-zinc-200 dark:bg-zinc-700 rounded-lg mb-3 flex items-center justify-center relative overflow-hidden">
+                      {cameraPub ? (
+                        <VideoTrackView publication={cameraPub} />
+                      ) : (
+                        <div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold text-white transition-shadow ${
+                          isMyWhisperSource ? 'bg-purple-600' : 'bg-zinc-500'
+                        } ${speaking && !userMuted && !whisperDimmed ? 'shadow-[0_0_16px_rgba(96,165,250,0.6)]' : ''}`}>
+                          {(p.name || p.identity).charAt(0).toUpperCase()}
+                        </div>
+                      )}
                       {isMyWhisperSource && (
-                        <span className="absolute top-1 right-1 text-[10px] bg-purple-500/30 text-purple-300 px-1.5 py-0.5 rounded">
+                        <span className="absolute top-1 right-1 text-[10px] bg-purple-500/30 text-purple-300 px-1.5 py-0.5 rounded z-10">
                           Your source
                         </span>
                       )}
                     </div>
+                    {/* Remote screen share thumbnail */}
+                    {screenSharePub && (
+                      <button
+                        onClick={() => setSpotlightIdentity(spotlightIdentity === p.identity ? null : p.identity)}
+                        className={`w-full rounded-lg overflow-hidden border-2 transition-colors mb-3 ${
+                          spotlightIdentity === p.identity ? 'border-indigo-500' : 'border-zinc-600 hover:border-zinc-400'
+                        }`}
+                      >
+                        <ScreenShareView publication={screenSharePub} participantName={p.name || p.identity} compact />
+                      </button>
+                    )}
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium truncate">
                         {p.name || p.identity}
                       </span>
                       <div className="flex items-center gap-1.5">
-                        {/* Vote button — only when no active vote, not in jail, and we know the user id */}
                         {!activeVote && !currentRoom?.is_jail && memberEntry && (
                           <div className="relative">
                             <button
@@ -989,7 +1013,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                                 e.stopPropagation();
                                 setShowDurationPicker(showDurationPicker === memberEntry.id ? null : memberEntry.id);
                               }}
-                              className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors opacity-0 group-hover:opacity-100"
+                              className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors opacity-100 md:opacity-0 md:group-hover:opacity-100"
                               title="Vote to punish"
                             >
                               Vote
@@ -1047,27 +1071,27 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
 
         {/* Control bar */}
         {connectionState === ConnectionState.Connected && room && (
-          <div className="h-16 flex items-center justify-center gap-3 border-t border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-6 shrink-0">
+          <div className="flex flex-wrap items-center justify-center gap-2 md:gap-3 border-t border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 md:px-6 py-2 shrink-0">
             <button
               onClick={() => room.localParticipant.setMicrophoneEnabled(!room.localParticipant.isMicrophoneEnabled)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`px-3 md:px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 micMuted
                   ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
                   : 'bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600'
               }`}
             >
-              {micMuted ? '\u{1F507} Unmute' : '\u{1F3A4} Mute'}
+              {micMuted ? '\u{1F507}' : '\u{1F3A4}'}<span className="hidden sm:inline ml-1">{micMuted ? 'Unmute' : 'Mute'}</span>
             </button>
 
             <button
               onClick={() => room.localParticipant.setCameraEnabled(!isCameraOn)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`px-3 md:px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 isCameraOn
                   ? 'bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600'
                   : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-400 hover:bg-zinc-300 dark:hover:bg-zinc-600'
               }`}
             >
-              {isCameraOn ? '\u{1F4F7} Cam Off' : '\u{1F4F7} Cam On'}
+              {'\u{1F4F7}'}<span className="hidden sm:inline ml-1">{isCameraOn ? 'Cam Off' : 'Cam On'}</span>
             </button>
 
             {/* Screen share with quality picker */}
@@ -1080,15 +1104,13 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                     setShowQualityMenu(!showQualityMenu);
                   }
                 }}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                className={`px-3 md:px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                   isSharing
                     ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
                     : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-400 hover:bg-zinc-300 dark:hover:bg-zinc-600'
                 }`}
               >
-                {isSharing
-                  ? `${'\u{1F5B5}'} Stop (${shareQuality.charAt(0).toUpperCase() + shareQuality.slice(1)})`
-                  : `${'\u{1F5B5}'} Share`}
+                {'\u{1F5B5}'}<span className="hidden sm:inline ml-1">{isSharing ? `Stop (${shareQuality.charAt(0).toUpperCase() + shareQuality.slice(1)})` : 'Share'}</span>
               </button>
               {showQualityMenu && !isSharing && (
                 <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg py-1 min-w-[180px] z-50">
@@ -1126,17 +1148,17 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
 
             <button
               onClick={() => setShowVolumes(!showVolumes)}
-              className="px-4 py-2 rounded-lg text-sm font-medium bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors"
+              className="px-3 md:px-4 py-2 rounded-lg text-sm font-medium bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors"
               title="Volume controls"
             >
-              {'\u{1F50A}'} Volumes
+              {'\u{1F50A}'}<span className="hidden sm:inline ml-1">Volumes</span>
             </button>
 
             <button
               onClick={() => setShowSettings(true)}
-              className="px-4 py-2 rounded-lg text-sm font-medium bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors"
+              className="px-3 md:px-4 py-2 rounded-lg text-sm font-medium bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors"
             >
-              {'\u2699'} Settings
+              {'\u2699'}<span className="hidden sm:inline ml-1">Settings</span>
             </button>
 
           </div>
@@ -1172,14 +1194,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
       </main>
 
       {/* Right sidebar — User list */}
-      <UserList users={users} currentUserId={user.id} />
-
-      {/* Self screen share preview */}
-      {isSharing && localScreenShare && (
-        <div className="fixed bottom-20 right-56 w-72 z-40 shadow-2xl rounded-xl overflow-hidden">
-          <ScreenShareView publication={localScreenShare} participantName="You" compact />
-        </div>
-      )}
+      <UserList users={users} currentUserId={user.id} open={rightSidebarOpen} onClose={() => setRightSidebarOpen(false)} />
 
       {/* Device settings modal */}
       {showSettings && room && (
