@@ -132,6 +132,8 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
 
   // Ref for handleJoinRoom so SSE handlers can access latest version
   const handleJoinRoomRef = useRef<(roomId: number) => Promise<void>>();
+  // Counter to detect stale join attempts (prevents error flash on quick room switch)
+  const joinIdRef = useRef(0);
 
 
   // Local screen share track for self-preview
@@ -558,12 +560,15 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
 
   const handleJoinRoom = useCallback(
     async (roomId: number) => {
+      const myJoinId = ++joinIdRef.current;
       setError(null);
       setLeftSidebarOpen(false);
       setSpotlight(null);
       try {
         await disconnect();
+        if (joinIdRef.current !== myJoinId) return; // superseded by newer join
         const res = await api.joinRoom(roomId);
+        if (joinIdRef.current !== myJoinId) return;
         setCurrentRoom(res.room);
         // Handle whisper state for the new room
         if (res.room.mode === 'whispers') {
@@ -593,6 +598,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
         };
         await connect(connection);
       } catch (err) {
+        if (joinIdRef.current !== myJoinId) return; // stale join, don't show error
         const roomName = rooms.find((r) => r.id === roomId)?.name;
         const base = err instanceof api.ApiError ? err.message : 'Failed to join room';
         const msg = roomName ? `${base} (${roomName})` : base;
@@ -801,7 +807,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
               <p className="text-xs text-zinc-500 truncate">@{user.username}</p>
             </div>
           </div>
-          <SignalStrength stats={connectionStats} serverCity={serverCity} />
+          <SignalStrength stats={connectionStats} serverCity={serverCity} connecting={connectionState === ConnectionState.Connecting} />
           <button
             onClick={onLogout}
             className="text-xs text-zinc-500 hover:text-red-400 transition-colors flex-shrink-0"
