@@ -31,7 +31,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     return;
   }
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET!) as unknown as AuthUser;
+    const payload = jwt.verify(token, process.env.JWT_SECRET!, { algorithms: ['HS256'] }) as unknown as AuthUser;
     req.user = payload;
     next();
   } catch {

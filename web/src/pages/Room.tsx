@@ -40,7 +40,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
   const [roomMembers, setRoomMembers] = useState<Record<number, api.RoomMember[]>>({});
   const [currentRoom, setCurrentRoom] = useState<api.Room | null>(null);
   const [error, setError] = useState<{ msg: string; roomId?: number } | null>(null);
-  const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [errorFading, setErrorFading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showVolumes, setShowVolumes] = useState(false);
   const [theme, setThemeState] = useState<'dark' | 'light'>(getTheme);
@@ -116,6 +116,15 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     mql.addEventListener('change', handler);
     return () => mql.removeEventListener('change', handler);
   }, []);
+
+  // Auto-dismiss errors after 5 seconds with fade-out
+  useEffect(() => {
+    if (!error) { setErrorFading(false); return; }
+    setErrorFading(false);
+    const fadeTimer = setTimeout(() => setErrorFading(true), 4500);
+    const clearTimer = setTimeout(() => setError(null), 5000);
+    return () => { clearTimeout(fadeTimer); clearTimeout(clearTimer); };
+  }, [error]);
 
   // Responsive sidebar state
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
@@ -549,7 +558,6 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
 
   const handleJoinRoom = useCallback(
     async (roomId: number) => {
-      if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
       setError(null);
       setLeftSidebarOpen(false);
       setSpotlight(null);
@@ -589,7 +597,6 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
         const base = err instanceof api.ApiError ? err.message : 'Failed to join room';
         const msg = roomName ? `${base} (${roomName})` : base;
         setError({ msg, roomId });
-        errorTimerRef.current = setTimeout(() => setError(null), 5000);
       }
     },
     [connect, disconnect, rooms],
@@ -872,9 +879,9 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
         {/* Participant area */}
         <div className="flex-1 p-6 pb-20 overflow-y-auto">
           {error && (!error.roomId || error.roomId === currentRoom?.id) && (
-            <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-300 text-sm flex items-center animate-[fadeIn_0.2s_ease-out]">
+            <div className={`mb-4 p-3 bg-zinc-800 border border-amber-500/40 rounded-lg text-amber-200 text-sm flex items-center transition-opacity duration-500 ${errorFading ? 'opacity-0' : 'opacity-100 animate-[fadeIn_0.2s_ease-out]'}`}>
               <span className="flex-1">{error.msg}</span>
-              <button onClick={() => setError(null)} className="ml-2 text-red-400 hover:text-red-300">&times;</button>
+              <button onClick={() => setError(null)} className="ml-2 text-amber-400 hover:text-amber-200">&times;</button>
             </div>
           )}
 

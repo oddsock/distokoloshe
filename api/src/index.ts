@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 
 // ── Fail fast if required env vars are missing ──────────────
@@ -50,6 +50,12 @@ app.use('/api/punishments', punishmentRoutes);
 
 // Restore active vote/punishment timers from DB (handles API restarts)
 restoreTimers();
+
+// Global error handler — prevent stack trace leakage
+app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ error: 'Internal server error' });
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

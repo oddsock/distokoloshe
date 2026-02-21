@@ -42,7 +42,7 @@ function signToken(user: UserRow): string {
   return jwt.sign(
     { sub: user.id, username: user.username, display_name: user.display_name },
     process.env.JWT_SECRET!,
-    { expiresIn: JWT_EXPIRY },
+    { expiresIn: JWT_EXPIRY, algorithm: 'HS256' },
   );
 }
 
