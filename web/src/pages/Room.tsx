@@ -6,6 +6,7 @@ import { useAudioMixer } from '../hooks/useAudioMixer';
 import { useScreenShare, QUALITY_PRESETS, type ShareQuality } from '../hooks/useScreenShare';
 import { useEvents } from '../hooks/useEvents';
 import { DeviceSettings } from '../components/DeviceSettings';
+import { MusicControls } from '../components/MusicControls';
 import { VolumeSlider } from '../components/VolumeSlider';
 import { ScreenShareView } from '../components/ScreenShareView';
 import { VideoTrackView } from '../components/VideoTrackView';
@@ -44,6 +45,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
   const [errorFading, setErrorFading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showVolumes, setShowVolumes] = useState(false);
+  const [showMusic, setShowMusic] = useState(false);
   const [theme, setThemeState] = useState<'dark' | 'light'>(getTheme);
 
   // Vote state
@@ -148,6 +150,8 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
 
   // Filter rooms: hide jail rooms unless it's our current room
   const visibleRooms = rooms.filter((r) => !r.is_jail || r.id === currentRoom?.id);
+
+  const isMusicRoom = currentRoom?.name === 'Music';
 
   // Find my whisper source
   const myChainEntry = whisperChain.find((e) => e.userId === user.id);
@@ -433,6 +437,17 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
       document.removeEventListener('click', close);
     };
   }, [showVolumes]);
+
+  // Close music popover on outside click
+  useEffect(() => {
+    if (!showMusic) return;
+    const close = () => setShowMusic(false);
+    const id = setTimeout(() => document.addEventListener('click', close), 0);
+    return () => {
+      clearTimeout(id);
+      document.removeEventListener('click', close);
+    };
+  }, [showMusic]);
 
   // Close duration picker on outside click
   useEffect(() => {
@@ -1346,6 +1361,17 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                   </label>
                 </div>
               )}
+            </div>}
+
+            {isMusicRoom && <div className="relative">
+              <button
+                onClick={() => setShowMusic(!showMusic)}
+                className="px-3 md:px-4 py-2 rounded-lg text-sm font-medium bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors"
+                title="Music controls"
+              >
+                {'\u{1F3B5}'}<span className="hidden sm:inline ml-1">Music</span>
+              </button>
+              {showMusic && <MusicControls isMobile={isMobile} />}
             </div>}
 
             {!isMobile && <div className="relative">

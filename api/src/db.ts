@@ -102,4 +102,13 @@ if (roomCount.count === 0) {
   db.prepare('INSERT INTO rooms (name, type) VALUES (?, ?)').run('General', 'voice');
 }
 
+// Seed a "Music" room if MUSIC_ROOM_NAME is set and room doesn't exist
+const musicRoomName = process.env.MUSIC_ROOM_NAME;
+if (musicRoomName) {
+  const existing = db.prepare('SELECT id FROM rooms WHERE name = ?').get(musicRoomName);
+  if (!existing) {
+    db.prepare('INSERT INTO rooms (name, type) VALUES (?, ?)').run(musicRoomName, 'voice');
+  }
+}
+
 export default db;

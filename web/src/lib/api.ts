@@ -207,3 +207,67 @@ export interface ChainEntry {
 export function getRoomChain(roomId: number) {
   return request<{ chain: ChainEntry[] }>(`/rooms/${roomId}/chain`);
 }
+
+// Music Bot
+export interface MusicQueueEntry {
+  id: string;
+  url: string;
+  title: string;
+  addedBy: string;
+}
+
+export interface MusicStation {
+  id: string;
+  name: string;
+  genre: string;
+}
+
+export interface MusicStatus {
+  mode: 'radio' | 'queue';
+  paused: boolean;
+  volume: number;
+  nowPlaying: string | null;
+  currentStation: MusicStation | null;
+  queue: MusicQueueEntry[];
+  stations: MusicStation[];
+}
+
+export function getMusicStatus() {
+  return request<MusicStatus>('/music/status');
+}
+
+export function addToMusicQueue(url: string, title?: string) {
+  return request<{ entry: MusicQueueEntry }>('/music/queue', {
+    method: 'POST',
+    body: JSON.stringify({ url, title }),
+  });
+}
+
+export function removeFromMusicQueue(id: string) {
+  return request<{ ok: boolean }>('/music/remove', {
+    method: 'POST',
+    body: JSON.stringify({ id }),
+  });
+}
+
+export function skipMusicTrack() {
+  return request<{ ok: boolean }>('/music/skip', { method: 'POST' });
+}
+
+export function setMusicStation(stationId: string) {
+  return request<{ ok: boolean }>('/music/station', {
+    method: 'POST',
+    body: JSON.stringify({ stationId }),
+  });
+}
+
+export function setMusicVolume(volume: number) {
+  return request<{ ok: boolean }>('/music/volume', {
+    method: 'POST',
+    body: JSON.stringify({ volume }),
+  });
+}
+
+export function toggleMusicPause() {
+  return request<{ paused: boolean }>('/music/pause', { method: 'POST' });
+}

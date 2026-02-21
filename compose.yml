@@ -35,6 +35,7 @@ services:
       - ./data/certbot/www:/var/www/certbot:ro
     depends_on:
       - api
+      - music
     networks:
       - app_net
 
@@ -52,12 +53,29 @@ services:
       - E2EE_SECRET=${E2EE_SECRET:-}
       - LIVEKIT_URL=ws://host.docker.internal:${LK_PORT:-7881}
       - SERVER_CITY=${SERVER_CITY:-}
+      - MUSIC_ROOM_NAME=${MUSIC_ROOM_NAME:-Music}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./data/api:/app/data
     expose:
       - "3000"
+    networks:
+      - app_net
+
+  # ── Music Bot (DJ Tokoloshe — radio + queue player) ───
+  # Serves audio as an HTTP mp3 stream. No WebRTC — the API proxies
+  # the stream and control endpoints to clients with auth.
+  music:
+    build:
+      context: ./music
+      dockerfile: Dockerfile
+    container_name: distokoloshe_music
+    restart: unless-stopped
+    environment:
+      - MUSIC_ROOM_NAME=${MUSIC_ROOM_NAME:-Music}
+    expose:
+      - "3001"
     networks:
       - app_net
 

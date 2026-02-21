@@ -279,6 +279,12 @@ router.delete('/:id', requireAuth, (req: Request, res: Response) => {
     return;
   }
 
+  // Prevent deletion of the music room
+  if (process.env.MUSIC_ROOM_NAME && room.name === process.env.MUSIC_ROOM_NAME) {
+    res.status(403).json({ error: 'The music room cannot be deleted' });
+    return;
+  }
+
   // Only the room creator can delete it (seed rooms with no creator cannot be deleted)
   if (room.created_by !== req.user!.sub) {
     res.status(403).json({ error: 'Only the room creator can delete this room' });
