@@ -64,6 +64,11 @@ router.post('/:id/lift', requireAuth, (req: Request, res: Response) => {
 
   const sourceRoom = db.prepare('SELECT * FROM rooms WHERE id = ?').get(punishment.source_room_id) as RoomRow | undefined;
 
+  if (!sourceRoom || sourceRoom.created_by !== req.user!.sub) {
+    res.status(403).json({ error: 'Only the room creator can lift punishments' });
+    return;
+  }
+
   // Lift the punishment
   db.prepare(
     "UPDATE punishments SET active = 0, lifted_by = ?, lifted_at = datetime('now') WHERE id = ?",

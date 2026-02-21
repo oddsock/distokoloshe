@@ -1,7 +1,7 @@
 export type VideoCodecChoice = 'av1' | 'vp9' | 'vp8';
 
 /** Detect if the browser supports AV1 encoding for WebRTC */
-export function detectAV1Encode(): boolean {
+function detectAV1Encode(): boolean {
   if (!('RTCRtpSender' in window)) return false;
   const capabilities = RTCRtpSender.getCapabilities('video');
   if (!capabilities) return false;

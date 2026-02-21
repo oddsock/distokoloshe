@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import db from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { generateRoomToken, deriveRoomE2EEKey } from '../livekit.js';
-import { broadcast, setUserRoom, getUserRoomId, getRoomMembers } from '../events.js';
+import { broadcast, broadcastToRoom, setUserRoom, getUserRoomId, getRoomMembers, isUserInRoom } from '../events.js';
 import { getChain, shuffleChain, addToChain, clearChain } from '../whispers.js';
 
 const router = Router();
@@ -144,7 +144,7 @@ router.post('/:id/join', requireAuth, async (req: Request, res: Response) => {
   // If room is in whispers mode, add user to chain
   if (room.mode === 'whispers') {
     const chain = addToChain(roomId, req.user!.sub);
-    broadcast('whispers:chain_updated', { roomId, chain, reason: 'user_joined' });
+    broadcastToRoom(roomId, 'whispers:chain_updated', { roomId, chain, reason: 'user_joined' });
   }
 
   try {
@@ -193,6 +193,11 @@ router.post('/:id/mode', requireAuth, (req: Request, res: Response) => {
     return;
   }
 
+  if (!isUserInRoom(req.user!.sub, roomId)) {
+    res.status(403).json({ error: 'You must be in the room to change its mode' });
+    return;
+  }
+
   db.prepare('UPDATE rooms SET mode = ? WHERE id = ?').run(mode, roomId);
 
   if (mode === 'whispers') {
@@ -208,11 +213,11 @@ router.post('/:id/mode', requireAuth, (req: Request, res: Response) => {
     }
 
     const chain = shuffleChain(roomId, memberIds);
-    broadcast('whispers:activated', { roomId, chain });
+    broadcastToRoom(roomId, 'whispers:activated', { roomId, chain });
     res.json({ mode, chain });
   } else {
     clearChain(roomId);
-    broadcast('whispers:deactivated', { roomId });
+    broadcastToRoom(roomId, 'whispers:deactivated', { roomId });
     res.json({ mode });
   }
 });

@@ -1,5 +1,5 @@
 import db from './db.js';
-import { broadcast } from './events.js';
+import { broadcast, broadcastToRoom } from './events.js';
 
 const voteTimers = new Map<number, NodeJS.Timeout>();
 const punishmentTimers = new Map<number, NodeJS.Timeout>();
@@ -42,7 +42,7 @@ export function resolveVote(voteId: number): void {
   const targetUser = db.prepare('SELECT id, username, display_name FROM users WHERE id = ?').get(vote.target_user_id) as
     { id: number; username: string; display_name: string } | undefined;
 
-  broadcast('vote:resolved', {
+  broadcastToRoom(vote.source_room_id, 'vote:resolved', {
     voteId: vote.id,
     sourceRoomId: vote.source_room_id,
     passed,

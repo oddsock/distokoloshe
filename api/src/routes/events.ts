@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import db from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
-import { addClient, removeClient, broadcast, isUserOnline, isUserInRoom, canAddClient } from '../events.js';
+import { addClient, removeClient, broadcast, broadcastToRoom, isUserOnline, isUserInRoom, canAddClient } from '../events.js';
 import { removeFromChain } from '../whispers.js';
 
 const router = Router();
@@ -66,7 +66,7 @@ router.get('/', requireAuth, (req: Request, res: Response) => {
       const room = db.prepare('SELECT mode FROM rooms WHERE id = ?').get(removed.roomId) as { mode: string } | undefined;
       if (room?.mode === 'whispers') {
         const chain = removeFromChain(removed.roomId, userId);
-        broadcast('whispers:chain_updated', { roomId: removed.roomId, chain, reason: 'user_left' });
+        broadcastToRoom(removed.roomId, 'whispers:chain_updated', { roomId: removed.roomId, chain, reason: 'user_left' });
       }
     }
 

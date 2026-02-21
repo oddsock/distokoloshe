@@ -53,10 +53,6 @@ export function removeClient(res: Response): { userId: number; roomId: number | 
   return null;
 }
 
-export function getOnlineUserIds(): Set<number> {
-  return new Set(clients.map((c) => c.userId));
-}
-
 export function isUserOnline(userId: number): boolean {
   return clients.some((c) => c.userId === userId);
 }
@@ -95,5 +91,14 @@ export function broadcast(event: EventType, data: unknown): void {
   const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
   for (const client of clients) {
     client.res.write(message);
+  }
+}
+
+export function broadcastToRoom(roomId: number, event: EventType, data: unknown): void {
+  const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  for (const client of clients) {
+    if (client.roomId === roomId) {
+      client.res.write(message);
+    }
   }
 }

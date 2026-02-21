@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import db from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
-import { broadcast, getUserRoomId, getRoomMembers, setUserRoom } from '../events.js';
+import { broadcast, broadcastToRoom, getUserRoomId, getRoomMembers, setUserRoom } from '../events.js';
 import { generateRoomToken, deriveRoomE2EEKey, removeParticipant } from '../livekit.js';
 import {
   startVoteTimer,
@@ -128,18 +128,10 @@ router.post('/', requireAuth, (req: Request, res: Response) => {
   // Start 30s timer
   startVoteTimer(voteId, VOTE_WINDOW_SECS * 1000);
 
-  // Check for immediate resolution (e.g., 2 people in room: 1 eligible, 1 yes = pass)
-  if (1 > eligibleCount / 2) {
-    // Already passed with just the initiator's vote
-    resolveVote(voteId);
-    res.status(201).json({ vote: { id: voteId, resolved: true } });
-    return;
-  }
-
   const targetUser = db.prepare('SELECT id, username, display_name FROM users WHERE id = ?').get(targetUserId) as UserRow;
   const vote = db.prepare('SELECT * FROM votes WHERE id = ?').get(voteId) as VoteRow;
 
-  broadcast('vote:started', {
+  broadcastToRoom(callerRoomId, 'vote:started', {
     vote: {
       id: vote.id,
       sourceRoomId: vote.source_room_id,
@@ -222,7 +214,7 @@ router.post('/:id/ballot', requireAuth, (req: Request, res: Response) => {
 
   const updated = db.prepare('SELECT * FROM votes WHERE id = ?').get(voteId) as VoteRow;
 
-  broadcast('vote:ballot_cast', {
+  broadcastToRoom(updated.source_room_id, 'vote:ballot_cast', {
     voteId: updated.id,
     sourceRoomId: updated.source_room_id,
     yesCount: updated.yes_count,

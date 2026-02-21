@@ -106,10 +106,6 @@ export function joinRoom(roomId: number) {
   return request<JoinRoomResponse>(`/rooms/${roomId}/join`, { method: 'POST' });
 }
 
-export function deleteRoom(roomId: number) {
-  return request<{ deleted: boolean }>(`/rooms/${roomId}`, { method: 'DELETE' });
-}
-
 // Users
 export interface UserListItem {
   id: number;
