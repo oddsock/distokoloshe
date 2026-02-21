@@ -89,6 +89,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
   const [showQualityMenu, setShowQualityMenu] = useState(false);
   const [showStopShareConfirm, setShowStopShareConfirm] = useState(false);
   const [spotlight, setSpotlight] = useState<{ identity: string; source: 'screen_share' | 'camera' } | null>(null);
+  const [audioTrackVersion, setAudioTrackVersion] = useState(0);
 
   // Connection stats (RTT / jitter)
   const connectionStats = useConnectionStats(room);
@@ -106,6 +107,15 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     onToggleDeafen: handleToggleDeafen,
     enabled: connectionState === ConnectionState.Connected,
   });
+
+  // Mobile detection (JS-based, responds to orientation changes)
+  const [isMobile, setIsMobile] = useState(() => window.matchMedia('(max-width: 767px)').matches);
+  useEffect(() => {
+    const mql = window.matchMedia('(max-width: 767px)');
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mql.addEventListener('change', handler);
+    return () => mql.removeEventListener('change', handler);
+  }, []);
 
   // Responsive sidebar state
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
@@ -428,6 +438,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     ) => {
       if (publication.kind === Track.Kind.Audio) {
         attachTrack(participant, publication);
+        setAudioTrackVersion((v) => v + 1);
       }
     };
 
@@ -438,6 +449,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     ) => {
       if (publication.kind === Track.Kind.Audio) {
         detachTrack(participant);
+        setAudioTrackVersion((v) => v + 1);
       }
     };
 
@@ -491,7 +503,10 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     return () => clearInterval(interval);
   }, [activePunishment]);
 
-  // Whisper audio muting — mute everyone except my source in the chain
+  // Whisper audio muting — mute everyone except my source in the chain.
+  // Also depends on audioTrackVersion so muting is re-applied after a new
+  // audio track is subscribed (the audio node doesn't exist yet when the
+  // participant first connects, only after TrackSubscribed fires).
   useEffect(() => {
     if (!isWhispersMode || whisperChain.length === 0) {
       // Whispers off: restore user mute preferences
@@ -508,15 +523,15 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     const sourceEntry = whisperChain.find((e) => e.position === sourcePos);
 
     for (const p of remoteParticipants) {
-      if (p.identity === sourceEntry?.username) {
+      if (sourceEntry && p.identity === sourceEntry.username) {
         // Source: respect user mute preference
         setMuted(p.identity, mutedUsers.has(p.identity));
       } else {
-        // Non-source: always mute in whispers mode
+        // Non-source (or sourceEntry missing): always mute in whispers mode
         setMuted(p.identity, true);
       }
     }
-  }, [isWhispersMode, whisperChain, remoteParticipants, user.id, setMuted, mutedUsers]);
+  }, [isWhispersMode, whisperChain, remoteParticipants, audioTrackVersion, user.id, setMuted, mutedUsers]);
 
   // Auto-join last room OR jail room (waits for punishment check)
   useEffect(() => {
@@ -1241,8 +1256,8 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
               {deafened ? '\u{1F515}' : '\u{1F514}'}<span className="hidden sm:inline ml-1">{deafened ? 'Deafened' : 'Deafen'}</span>
             </button>
 
-            {/* Screen share with quality picker */}
-            <div className="relative">
+            {/* Screen share with quality picker — hidden on mobile */}
+            {!isMobile && <div className="relative">
               <button
                 onClick={() => {
                   if (isSharing) {
@@ -1310,9 +1325,9 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                   </label>
                 </div>
               )}
-            </div>
+            </div>}
 
-            <div className="relative">
+            {!isMobile && <div className="relative">
               <button
                 onClick={() => setShowVolumes(!showVolumes)}
                 className="px-3 md:px-4 py-2 rounded-lg text-sm font-medium bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors"
@@ -1338,7 +1353,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                   )}
                 </div>
               )}
-            </div>
+            </div>}
 
             <div className="relative">
               <button
@@ -1348,7 +1363,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                 {'\u2699'}<span className="hidden sm:inline ml-1">Settings</span>
               </button>
               {showSettings && room && (
-                <DeviceSettings room={room} hotkeyBindings={hotkeyBindings} onHotkeyChange={setHotkeyBindings} />
+                <DeviceSettings room={room} hotkeyBindings={hotkeyBindings} onHotkeyChange={setHotkeyBindings} isMobile={isMobile} />
               )}
             </div>
 

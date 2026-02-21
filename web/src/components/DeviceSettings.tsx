@@ -8,9 +8,10 @@ interface DeviceSettingsProps {
   room: Room;
   hotkeyBindings: HotkeyBindings;
   onHotkeyChange: (bindings: HotkeyBindings) => void;
+  isMobile?: boolean;
 }
 
-export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange }: DeviceSettingsProps) {
+export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile }: DeviceSettingsProps) {
   const { audioInputs, audioOutputs, videoInputs } = useDevices();
   const [micLevel, setMicLevel] = useState(0);
   const [rebinding, setRebinding] = useState<keyof HotkeyBindings | null>(null);
@@ -154,7 +155,10 @@ export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange }: DeviceS
 
   return (
     <div
-      className="absolute bottom-full mb-2 right-0 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-xl shadow-2xl p-4 w-[340px] z-50"
+      className={isMobile
+        ? 'fixed bottom-16 left-2 right-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-xl shadow-2xl p-4 z-50 max-h-[70vh] overflow-y-auto'
+        : 'absolute bottom-full mb-2 right-0 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-xl shadow-2xl p-4 w-[340px] z-50'
+      }
       onClick={(e) => e.stopPropagation()}
     >
       <h3 className="text-sm font-semibold text-zinc-900 dark:text-white mb-3">

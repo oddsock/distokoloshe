@@ -3,9 +3,9 @@ import { Login } from './pages/Login';
 import { RoomPage } from './pages/Room';
 
 export function App() {
-  const { user, isLoading, error, login, register, logout } = useAuth();
+  const { user, initialized, isLoading, error, login, register, logout } = useAuth();
 
-  if (isLoading) {
+  if (!initialized) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-zinc-900">
         <p className="text-zinc-500">Loading...</p>
