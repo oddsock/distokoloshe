@@ -3,6 +3,7 @@ import { useDevices } from '../hooks/useDevices';
 import { Track } from 'livekit-client';
 import type { Room } from 'livekit-client';
 import { type HotkeyBindings, formatKey } from '../hooks/useHotkeys';
+import { type SoundPack, PACK_LABELS, getStoredPack, setStoredPack, previewSound } from '../lib/sounds';
 
 interface DeviceSettingsProps {
   room: Room;
@@ -18,6 +19,7 @@ export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile 
   const [playingTone, setPlayingTone] = useState(false);
   const [selectedMicId, setSelectedMicId] = useState('');
   const [selectedSpeakerId, setSelectedSpeakerId] = useState('');
+  const [soundPack, setSoundPack] = useState<SoundPack>(getStoredPack);
   const analyserRef = useRef<{
     ctx: AudioContext;
     stream: MediaStream;
@@ -298,6 +300,39 @@ export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile 
               </div>
             ))}
           </div>
+        </div>
+
+        {/* ── Notification Sounds ── */}
+        <div>
+          <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1.5">
+            Notification Sounds
+          </label>
+          <select
+            value={soundPack}
+            onChange={(e) => {
+              const pack = e.target.value as SoundPack;
+              setSoundPack(pack);
+              setStoredPack(pack);
+            }}
+            className="w-full px-2 py-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-700 text-zinc-900 dark:text-white border border-zinc-300 dark:border-zinc-600 text-xs"
+          >
+            {(Object.keys(PACK_LABELS) as SoundPack[]).map((pack) => (
+              <option key={pack} value={pack}>{PACK_LABELS[pack]}</option>
+            ))}
+          </select>
+          {soundPack !== 'none' && (
+            <div className="mt-1.5 flex gap-1.5">
+              {(['connect', 'join', 'leave'] as const).map((evt) => (
+                <button
+                  key={evt}
+                  onClick={() => previewSound(soundPack, evt)}
+                  className="px-2 py-0.5 rounded text-[10px] font-medium bg-zinc-100 dark:bg-zinc-600 text-zinc-700 dark:text-zinc-300 border border-zinc-300 dark:border-zinc-500 hover:border-indigo-500 transition-colors"
+                >
+                  {evt === 'connect' ? 'Connected' : evt === 'join' ? 'Join' : 'Leave'}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

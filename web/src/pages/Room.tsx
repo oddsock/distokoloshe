@@ -15,6 +15,7 @@ import { useConnectionStats } from '../hooks/useConnectionStats';
 import { useHotkeys } from '../hooks/useHotkeys';
 import { getRoomInitials, toggleTheme, getTheme } from '../lib/utils';
 import * as api from '../lib/api';
+import { playSound } from '../lib/sounds';
 
 interface RoomPageProps {
   user: api.User;
@@ -229,6 +230,9 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
         next[roomId] = [...(next[roomId] || []), joinUser];
         return next;
       });
+      if (currentRoom && roomId === currentRoom.id && joinUser.id !== user.id) {
+        playSound('join');
+      }
     },
     'user:room_leave': (data) => {
       const { user: leaveUser, roomId } = data as { user: { id: number }; roomId: number };
@@ -240,6 +244,9 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
         }
         return next;
       });
+      if (currentRoom && roomId === currentRoom.id && leaveUser.id !== user.id) {
+        playSound('leave');
+      }
     },
     'vote:started': (data) => {
       const { vote } = data as { vote: api.Vote };
@@ -597,6 +604,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
           e2eeKey: res.e2eeKey,
         };
         await connect(connection);
+        if (joinIdRef.current === myJoinId) playSound('connect');
       } catch (err) {
         if (joinIdRef.current !== myJoinId) return; // stale join, don't show error
         const roomName = rooms.find((r) => r.id === roomId)?.name;
@@ -807,7 +815,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
               <p className="text-xs text-zinc-500 truncate">@{user.username}</p>
             </div>
           </div>
-          <SignalStrength stats={connectionStats} serverCity={serverCity} connecting={connectionState === ConnectionState.Connecting} />
+          <SignalStrength stats={connectionStats} serverCity={serverCity} connecting={connectionState === ConnectionState.Connecting || (connectionState === ConnectionState.Connected && connectionStats.rttMs === null)} />
           <button
             onClick={onLogout}
             className="text-xs text-zinc-500 hover:text-red-400 transition-colors flex-shrink-0"
