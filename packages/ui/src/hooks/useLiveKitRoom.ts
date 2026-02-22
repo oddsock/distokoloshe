@@ -8,6 +8,7 @@ import {
   Participant,
   ExternalE2EEKeyProvider,
 } from 'livekit-client';
+import { getBaseUrl } from '../lib/api';
 
 export interface RoomConnection {
   wsUrl: string;
@@ -132,9 +133,19 @@ export function useLiveKitRoom() {
         }));
       });
 
-      // Resolve WebSocket URL relative to current origin
-      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${wsProtocol}//${window.location.host}${connection.wsUrl}`;
+      // Resolve WebSocket URL: use API base URL if set (desktop), else current origin (web)
+      const base = getBaseUrl();
+      let wsUrl: string;
+      if (base) {
+        // Desktop: derive WS URL from the configured server URL
+        const url = new URL(base);
+        const wsProtocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+        wsUrl = `${wsProtocol}//${url.host}${connection.wsUrl}`;
+      } else {
+        // Web: relative to current origin (proxied by nginx)
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        wsUrl = `${wsProtocol}//${window.location.host}${connection.wsUrl}`;
+      }
 
       // Connect to room
       await room.connect(wsUrl, connection.token);
