@@ -6,8 +6,8 @@ import {
   removeFromMusicQueue,
   skipMusicTrack,
   setMusicStation,
+  setMusicVolume,
   toggleMusicPause,
-  getStoredToken,
 } from '../lib/api';
 
 interface MusicControlsProps {
@@ -20,27 +20,7 @@ export function MusicControls({ isMobile }: MusicControlsProps) {
   const [titleInput, setTitleInput] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [volume, setVolume] = useState(80);
-  const [isPlaying, setIsPlaying] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-
-  // Create audio element on mount
-  useEffect(() => {
-    const audio = new Audio();
-    audio.volume = volume / 100;
-    audioRef.current = audio;
-
-    audio.addEventListener('playing', () => setIsPlaying(true));
-    audio.addEventListener('pause', () => setIsPlaying(false));
-    audio.addEventListener('ended', () => setIsPlaying(false));
-
-    return () => {
-      audio.pause();
-      audio.src = '';
-      audioRef.current = null;
-    };
-  }, []);
 
   // Poll status every 5 seconds
   useEffect(() => {
@@ -56,25 +36,7 @@ export function MusicControls({ isMobile }: MusicControlsProps) {
     getMusicStatus().then(setStatus).catch(() => {});
   }, []);
 
-  const handlePlayPause = async () => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    if (isPlaying) {
-      audio.pause();
-    } else {
-      // Set stream URL with auth token
-      const token = getStoredToken();
-      audio.src = `/api/music/stream?token=${encodeURIComponent(token || '')}`;
-      try {
-        await audio.play();
-      } catch {
-        setError('Failed to play audio');
-      }
-    }
-  };
-
-  const handleServerPause = async () => {
+  const handlePause = async () => {
     setBusy(true);
     try {
       await toggleMusicPause();
@@ -101,11 +63,13 @@ export function MusicControls({ isMobile }: MusicControlsProps) {
     setBusy(false);
   };
 
-  const handleVolume = (vol: number) => {
-    setVolume(vol);
-    if (audioRef.current) {
-      audioRef.current.volume = vol / 100;
-    }
+  const handleVolume = async (vol: number) => {
+    setBusy(true);
+    try {
+      await setMusicVolume(vol);
+      refreshStatus();
+    } catch { setError('Failed to set volume'); }
+    setBusy(false);
   };
 
   const handleAddToQueue = async () => {
@@ -156,26 +120,13 @@ export function MusicControls({ isMobile }: MusicControlsProps) {
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-white">DJ Tokoloshe</h3>
         <div className="flex gap-1">
-          {/* Client-side play/pause (audio element) */}
           <button
-            onClick={handlePlayPause}
-            className={`px-2 py-1 text-xs rounded transition-colors ${
-              isPlaying
-                ? 'bg-indigo-600 hover:bg-indigo-500 text-white'
-                : 'bg-zinc-700 hover:bg-zinc-600 text-white'
-            }`}
-            title={isPlaying ? 'Stop listening' : 'Start listening'}
-          >
-            {isPlaying ? '\u23F8' : '\u25B6'}
-          </button>
-          {/* Server-side pause (pause the stream for everyone) */}
-          <button
-            onClick={handleServerPause}
+            onClick={handlePause}
             disabled={busy}
             className="px-2 py-1 text-xs rounded bg-zinc-700 hover:bg-zinc-600 text-white transition-colors disabled:opacity-50"
-            title={status.paused ? 'Resume stream' : 'Pause stream'}
+            title={status.paused ? 'Resume' : 'Pause'}
           >
-            {status.paused ? '\u25B6\u25B6' : '\u23F9'}
+            {status.paused ? '\u25B6' : '\u23F8'}
           </button>
           {status.mode === 'queue' && (
             <button
@@ -201,14 +152,14 @@ export function MusicControls({ isMobile }: MusicControlsProps) {
         )}
       </div>
 
-      {/* Volume (client-side) */}
+      {/* Volume (server-side — controls bot output volume) */}
       <div className="mb-3">
-        <label className="text-xs text-zinc-400 block mb-1">Volume: {volume}%</label>
+        <label className="text-xs text-zinc-400 block mb-1">Volume: {status.volume}%</label>
         <input
           type="range"
           min={0}
           max={100}
-          value={volume}
+          value={status.volume}
           onChange={(e) => handleVolume(parseInt(e.target.value, 10))}
           className="w-full h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
         />

@@ -1,7 +1,6 @@
 import { spawn, type ChildProcess } from 'child_process';
 import http from 'http';
 import https from 'https';
-import type { Response } from 'express';
 import { STATIONS, DEFAULT_STATION_ID, type RadioStation } from './stations.js';
 
 export interface QueueEntry {
@@ -20,8 +19,18 @@ export interface PlayerState {
   queue: QueueEntry[];
 }
 
+// 20ms frame at 48kHz stereo = 960 samples × 2 channels × 2 bytes = 3840 bytes
+export type FrameCallback = (pcm: Int16Array) => void;
+
+const SAMPLE_RATE = 48000;
+const CHANNELS = 2;
+const FRAME_MS = 20;
+const SAMPLES_PER_FRAME = (SAMPLE_RATE * FRAME_MS) / 1000; // 960
+const BYTES_PER_FRAME = SAMPLES_PER_FRAME * CHANNELS * 2; // 3840
+
 export class Player {
   private ffmpeg: ChildProcess | null = null;
+  private ffmpegGeneration = 0;
   private metadataTimer: ReturnType<typeof setInterval> | null = null;
   private currentStationId: string = DEFAULT_STATION_ID;
   private queue: QueueEntry[] = [];
@@ -31,30 +40,15 @@ export class Player {
   private paused: boolean = false;
   private mode: 'radio' | 'queue' = 'radio';
   private idCounter = 0;
-  private clients: Set<Response> = new Set();
+  private pcmBuffer: Buffer = Buffer.alloc(0);
+  private onFrame: FrameCallback | null = null;
+
+  setFrameCallback(cb: FrameCallback): void {
+    this.onFrame = cb;
+  }
 
   start(): void {
     this.playRadio();
-  }
-
-  // ── HTTP Stream ──────────────────────────────────────
-
-  addStreamClient(res: Response): void {
-    res.setHeader('Content-Type', 'audio/mpeg');
-    res.setHeader('Cache-Control', 'no-cache, no-store');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('Transfer-Encoding', 'chunked');
-    res.flushHeaders();
-    this.clients.add(res);
-    res.on('close', () => this.clients.delete(res));
-  }
-
-  private broadcast(chunk: Buffer): void {
-    for (const client of this.clients) {
-      if (!client.writableEnded) {
-        client.write(chunk);
-      }
-    }
   }
 
   // ── State ────────────────────────────────────────────
@@ -128,10 +122,8 @@ export class Player {
   togglePause(): boolean {
     this.paused = !this.paused;
     if (this.paused) {
-      // Pause ffmpeg by sending SIGSTOP
       this.ffmpeg?.kill('SIGSTOP');
     } else {
-      // Resume ffmpeg by sending SIGCONT
       this.ffmpeg?.kill('SIGCONT');
     }
     return this.paused;
@@ -164,48 +156,89 @@ export class Player {
   private spawnFfmpeg(url: string): void {
     this.stopFfmpeg();
 
-    this.ffmpeg = spawn('ffmpeg', [
+    const gen = ++this.ffmpegGeneration;
+    this.pcmBuffer = Buffer.alloc(0);
+
+    const proc = spawn('ffmpeg', [
       '-reconnect', '1',
       '-reconnect_streamed', '1',
       '-reconnect_delay_max', '5',
       '-i', url,
-      '-f', 'mp3',
-      '-b:a', '128k',
-      '-ar', '48000',
-      '-ac', '2',
+      '-f', 's16le',
+      '-ar', String(SAMPLE_RATE),
+      '-ac', String(CHANNELS),
       '-fflags', '+nobuffer',
       '-loglevel', 'error',
       'pipe:1',
     ]);
 
-    this.ffmpeg.stdout?.on('data', (chunk: Buffer) => {
-      this.broadcast(chunk);
+    this.ffmpeg = proc;
+
+    proc.stdout?.on('data', (chunk: Buffer) => {
+      if (gen !== this.ffmpegGeneration) return;
+      this.pcmBuffer = Buffer.concat([this.pcmBuffer, chunk]);
+      this.drainFrames();
     });
 
-    this.ffmpeg.stderr?.on('data', (data: Buffer) => {
+    proc.stderr?.on('data', (data: Buffer) => {
       const msg = data.toString().trim();
       if (msg) console.error(`ffmpeg: ${msg}`);
     });
 
-    this.ffmpeg.on('close', (code) => {
-      if (this.ffmpeg?.killed) return; // intentional stop
+    proc.on('close', (code) => {
+      // Ignore if this is a stale generation (we already started a new one)
+      if (gen !== this.ffmpegGeneration) return;
       console.log(`ffmpeg exited with code ${code}`);
       if (this.mode === 'queue') {
         this.playNextFromQueue();
       } else {
-        // Radio stream dropped — restart after short delay
+        // Radio stream dropped — restart after delay
         setTimeout(() => {
-          if (this.mode === 'radio') this.playRadio();
-        }, 2000);
+          if (gen === this.ffmpegGeneration && this.mode === 'radio') {
+            this.playRadio();
+          }
+        }, 3000);
       }
     });
   }
 
+  private drainFrames(): void {
+    while (this.pcmBuffer.length >= BYTES_PER_FRAME) {
+      const frameBytes = this.pcmBuffer.subarray(0, BYTES_PER_FRAME);
+      this.pcmBuffer = this.pcmBuffer.subarray(BYTES_PER_FRAME);
+
+      // Convert to Int16Array and apply volume
+      const pcm = new Int16Array(
+        frameBytes.buffer,
+        frameBytes.byteOffset,
+        SAMPLES_PER_FRAME * CHANNELS,
+      );
+
+      this.applyVolume(pcm);
+
+      if (this.onFrame) {
+        this.onFrame(pcm);
+      }
+    }
+  }
+
+  private applyVolume(pcm: Int16Array): void {
+    if (this.volume >= 100) return;
+    const gain = this.volume / 100;
+    for (let i = 0; i < pcm.length; i++) {
+      pcm[i] = Math.max(-32768, Math.min(32767, Math.round(pcm[i] * gain)));
+    }
+  }
+
   private stopFfmpeg(): void {
+    this.ffmpegGeneration++;
     if (this.ffmpeg) {
-      this.ffmpeg.killed || this.ffmpeg.kill('SIGTERM');
+      if (!this.ffmpeg.killed) {
+        this.ffmpeg.kill('SIGTERM');
+      }
       this.ffmpeg = null;
     }
+    this.pcmBuffer = Buffer.alloc(0);
   }
 
   // ── ICY Metadata ─────────────────────────────────────
@@ -280,7 +313,7 @@ export class Player {
       setTimeout(() => req.destroy(), 10000);
     });
 
-    req.on('error', () => {}); // Silently ignore metadata fetch errors
+    req.on('error', () => {});
   }
 
   private titleFromUrl(url: string): string {

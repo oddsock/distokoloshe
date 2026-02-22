@@ -1133,6 +1133,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
 
               {/* Remote participants */}
               {remoteParticipants.map((p) => {
+                const isBot = p.identity.startsWith('__');
                 const userMuted = mutedUsers.has(p.identity);
                 const speaking = activeSpeakers.includes(p.identity);
                 const memberEntry = currentRoom ? roomMembers[currentRoom.id]?.find((m) => m.username === p.identity) : null;
@@ -1165,9 +1166,9 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                         <VideoTrackView publication={screenSharePub} fit="contain" />
                       ) : (
                         <div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold text-white transition-shadow ${
-                          isMyWhisperSource ? 'bg-purple-600' : 'bg-zinc-500'
+                          isBot ? 'bg-indigo-600' : isMyWhisperSource ? 'bg-purple-600' : 'bg-zinc-500'
                         } ${speaking && !userMuted && !whisperDimmed ? 'shadow-[0_0_16px_rgba(96,165,250,0.6)]' : ''}`}>
-                          {(p.name || p.identity).charAt(0).toUpperCase()}
+                          {isBot ? '\u{1F3B5}' : (p.name || p.identity).charAt(0).toUpperCase()}
                         </div>
                       )}
                       {isMyWhisperSource && (
@@ -1190,8 +1191,9 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium truncate">
                         {p.name || p.identity}
+                        {isBot && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 uppercase">Bot</span>}
                       </span>
-                      <div className="flex items-center gap-1.5">
+                      {!isBot && <div className="flex items-center gap-1.5">
                         {!activeVote && !currentRoom?.is_jail && memberEntry && (
                           <div className="relative">
                             <button
@@ -1234,7 +1236,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                         <span className="text-xs">
                           {p.isMicrophoneEnabled ? '\u{1F3A4}' : '\u{1F507}'}
                         </span>
-                      </div>
+                      </div>}
                     </div>
                   </div>
                 );

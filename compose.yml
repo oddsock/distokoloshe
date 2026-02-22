@@ -35,7 +35,6 @@ services:
       - ./data/certbot/www:/var/www/certbot:ro
     depends_on:
       - api
-      - music
     networks:
       - app_net
 
@@ -64,20 +63,22 @@ services:
       - app_net
 
   # ── Music Bot (DJ Tokoloshe — radio + queue player) ───
-  # Serves audio as an HTTP mp3 stream. No WebRTC — the API proxies
-  # the stream and control endpoints to clients with auth.
+  # Joins the Music room as a LiveKit participant and publishes audio.
+  # Uses host networking (same as LiveKit) for WebRTC ICE.
+  # Control API on port 3001 reachable from API via host.docker.internal.
   music:
     build:
       context: ./music
       dockerfile: Dockerfile
     container_name: distokoloshe_music
     restart: unless-stopped
+    network_mode: host
     environment:
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
+      - E2EE_SECRET=${E2EE_SECRET:-}
+      - LIVEKIT_URL=ws://127.0.0.1:${LK_PORT:-7881}
       - MUSIC_ROOM_NAME=${MUSIC_ROOM_NAME:-Music}
-    expose:
-      - "3001"
-    networks:
-      - app_net
 
   # ── LiveKit SFU (WebRTC media relay + built-in TURN) ───
   # Uses host networking so WebRTC ICE candidates work correctly.

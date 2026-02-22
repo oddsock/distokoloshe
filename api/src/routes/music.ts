@@ -1,32 +1,13 @@
 import { Router, type Request, type Response } from 'express';
-import { Readable } from 'stream';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
 
-const MUSIC_URL = 'http://music:3001';
+// Music container runs on host networking, reachable via host.docker.internal
+const MUSIC_URL = 'http://host.docker.internal:3001';
 
 // All routes require auth — the music container trusts the API
 router.use(requireAuth);
-
-// GET /api/music/stream — proxy the live mp3 audio stream
-router.get('/stream', async (req: Request, res: Response) => {
-  try {
-    const resp = await fetch(`${MUSIC_URL}/stream`);
-    if (!resp.ok || !resp.body) {
-      res.status(502).end();
-      return;
-    }
-    res.set('Content-Type', 'audio/mpeg');
-    res.set('Cache-Control', 'no-cache, no-store');
-    res.set('Transfer-Encoding', 'chunked');
-    const nodeStream = Readable.fromWeb(resp.body as any);
-    nodeStream.pipe(res);
-    req.on('close', () => nodeStream.destroy());
-  } catch {
-    res.status(502).json({ error: 'Music service unavailable' });
-  }
-});
 
 // GET /api/music/status
 router.get('/status', async (_req: Request, res: Response) => {

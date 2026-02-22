@@ -5,11 +5,6 @@ import { STATIONS } from './stations.js';
 export function createMusicRouter(player: Player): Router {
   const router = Router();
 
-  // GET /stream — live audio stream (mp3)
-  router.get('/stream', (_req: Request, res: Response) => {
-    player.addStreamClient(res);
-  });
-
   // GET /status — current player state + available stations
   router.get('/status', (_req: Request, res: Response) => {
     const state = player.getState();
