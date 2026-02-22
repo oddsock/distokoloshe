@@ -1,0 +1,16 @@
+{
+  "name": "@distokoloshe/ui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "peerDependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "dependencies": {
+    "livekit-client": "^2.17.0",
+    "lucide-react": "^0.469.0"
+  }
+}

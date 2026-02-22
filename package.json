@@ -1,0 +1,8 @@
+{
+  "name": "distokoloshe",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
+}
