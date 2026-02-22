@@ -15,7 +15,12 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": ".",
+    "paths": {
+      "@distokoloshe/ui/*": ["../../packages/ui/src/*"],
+      "@distokoloshe/ui": ["../../packages/ui/src/index.ts"]
+    }
   },
   "include": ["src"]
 }

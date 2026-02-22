@@ -1,12 +1,12 @@
 # disTokoloshe Docker Compose
 # Usage:
-#   1. Run ./scripts/init.sh to generate .env with secrets
+#   1. Run ./infra/scripts/init.sh to generate .env with secrets
 #   2. docker compose build
 #   3. docker compose up -d
 #
 # For production TLS:
 #   4. Set DOMAIN and ACME_EMAIL in .env
-#   5. Run ./scripts/init-certs.sh to get initial Let's Encrypt cert
+#   5. Run ./infra/scripts/init-certs.sh to get initial Let's Encrypt cert
 #   6. docker compose up -d  (certbot container handles renewal)
 
 networks:
@@ -18,8 +18,8 @@ services:
   # ── Web (nginx — SPA + reverse proxy + TLS) ────────────
   web:
     build:
-      context: ./web
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/web/Dockerfile
     container_name: distokoloshe_web
     restart: unless-stopped
     environment:
@@ -41,7 +41,7 @@ services:
   # ── API (Node.js — auth + rooms + LiveKit tokens) ──────
   api:
     build:
-      context: ./api
+      context: ./apps/server
       dockerfile: Dockerfile
     container_name: distokoloshe_api
     restart: unless-stopped
@@ -66,7 +66,7 @@ services:
   # Ports bound directly: 7881 (WS), 50201-50400 (UDP), 3478 (TURN), 5349 (TURN/TLS)
   livekit:
     build:
-      context: ./livekit
+      context: ./infra/livekit
       dockerfile: Dockerfile
     container_name: distokoloshe_livekit
     restart: unless-stopped

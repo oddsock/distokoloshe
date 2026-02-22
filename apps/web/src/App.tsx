@@ -1,6 +1,6 @@
-import { useAuth } from './hooks/useAuth';
-import { Login } from './pages/Login';
-import { RoomPage } from './pages/Room';
+import { useAuth } from '@distokoloshe/ui/hooks/useAuth';
+import { Login } from '@distokoloshe/ui/pages/Login';
+import { RoomPage } from '@distokoloshe/ui/pages/Room';
 
 export function App() {
   const { user, initialized, isLoading, error, login, register, logout } = useAuth();
