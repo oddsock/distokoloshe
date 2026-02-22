@@ -1,4 +1,21 @@
 const TOKEN_KEY = 'distokoloshe_token';
+const BASE_URL_KEY = 'distokoloshe_server_url';
+
+// Base URL for API requests. Empty = relative (web proxy), absolute = desktop.
+let baseUrl = localStorage.getItem(BASE_URL_KEY) || '';
+
+export function getBaseUrl(): string {
+  return baseUrl;
+}
+
+export function setBaseUrl(url: string): void {
+  baseUrl = url.replace(/\/+$/, '');
+  if (baseUrl) {
+    localStorage.setItem(BASE_URL_KEY, baseUrl);
+  } else {
+    localStorage.removeItem(BASE_URL_KEY);
+  }
+}
 
 export function getStoredToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
@@ -31,7 +48,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`/api${path}`, { ...options, headers });
+  const res = await fetch(`${baseUrl}/api${path}`, { ...options, headers });
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: 'Request failed' }));

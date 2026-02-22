@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { getStoredToken } from '../lib/api';
+import { getStoredToken, getBaseUrl } from '../lib/api';
 
 type EventHandler = (data: unknown) => void;
 
@@ -17,7 +17,7 @@ export function useEvents(handlers: Record<string, EventHandler>) {
     eventSourceRef.current?.close();
 
     // EventSource doesn't support custom headers, so pass token as query param
-    const es = new EventSource(`/api/events?token=${encodeURIComponent(token)}`);
+    const es = new EventSource(`${getBaseUrl()}/api/events?token=${encodeURIComponent(token)}`);
     eventSourceRef.current = es;
 
     // Use a generic message handler that routes by event type.

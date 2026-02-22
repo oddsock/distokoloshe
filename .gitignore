@@ -6,3 +6,6 @@ dist/
 *.db
 *.log
 .DS_Store
+# Tauri / Rust
+target/
+package-lock.json

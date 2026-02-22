@@ -4,3 +4,6 @@ export { RoomPage } from './pages/Room';
 
 // Re-export hooks
 export { useAuth } from './hooks/useAuth';
+
+// Re-export API utilities
+export { getBaseUrl, setBaseUrl } from './lib/api';
