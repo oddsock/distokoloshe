@@ -186,7 +186,7 @@ function playPopsConnect() {
     gain.connect(c.destination);
     const t = now + i * 0.08;
     gain.gain.setValueAtTime(0, t);
-    gain.gain.linearRampToValueAtTime(0.25, t + 0.01);
+    gain.gain.linearRampToValueAtTime(0.22, t + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
     osc.start(t);
     osc.stop(t + 0.12);
@@ -204,7 +204,7 @@ function playPopsJoin() {
   gain.connect(c.destination);
   const now = c.currentTime;
   gain.gain.setValueAtTime(0, now);
-  gain.gain.linearRampToValueAtTime(0.25, now + 0.01);
+  gain.gain.linearRampToValueAtTime(0.18, now + 0.01);
   gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
   osc.start(now);
   osc.stop(now + 0.15);
@@ -221,7 +221,7 @@ function playPopsLeave() {
   gain.connect(c.destination);
   const now = c.currentTime;
   gain.gain.setValueAtTime(0, now);
-  gain.gain.linearRampToValueAtTime(0.2, now + 0.01);
+  gain.gain.linearRampToValueAtTime(0.15, now + 0.01);
   gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
   osc.start(now);
   osc.stop(now + 0.18);
@@ -230,19 +230,21 @@ function playPopsLeave() {
 function playPopsMute() {
   const c = getCtx();
   const now = c.currentTime;
-  // Descending pop
-  const osc = c.createOscillator();
-  const gain = c.createGain();
-  osc.type = 'sine';
-  osc.frequency.setValueAtTime(700, now);
-  osc.frequency.exponentialRampToValueAtTime(300, now + 0.08);
-  osc.connect(gain);
-  gain.connect(c.destination);
-  gain.gain.setValueAtTime(0, now);
-  gain.gain.linearRampToValueAtTime(0.2, now + 0.01);
-  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
-  osc.start(now);
-  osc.stop(now + 0.12);
+  // Quick double-tap click (distinct from leave's descending sweep)
+  for (let i = 0; i < 2; i++) {
+    const osc = c.createOscillator();
+    const gain = c.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 500;
+    osc.connect(gain);
+    gain.connect(c.destination);
+    const t = now + i * 0.07;
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(0.15, t + 0.005);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+    osc.start(t);
+    osc.stop(t + 0.04);
+  }
 }
 
 function playPopsUnmute() {
@@ -257,7 +259,7 @@ function playPopsUnmute() {
   osc.connect(gain);
   gain.connect(c.destination);
   gain.gain.setValueAtTime(0, now);
-  gain.gain.linearRampToValueAtTime(0.2, now + 0.01);
+  gain.gain.linearRampToValueAtTime(0.15, now + 0.01);
   gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
   osc.start(now);
   osc.stop(now + 0.12);
@@ -278,7 +280,7 @@ function playPopsCameraOn() {
     gain.connect(c.destination);
     const t = now + i * 0.06;
     gain.gain.setValueAtTime(0, t);
-    gain.gain.linearRampToValueAtTime(0.18, t + 0.01);
+    gain.gain.linearRampToValueAtTime(0.12, t + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
     osc.start(t);
     osc.stop(t + 0.1);
@@ -300,7 +302,7 @@ function playPopsCameraOff() {
     gain.connect(c.destination);
     const t = now + i * 0.06;
     gain.gain.setValueAtTime(0, t);
-    gain.gain.linearRampToValueAtTime(0.15, t + 0.01);
+    gain.gain.linearRampToValueAtTime(0.10, t + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
     osc.start(t);
     osc.stop(t + 0.1);
@@ -323,8 +325,8 @@ function playRetroConnect() {
     gain.connect(c.destination);
     const t = now + i * 0.08;
     gain.gain.setValueAtTime(0, t);
-    gain.gain.linearRampToValueAtTime(0.15, t + 0.005);
-    gain.gain.setValueAtTime(0.15, t + 0.06);
+    gain.gain.linearRampToValueAtTime(0.10, t + 0.005);
+    gain.gain.setValueAtTime(0.10, t + 0.06);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
     osc.start(t);
     osc.stop(t + 0.12);
@@ -343,8 +345,8 @@ function playRetroJoin() {
   osc.connect(gain);
   gain.connect(c.destination);
   gain.gain.setValueAtTime(0, now);
-  gain.gain.linearRampToValueAtTime(0.15, now + 0.005);
-  gain.gain.setValueAtTime(0.15, now + 0.1);
+  gain.gain.linearRampToValueAtTime(0.09, now + 0.005);
+  gain.gain.setValueAtTime(0.09, now + 0.1);
   gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
   osc.start(now);
   osc.stop(now + 0.18);
@@ -362,7 +364,7 @@ function playRetroLeave() {
   osc.connect(gain);
   gain.connect(c.destination);
   gain.gain.setValueAtTime(0, now);
-  gain.gain.linearRampToValueAtTime(0.12, now + 0.005);
+  gain.gain.linearRampToValueAtTime(0.07, now + 0.005);
   gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
   osc.start(now);
   osc.stop(now + 0.2);
@@ -380,8 +382,8 @@ function playRetroMute() {
   osc.connect(gain);
   gain.connect(c.destination);
   gain.gain.setValueAtTime(0, now);
-  gain.gain.linearRampToValueAtTime(0.12, now + 0.005);
-  gain.gain.setValueAtTime(0.12, now + 0.1);
+  gain.gain.linearRampToValueAtTime(0.07, now + 0.005);
+  gain.gain.setValueAtTime(0.07, now + 0.1);
   gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
   osc.start(now);
   osc.stop(now + 0.14);
@@ -399,8 +401,8 @@ function playRetroUnmute() {
   osc.connect(gain);
   gain.connect(c.destination);
   gain.gain.setValueAtTime(0, now);
-  gain.gain.linearRampToValueAtTime(0.12, now + 0.005);
-  gain.gain.setValueAtTime(0.12, now + 0.1);
+  gain.gain.linearRampToValueAtTime(0.07, now + 0.005);
+  gain.gain.setValueAtTime(0.07, now + 0.1);
   gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
   osc.start(now);
   osc.stop(now + 0.14);
@@ -418,8 +420,8 @@ function playRetroCameraOn() {
   osc.connect(gain);
   gain.connect(c.destination);
   gain.gain.setValueAtTime(0, now);
-  gain.gain.linearRampToValueAtTime(0.12, now + 0.005);
-  gain.gain.setValueAtTime(0.12, now + 0.12);
+  gain.gain.linearRampToValueAtTime(0.06, now + 0.005);
+  gain.gain.setValueAtTime(0.06, now + 0.12);
   gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
   osc.start(now);
   osc.stop(now + 0.18);
@@ -437,8 +439,8 @@ function playRetroCameraOff() {
   osc.connect(gain);
   gain.connect(c.destination);
   gain.gain.setValueAtTime(0, now);
-  gain.gain.linearRampToValueAtTime(0.1, now + 0.005);
-  gain.gain.setValueAtTime(0.1, now + 0.12);
+  gain.gain.linearRampToValueAtTime(0.05, now + 0.005);
+  gain.gain.setValueAtTime(0.05, now + 0.12);
   gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
   osc.start(now);
   osc.stop(now + 0.18);
@@ -463,7 +465,7 @@ function playWhispersConnect() {
   filter.connect(gain);
   gain.connect(c.destination);
   gain.gain.setValueAtTime(0, now);
-  gain.gain.linearRampToValueAtTime(0.12, now + 0.1);
+  gain.gain.linearRampToValueAtTime(0.22, now + 0.1);
   gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
   osc.start(now);
   osc.stop(now + 0.4);
@@ -485,7 +487,7 @@ function playWhispersJoin() {
   filter.connect(gain);
   gain.connect(c.destination);
   gain.gain.setValueAtTime(0, now);
-  gain.gain.linearRampToValueAtTime(0.1, now + 0.02);
+  gain.gain.linearRampToValueAtTime(0.18, now + 0.02);
   gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
   osc.start(now);
   osc.stop(now + 0.2);
@@ -507,7 +509,7 @@ function playWhispersLeave() {
   filter.connect(gain);
   gain.connect(c.destination);
   gain.gain.setValueAtTime(0, now);
-  gain.gain.linearRampToValueAtTime(0.08, now + 0.02);
+  gain.gain.linearRampToValueAtTime(0.15, now + 0.02);
   gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
   osc.start(now);
   osc.stop(now + 0.2);
@@ -516,24 +518,26 @@ function playWhispersLeave() {
 function playWhispersMute() {
   const c = getCtx();
   const now = c.currentTime;
-  // Airy descending whoosh
-  const osc = c.createOscillator();
-  const gain = c.createGain();
-  const filter = c.createBiquadFilter();
-  osc.type = 'sawtooth';
-  osc.frequency.setValueAtTime(600, now);
-  osc.frequency.exponentialRampToValueAtTime(200, now + 0.12);
-  filter.type = 'bandpass';
-  filter.frequency.value = 400;
-  filter.Q.value = 3;
-  osc.connect(filter);
-  filter.connect(gain);
-  gain.connect(c.destination);
-  gain.gain.setValueAtTime(0, now);
-  gain.gain.linearRampToValueAtTime(0.08, now + 0.01);
-  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
-  osc.start(now);
-  osc.stop(now + 0.15);
+  // Short digital double-tick (distinct from leave's slow descending whoosh)
+  for (let i = 0; i < 2; i++) {
+    const osc = c.createOscillator();
+    const gain = c.createGain();
+    const filter = c.createBiquadFilter();
+    osc.type = 'sawtooth';
+    osc.frequency.value = 1100;
+    filter.type = 'bandpass';
+    filter.frequency.value = 1100;
+    filter.Q.value = 8;
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(c.destination);
+    const t = now + i * 0.07;
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(0.15, t + 0.005);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+    osc.start(t);
+    osc.stop(t + 0.04);
+  }
 }
 
 function playWhispersUnmute() {
@@ -553,7 +557,7 @@ function playWhispersUnmute() {
   filter.connect(gain);
   gain.connect(c.destination);
   gain.gain.setValueAtTime(0, now);
-  gain.gain.linearRampToValueAtTime(0.08, now + 0.01);
+  gain.gain.linearRampToValueAtTime(0.15, now + 0.01);
   gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
   osc.start(now);
   osc.stop(now + 0.15);
@@ -578,7 +582,7 @@ function playWhispersCameraOn() {
     gain.connect(c.destination);
     const t = now + i * 0.08;
     gain.gain.setValueAtTime(0, t);
-    gain.gain.linearRampToValueAtTime(0.07, t + 0.01);
+    gain.gain.linearRampToValueAtTime(0.12, t + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.13);
     osc.start(t);
     osc.stop(t + 0.13);
@@ -604,7 +608,7 @@ function playWhispersCameraOff() {
     gain.connect(c.destination);
     const t = now + i * 0.08;
     gain.gain.setValueAtTime(0, t);
-    gain.gain.linearRampToValueAtTime(0.06, t + 0.01);
+    gain.gain.linearRampToValueAtTime(0.10, t + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.13);
     osc.start(t);
     osc.stop(t + 0.13);
