@@ -99,7 +99,10 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
 
   // Global hotkeys
   const handleToggleMute = useCallback(() => {
-    room?.localParticipant.setMicrophoneEnabled(!room.localParticipant.isMicrophoneEnabled);
+    if (!room) return;
+    const willMute = room.localParticipant.isMicrophoneEnabled;
+    room.localParticipant.setMicrophoneEnabled(!willMute);
+    playSound(willMute ? 'mute' : 'unmute');
   }, [room]);
   const handleToggleDeafen = useCallback(() => {
     setDeafened(!deafened);
@@ -1261,7 +1264,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
         {connectionState === ConnectionState.Connected && room && (
           <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 flex flex-wrap items-center justify-center gap-2 md:gap-3 bg-white/80 dark:bg-zinc-800/80 backdrop-blur-xl rounded-2xl px-4 py-2.5 shadow-lg border border-zinc-200/50 dark:border-zinc-700/50">
             <button
-              onClick={() => room.localParticipant.setMicrophoneEnabled(!room.localParticipant.isMicrophoneEnabled)}
+              onClick={() => { const willMute = room.localParticipant.isMicrophoneEnabled; room.localParticipant.setMicrophoneEnabled(!willMute); playSound(willMute ? 'mute' : 'unmute'); }}
               className={`px-3 md:px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 micMuted
                   ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
@@ -1272,7 +1275,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
             </button>
 
             <button
-              onClick={() => room.localParticipant.setCameraEnabled(!isCameraOn)}
+              onClick={() => { room.localParticipant.setCameraEnabled(!isCameraOn); playSound(isCameraOn ? 'cameraOff' : 'cameraOn'); }}
               className={`px-3 md:px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 isCameraOn
                   ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'

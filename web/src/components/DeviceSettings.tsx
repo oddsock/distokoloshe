@@ -322,14 +322,22 @@ export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile 
             ))}
           </select>
           {soundPack !== 'none' && (
-            <div className="mt-1.5 flex gap-1.5">
-              {(['connect', 'join', 'leave'] as const).map((evt) => (
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {([
+                ['connect', 'Connected'],
+                ['join', 'Join'],
+                ['leave', 'Leave'],
+                ['mute', 'Mute'],
+                ['unmute', 'Unmute'],
+                ['cameraOn', 'Cam On'],
+                ['cameraOff', 'Cam Off'],
+              ] as const).map(([evt, label]) => (
                 <button
                   key={evt}
                   onClick={() => previewSound(soundPack, evt)}
                   className="px-2 py-0.5 rounded text-[10px] font-medium bg-zinc-100 dark:bg-zinc-600 text-zinc-700 dark:text-zinc-300 border border-zinc-300 dark:border-zinc-500 hover:border-indigo-500 transition-colors"
                 >
-                  {evt === 'connect' ? 'Connected' : evt === 'join' ? 'Join' : 'Leave'}
+                  {label}
                 </button>
               ))}
             </div>
