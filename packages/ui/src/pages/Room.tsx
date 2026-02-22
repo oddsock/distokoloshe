@@ -721,7 +721,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
           <button
             onClick={() => setThemeState(toggleTheme())}
             className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 text-sm"
-            title="Toggle theme"
+            data-tooltip="Toggle theme" data-tooltip-pos="below"
           >
             {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
           </button>
@@ -733,7 +733,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
             <button
               onClick={handleCreateRoom}
               className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 text-lg leading-none"
-              title="Create room"
+              data-tooltip="Create room" data-tooltip-pos="below"
             >
               +
             </button>
@@ -792,7 +792,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                                 ? 'text-red-400 md:opacity-100'
                                 : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200'
                             }`}
-                            title={memberMuted ? 'Unmute' : 'Mute'}
+                            data-tooltip={memberMuted ? 'Unmute' : 'Mute'}
                           >
                             {memberMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
                           </button>
@@ -821,7 +821,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
           <button
             onClick={onLogout}
             className="text-zinc-500 hover:text-red-400 transition-colors flex-shrink-0"
-            title="Logout"
+            data-tooltip="Logout"
           >
             <LogOut size={14} />
           </button>
@@ -1064,7 +1064,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                     <button
                       onClick={() => setSpotlight({ identity, source: altSource })}
                       className="absolute bottom-3 right-3 w-40 h-24 rounded-lg overflow-hidden border-2 border-zinc-500 hover:border-indigo-500 transition-colors shadow-lg bg-black z-10"
-                      title={`Switch to ${altSource === 'screen_share' ? 'screen share' : 'camera'}`}
+                      data-tooltip={`Switch to ${altSource === 'screen_share' ? 'screen share' : 'camera'}`}
                     >
                       <VideoTrackView
                         publication={altPub}
@@ -1126,7 +1126,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                         {localParticipant.name || localParticipant.identity} (You)
                       </span>
                       <div className="flex items-center gap-1">
-                        {deafened && <span className="text-red-400" title="Deafened"><EarOff size={14} /></span>}
+                        {deafened && <span className="text-red-400" data-tooltip="Deafened"><EarOff size={14} /></span>}
                         <span>{micMuted ? <MicOff size={14} className="text-red-400" /> : <Mic size={14} />}</span>
                       </div>
                     </div>
@@ -1230,7 +1230,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                               ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
                               : 'bg-zinc-100 dark:bg-zinc-700 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-600'
                           }`}
-                          title={userMuted ? 'Unmute (local)' : 'Mute (local)'}
+                          data-tooltip={userMuted ? 'Unmute (local)' : 'Mute (local)'}
                         >
                           {userMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
                         </button>
@@ -1268,7 +1268,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                   ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
                   : 'bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600'
               }`}
-              title={micMuted ? 'Unmute' : 'Mute'}
+              data-tooltip={micMuted ? 'Unmute' : 'Mute'}
             >
               {micMuted ? <MicOff size={18} /> : <Mic size={18} />}
             </button>
@@ -1280,7 +1280,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                   ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
                   : 'bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600'
               }`}
-              title={isCameraOn ? 'Camera Off' : 'Camera On'}
+              data-tooltip={isCameraOn ? 'Camera Off' : 'Camera On'}
             >
               {isCameraOn ? <Camera size={18} /> : <CameraOff size={18} />}
             </button>
@@ -1292,7 +1292,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                   ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
                   : 'bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600'
               }`}
-              title={deafened ? 'Undeafen' : 'Deafen'}
+              data-tooltip={deafened ? 'Undeafen' : 'Deafen'}
             >
               {deafened ? <EarOff size={18} /> : <Ear size={18} />}
             </button>
@@ -1312,7 +1312,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                     ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
                     : 'bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600'
                 }`}
-                title={isSharing ? `Stop Sharing (${shareQuality.charAt(0).toUpperCase() + shareQuality.slice(1)})` : 'Share Screen'}
+                data-tooltip={isSharing ? `Stop Sharing (${shareQuality.charAt(0).toUpperCase() + shareQuality.slice(1)})` : 'Share Screen'}
               >
                 {isSharing ? <Monitor size={18} /> : <MonitorOff size={18} />}
               </button>
@@ -1363,7 +1363,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
               <button
                 onClick={() => setShowVolumes(!showVolumes)}
                 className="p-2.5 rounded-lg bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors"
-                title="Volume controls"
+                data-tooltip="Volumes"
               >
                 <Volume2 size={18} />
               </button>
@@ -1391,7 +1391,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
               <button
                 onClick={() => setShowSettings(!showSettings)}
                 className="p-2.5 rounded-lg bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors"
-                title="Settings"
+                data-tooltip="Settings"
               >
                 <Settings size={18} />
               </button>

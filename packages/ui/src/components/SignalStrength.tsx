@@ -55,7 +55,7 @@ export function SignalStrength({ stats, serverCity, connecting }: SignalStrength
       onMouseLeave={() => setHover(false)}
     >
       {/* Bars */}
-      <div className="flex items-end gap-[2px]" title={connecting ? 'Connecting...' : tier.label}>
+      <div className="flex items-end gap-[2px]">
         {BAR_HEIGHTS.map((h, i) => (
           <div
             key={i}

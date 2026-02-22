@@ -66,7 +66,7 @@ export function ScreenShareView({ publication, participantName, compact, hasAudi
             <button
               onClick={onToggleAudioMute}
               className={`transition-colors ${audioMuted ? 'text-red-400 hover:text-red-300' : 'text-zinc-400 hover:text-white'}`}
-              title={audioMuted ? 'Unmute stream audio' : 'Mute stream audio'}
+              data-tooltip={audioMuted ? 'Unmute stream audio' : 'Mute stream audio'}
             >
               {audioMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
             </button>
@@ -75,7 +75,7 @@ export function ScreenShareView({ publication, participantName, compact, hasAudi
             <button
               onClick={handleFullscreen}
               className="text-zinc-400 hover:text-white transition-colors text-xs"
-              title="Toggle fullscreen"
+              data-tooltip="Toggle fullscreen"
             >
               {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
             </button>

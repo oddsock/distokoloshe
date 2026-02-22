@@ -2,3 +2,39 @@
 @source "../../../../packages/ui/src";
 
 @custom-variant dark (&:where(.dark, .dark *));
+
+/* Popover tooltip — usage: data-tooltip="Label" on any element
+   Optional: data-tooltip-pos="below" to show below instead of above */
+[data-tooltip] {
+  position: relative;
+}
+[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) scale(0.95);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  background: var(--color-zinc-800);
+  color: var(--color-zinc-200);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+[data-tooltip-pos="below"]::after {
+  bottom: auto;
+  top: calc(100% + 8px);
+}
+.dark [data-tooltip]::after {
+  background: var(--color-zinc-200);
+  color: var(--color-zinc-800);
+}
+[data-tooltip]:hover::after {
+  opacity: 1;
+  transform: translateX(-50%) scale(1);
+}
