@@ -721,19 +721,19 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
           <button
             onClick={() => setThemeState(toggleTheme())}
             className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 text-sm"
-            data-tooltip="Toggle theme" data-tooltip-pos="below"
+            title="Toggle theme"
           >
             {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-2">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden p-2">
           <div className="flex items-center justify-between px-2 mb-2">
             <span className="text-xs font-semibold uppercase text-zinc-500">Rooms</span>
             <button
               onClick={handleCreateRoom}
               className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 text-lg leading-none"
-              data-tooltip="Create room" data-tooltip-pos="below"
+              title="Create room"
             >
               +
             </button>
@@ -792,7 +792,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                                 ? 'text-red-400 md:opacity-100'
                                 : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200'
                             }`}
-                            data-tooltip={memberMuted ? 'Unmute' : 'Mute'}
+                            title={memberMuted ? 'Unmute' : 'Mute'}
                           >
                             {memberMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
                           </button>
@@ -821,7 +821,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
           <button
             onClick={onLogout}
             className="text-zinc-500 hover:text-red-400 transition-colors flex-shrink-0"
-            data-tooltip="Logout"
+            title="Logout"
           >
             <LogOut size={14} />
           </button>
