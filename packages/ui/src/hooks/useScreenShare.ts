@@ -6,7 +6,6 @@ import { getScreenShareCodec } from '../lib/codec';
 export type ShareQuality = 'low' | 'medium' | 'high' | 'ultra';
 
 const QUALITY_KEY = 'distokoloshe_share_quality';
-const AUDIO_KEY = 'distokoloshe_share_audio';
 
 interface QualityPreset {
   label: string;
@@ -59,9 +58,6 @@ export function useScreenShare(room: Room | null) {
     if (stored && stored in QUALITY_PRESETS) return stored as ShareQuality;
     return 'medium';
   });
-  const [shareAudio, setShareAudioState] = useState(() => {
-    return localStorage.getItem(AUDIO_KEY) === 'true';
-  });
   const tracksRef = useRef<LocalTrackPublication[]>([]);
 
   // Reset sharing state when room instance changes (e.g. room switch)
@@ -88,10 +84,6 @@ export function useScreenShare(room: Room | null) {
     localStorage.setItem(QUALITY_KEY, quality);
   }, []);
 
-  const setShareAudio = useCallback((audio: boolean) => {
-    setShareAudioState(audio);
-    localStorage.setItem(AUDIO_KEY, String(audio));
-  }, []);
 
   const startScreenShare = useCallback(async (quality?: ShareQuality) => {
     if (!room) return;
@@ -104,7 +96,7 @@ export function useScreenShare(room: Room | null) {
       await room.localParticipant.setScreenShareEnabled(true, {
         resolution: preset.resolution,
         contentHint: preset.contentHint,
-        audio: shareAudio,
+        audio: true,
       }, {
         videoCodec: codec,
         backupCodec: backup ? { codec: backup } : false,
@@ -123,7 +115,7 @@ export function useScreenShare(room: Room | null) {
       console.error('Screen share failed:', err);
       setIsSharing(false);
     }
-  }, [room, shareQuality, shareAudio, setShareQuality]);
+  }, [room, shareQuality, setShareQuality]);
 
   const stopScreenShare = useCallback(async () => {
     if (!room) return;
@@ -135,8 +127,6 @@ export function useScreenShare(room: Room | null) {
   return {
     isSharing,
     shareQuality,
-    shareAudio,
-    setShareAudio,
     startScreenShare,
     stopScreenShare,
   };

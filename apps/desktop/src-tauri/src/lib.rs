@@ -1,5 +1,4 @@
 use tauri::tray::TrayIconBuilder;
-use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -18,11 +17,6 @@ pub fn run() {
                     .icon(app.default_window_icon().unwrap().clone())
                     .tooltip("disTokoloshe")
                     .build(app)?;
-
-                // Open DevTools in release builds for debugging
-                if let Some(window) = app.get_webview_window("main") {
-                    window.open_devtools();
-                }
             }
 
             Ok(())

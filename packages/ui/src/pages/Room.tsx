@@ -16,7 +16,7 @@ import { useHotkeys } from '../hooks/useHotkeys';
 import { getRoomInitials, toggleTheme, getTheme } from '../lib/utils';
 import * as api from '../lib/api';
 import { playSound } from '../lib/sounds';
-import { Mic, MicOff, Camera, CameraOff, Bell, BellOff, Monitor, MonitorOff, Volume2, VolumeX, Settings, Sun, Moon, LogOut } from 'lucide-react';
+import { Mic, MicOff, Camera, CameraOff, Ear, EarOff, Monitor, MonitorOff, Volume2, VolumeX, Settings, Sun, Moon, LogOut } from 'lucide-react';
 
 interface RoomPageProps {
   user: api.User;
@@ -83,8 +83,6 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
   const {
     isSharing,
     shareQuality,
-    shareAudio,
-    setShareAudio,
     startScreenShare,
     stopScreenShare,
   } = useScreenShare(room);
@@ -1128,7 +1126,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                         {localParticipant.name || localParticipant.identity} (You)
                       </span>
                       <div className="flex items-center gap-1">
-                        {deafened && <span className="text-red-400" title="Deafened"><BellOff size={14} /></span>}
+                        {deafened && <span className="text-red-400" title="Deafened"><EarOff size={14} /></span>}
                         <span>{micMuted ? <MicOff size={14} className="text-red-400" /> : <Mic size={14} />}</span>
                       </div>
                     </div>
@@ -1265,36 +1263,38 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
           <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 flex flex-wrap items-center justify-center gap-2 md:gap-3 bg-white/80 dark:bg-zinc-800/80 backdrop-blur-xl rounded-2xl px-4 py-2.5 shadow-lg border border-zinc-200/50 dark:border-zinc-700/50">
             <button
               onClick={() => { const willMute = room.localParticipant.isMicrophoneEnabled; room.localParticipant.setMicrophoneEnabled(!willMute); playSound(willMute ? 'mute' : 'unmute'); }}
-              className={`px-3 md:px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`p-2.5 rounded-lg transition-colors ${
                 micMuted
                   ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
                   : 'bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600'
               }`}
+              title={micMuted ? 'Unmute' : 'Mute'}
             >
-              {micMuted ? <MicOff size={18} /> : <Mic size={18} />}<span className="hidden sm:inline ml-1">{micMuted ? 'Unmute' : 'Mute'}</span>
+              {micMuted ? <MicOff size={18} /> : <Mic size={18} />}
             </button>
 
             <button
               onClick={() => { room.localParticipant.setCameraEnabled(!isCameraOn); playSound(isCameraOn ? 'cameraOff' : 'cameraOn'); }}
-              className={`px-3 md:px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`p-2.5 rounded-lg transition-colors ${
                 isCameraOn
                   ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
                   : 'bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600'
               }`}
+              title={isCameraOn ? 'Camera Off' : 'Camera On'}
             >
-              {isCameraOn ? <Camera size={18} /> : <CameraOff size={18} />}<span className="hidden sm:inline ml-1">{isCameraOn ? 'Cam Off' : 'Cam On'}</span>
+              {isCameraOn ? <Camera size={18} /> : <CameraOff size={18} />}
             </button>
 
             <button
               onClick={handleToggleDeafen}
-              className={`px-3 md:px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`p-2.5 rounded-lg transition-colors ${
                 deafened
                   ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
                   : 'bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600'
               }`}
               title={deafened ? 'Undeafen' : 'Deafen'}
             >
-              {deafened ? <BellOff size={18} /> : <Bell size={18} />}<span className="hidden sm:inline ml-1">{deafened ? 'Deafened' : 'Deafen'}</span>
+              {deafened ? <EarOff size={18} /> : <Ear size={18} />}
             </button>
 
             {/* Screen share with quality picker — hidden on mobile */}
@@ -1307,13 +1307,14 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                     setShowQualityMenu(!showQualityMenu);
                   }
                 }}
-                className={`px-3 md:px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                className={`p-2.5 rounded-lg transition-colors ${
                   isSharing
                     ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
                     : 'bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600'
                 }`}
+                title={isSharing ? `Stop Sharing (${shareQuality.charAt(0).toUpperCase() + shareQuality.slice(1)})` : 'Share Screen'}
               >
-                {isSharing ? <Monitor size={18} /> : <MonitorOff size={18} />}<span className="hidden sm:inline ml-1">{isSharing ? `Stop (${shareQuality.charAt(0).toUpperCase() + shareQuality.slice(1)})` : 'Share'}</span>
+                {isSharing ? <Monitor size={18} /> : <MonitorOff size={18} />}
               </button>
               {showStopShareConfirm && isSharing && (
                 <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg p-3 min-w-[160px] z-50">
@@ -1354,16 +1355,6 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                       </button>
                     ),
                   )}
-                  <div className="border-t border-zinc-200 dark:border-zinc-600 mx-2 my-1" />
-                  <label className="flex items-center gap-2 px-3 py-1.5 text-sm text-zinc-700 dark:text-zinc-300 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-600" onClick={(e) => e.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      checked={shareAudio}
-                      onChange={(e) => setShareAudio(e.target.checked)}
-                      className="accent-indigo-500"
-                    />
-                    Share audio
-                  </label>
                 </div>
               )}
             </div>}
@@ -1371,10 +1362,10 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
             {!isMobile && <div className="relative">
               <button
                 onClick={() => setShowVolumes(!showVolumes)}
-                className="px-3 md:px-4 py-2 rounded-lg text-sm font-medium bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors"
+                className="p-2.5 rounded-lg bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors"
                 title="Volume controls"
               >
-                <Volume2 size={18} /><span className="hidden sm:inline ml-1">Volumes</span>
+                <Volume2 size={18} />
               </button>
               {showVolumes && (
                 <div className="absolute bottom-full mb-2 right-0 bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg py-2 px-3 min-w-[200px] z-50" onClick={(e) => e.stopPropagation()}>
@@ -1399,9 +1390,10 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
             <div className="relative">
               <button
                 onClick={() => setShowSettings(!showSettings)}
-                className="px-3 md:px-4 py-2 rounded-lg text-sm font-medium bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors"
+                className="p-2.5 rounded-lg bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors"
+                title="Settings"
               >
-                <Settings size={18} /><span className="hidden sm:inline ml-1">Settings</span>
+                <Settings size={18} />
               </button>
               {showSettings && room && (
                 <DeviceSettings room={room} hotkeyBindings={hotkeyBindings} onHotkeyChange={setHotkeyBindings} isMobile={isMobile} />
