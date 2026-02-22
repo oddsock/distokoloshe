@@ -33,10 +33,18 @@ export function ServerConfig({ onConnect }: ServerConfigProps) {
         // 401 = server exists, auth required (expected). 200 = also fine.
         onConnect(serverUrl);
       } else {
-        setError(`Server responded with ${res.status}`);
+        setError(`Server responded with HTTP ${res.status}`);
       }
-    } catch {
-      setError('Could not reach server. Check the URL and try again.');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('Server connection test failed:', msg, err);
+      if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('CORS')) {
+        setError(`Connection blocked (likely CORS). Ensure the server allows this app's origin. (${msg})`);
+      } else if (msg.includes('timeout') || msg.includes('AbortError')) {
+        setError('Connection timed out. Check the URL and your network.');
+      } else {
+        setError(`Could not reach server: ${msg}`);
+      }
     } finally {
       setTesting(false);
     }
