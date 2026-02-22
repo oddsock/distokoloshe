@@ -4,6 +4,7 @@ import { Track } from 'livekit-client';
 import type { Room } from 'livekit-client';
 import { type HotkeyBindings, formatKey } from '../hooks/useHotkeys';
 import { type SoundPack, PACK_LABELS, getStoredPack, setStoredPack, previewSound } from '../lib/sounds';
+import { Music } from 'lucide-react';
 
 interface DeviceSettingsProps {
   room: Room;
@@ -254,7 +255,7 @@ export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile 
                 : 'bg-indigo-600 text-white hover:bg-indigo-500'
             }`}
           >
-            {playingTone ? '\u266A Playing...' : '\u266A Test Speaker'}
+            <Music size={12} className="inline mr-1" />{playingTone ? 'Playing...' : 'Test Speaker'}
           </button>
         </div>
 

@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import type { Room, LocalTrackPublication, ScalabilityMode } from 'livekit-client';
+import type { Room, LocalTrackPublication, ScalabilityMode, LocalParticipant } from 'livekit-client';
+import { RoomEvent, Track } from 'livekit-client';
 import { getScreenShareCodec } from '../lib/codec';
 
 export type ShareQuality = 'low' | 'medium' | 'high' | 'ultra';
@@ -67,6 +68,19 @@ export function useScreenShare(room: Room | null) {
   useEffect(() => {
     setIsSharing(false);
     tracksRef.current = [];
+  }, [room]);
+
+  // Detect browser stop-sharing (e.g. Chrome's "Stop sharing" button)
+  useEffect(() => {
+    if (!room) return;
+    const handleUnpublished = (_pub: LocalTrackPublication, _participant: LocalParticipant) => {
+      if (_pub.source === Track.Source.ScreenShare) {
+        tracksRef.current = [];
+        setIsSharing(false);
+      }
+    };
+    room.on(RoomEvent.LocalTrackUnpublished, handleUnpublished);
+    return () => { room.off(RoomEvent.LocalTrackUnpublished, handleUnpublished); };
   }, [room]);
 
   const setShareQuality = useCallback((quality: ShareQuality) => {

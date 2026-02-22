@@ -70,8 +70,8 @@ export function useConnectionStats(room: Room | null): ConnectionStats {
           if (rttSec === null && responseCount > 0) {
             rttSec = totalRtt / responseCount;
           }
-          // Stop once we have RTT from any transport
-          if (rttSec !== null) break;
+          // Stop once we have both RTT and jitter
+          if (rttSec !== null && jitterSec !== null) break;
         }
 
         if (rttSec !== null) {

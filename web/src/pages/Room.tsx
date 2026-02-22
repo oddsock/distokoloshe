@@ -16,6 +16,7 @@ import { useHotkeys } from '../hooks/useHotkeys';
 import { getRoomInitials, toggleTheme, getTheme } from '../lib/utils';
 import * as api from '../lib/api';
 import { playSound } from '../lib/sounds';
+import { Mic, MicOff, Camera, CameraOff, Bell, BellOff, Monitor, MonitorOff, Volume2, VolumeX, Settings, Sun, Moon, LogOut } from 'lucide-react';
 
 interface RoomPageProps {
   user: api.User;
@@ -77,7 +78,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     disconnect,
   } = useLiveKitRoom();
 
-  const { attachTrack, detachTrack, setVolume, getVolume, setMuted, isMuted, deafened, setDeafened } = useAudioMixer();
+  const { attachTrack, detachTrack, setVolume, getVolume, setMuted, isMuted, setTrackMuted, isTrackMuted, deafened, setDeafened } = useAudioMixer();
   const [mutedUsers, setMutedUsers] = useState<Set<string>>(new Set());
   const {
     isSharing,
@@ -466,7 +467,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
       participant: RemoteParticipant,
     ) => {
       if (publication.kind === Track.Kind.Audio) {
-        detachTrack(participant);
+        detachTrack(participant, publication.source ?? Track.Source.Microphone);
         setAudioTrackVersion((v) => v + 1);
       }
     };
@@ -707,7 +708,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
   }, []);
 
   return (
-    <div className="min-h-screen bg-zinc-100 dark:bg-zinc-900 text-zinc-900 dark:text-white flex">
+    <div className="h-screen overflow-hidden bg-zinc-100 dark:bg-zinc-900 text-zinc-900 dark:text-white flex">
       {/* Left sidebar backdrop (mobile) */}
       {leftSidebarOpen && (
         <div className="fixed inset-0 bg-black/50 z-30 md:hidden" onClick={() => setLeftSidebarOpen(false)} />
@@ -718,10 +719,10 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
           <h2 className="text-lg font-bold">disTokoloshe</h2>
           <button
             onClick={() => setThemeState(toggleTheme())}
-            className="text-zinc-400 hover:text-zinc-200 text-sm"
+            className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 text-sm"
             title="Toggle theme"
           >
-            {theme === 'dark' ? '\u2600' : '\u263E'}
+            {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
           </button>
         </div>
 
@@ -730,7 +731,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
             <span className="text-xs font-semibold uppercase text-zinc-500">Rooms</span>
             <button
               onClick={handleCreateRoom}
-              className="text-zinc-400 hover:text-zinc-200 text-lg leading-none"
+              className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 text-lg leading-none"
               title="Create room"
             >
               +
@@ -788,11 +789,11 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                             className={`md:opacity-0 md:group-hover:opacity-100 transition-opacity text-[10px] px-1 rounded ${
                               memberMuted
                                 ? 'text-red-400 md:opacity-100'
-                                : 'text-zinc-400 hover:text-zinc-200'
+                                : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200'
                             }`}
                             title={memberMuted ? 'Unmute' : 'Mute'}
                           >
-                            {memberMuted ? '\u{1F507}' : '\u{1F50A}'}
+                            {memberMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
                           </button>
                         )}
                       </div>
@@ -818,22 +819,22 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
           <SignalStrength stats={connectionStats} serverCity={serverCity} connecting={connectionState === ConnectionState.Connecting || (connectionState === ConnectionState.Connected && connectionStats.rttMs === null)} />
           <button
             onClick={onLogout}
-            className="text-xs text-zinc-500 hover:text-red-400 transition-colors flex-shrink-0"
+            className="text-zinc-500 hover:text-red-400 transition-colors flex-shrink-0"
             title="Logout"
           >
-            Logout
+            <LogOut size={14} />
           </button>
         </div>
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 flex flex-col min-w-0">
+      <main className="flex-1 flex flex-col min-w-0 min-h-0">
         {/* Header */}
         <header className="h-14 flex items-center px-3 md:px-6 border-b border-zinc-200 dark:border-zinc-700 bg-white/50 dark:bg-zinc-800/50 shrink-0">
           {/* Left sidebar toggle — mobile only */}
           <button
             onClick={() => setLeftSidebarOpen(!leftSidebarOpen)}
-            className="mr-2 p-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 md:hidden shrink-0"
+            className="mr-2 p-1.5 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700 md:hidden shrink-0"
             title="Toggle rooms"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -881,7 +882,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
           {/* Right sidebar toggle — mobile only */}
           <button
             onClick={() => setRightSidebarOpen(!rightSidebarOpen)}
-            className="ml-2 p-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 md:hidden shrink-0"
+            className="ml-2 p-1.5 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700 md:hidden shrink-0"
             title="Toggle members"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -893,9 +894,9 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
         {/* Participant area */}
         <div className="flex-1 p-6 pb-20 overflow-y-auto">
           {error && (!error.roomId || error.roomId === currentRoom?.id) && (
-            <div className={`mb-4 p-3 bg-zinc-800 border border-amber-500/40 rounded-lg text-amber-200 text-sm flex items-center transition-opacity duration-500 ${errorFading ? 'opacity-0' : 'opacity-100 animate-[fadeIn_0.2s_ease-out]'}`}>
+            <div className={`mb-4 p-3 bg-amber-50 dark:bg-zinc-800 border border-amber-500/40 rounded-lg text-amber-700 dark:text-amber-200 text-sm flex items-center transition-opacity duration-500 ${errorFading ? 'opacity-0' : 'opacity-100 animate-[fadeIn_0.2s_ease-out]'}`}>
               <span className="flex-1">{error.msg}</span>
-              <button onClick={() => setError(null)} className="ml-2 text-amber-400 hover:text-amber-200">&times;</button>
+              <button onClick={() => setError(null)} className="ml-2 text-amber-500 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-200">&times;</button>
             </div>
           )}
 
@@ -1019,6 +1020,16 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
             const altSource = source === 'screen_share' ? 'camera' as const : 'screen_share' as const;
             const altPub = findPub(altSource);
 
+            // Check if remote participant has screen share audio
+            const hasScreenShareAudio = !isLocal && remote
+              ? Array.from(remote.trackPublications.values()).some(
+                  (pub) => pub.source === Track.Source.ScreenShareAudio && pub.isSubscribed && pub.track,
+                )
+              : false;
+            const screenShareAudioMuted = !isLocal
+              ? isTrackMuted(identity, Track.Source.ScreenShareAudio)
+              : false;
+
             if (!mainPub) return null;
             return (
               <div className="mb-4">
@@ -1035,7 +1046,13 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                 </div>
                 <div className="relative">
                   {source === 'screen_share' ? (
-                    <ScreenShareView publication={mainPub} participantName={name} />
+                    <ScreenShareView
+                      publication={mainPub}
+                      participantName={name}
+                      hasAudio={hasScreenShareAudio}
+                      audioMuted={screenShareAudioMuted}
+                      onToggleAudioMute={() => setTrackMuted(identity, Track.Source.ScreenShareAudio, !screenShareAudioMuted)}
+                    />
                   ) : (
                     <div className="bg-black rounded-xl overflow-hidden">
                       <VideoTrackView publication={mainPub} mirror={isLocal} fit="contain" className="max-h-[70vh]" />
@@ -1108,8 +1125,8 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                         {localParticipant.name || localParticipant.identity} (You)
                       </span>
                       <div className="flex items-center gap-1">
-                        {deafened && <span className="text-xs text-red-400" title="Deafened">{'\u{1F515}'}</span>}
-                        <span className="text-xs">{micMuted ? '\u{1F507}' : '\u{1F3A4}'}</span>
+                        {deafened && <span className="text-red-400" title="Deafened"><BellOff size={14} /></span>}
+                        <span>{micMuted ? <MicOff size={14} className="text-red-400" /> : <Mic size={14} />}</span>
                       </div>
                     </div>
                   </div>
@@ -1150,7 +1167,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                         <VideoTrackView publication={screenSharePub} fit="contain" />
                       ) : (
                         <div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold text-white transition-shadow ${
-                          isMyWhisperSource ? 'bg-purple-600' : 'bg-zinc-500'
+                          isMyWhisperSource ? 'bg-purple-600' : 'bg-indigo-600'
                         } ${speaking && !userMuted && !whisperDimmed ? 'shadow-[0_0_16px_rgba(96,165,250,0.6)]' : ''}`}>
                           {(p.name || p.identity).charAt(0).toUpperCase()}
                         </div>
@@ -1214,10 +1231,10 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                           }`}
                           title={userMuted ? 'Unmute (local)' : 'Mute (local)'}
                         >
-                          {userMuted ? '\u{1F507}' : '\u{1F50A}'}
+                          {userMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
                         </button>
-                        <span className="text-xs">
-                          {p.isMicrophoneEnabled ? '\u{1F3A4}' : '\u{1F507}'}
+                        <span>
+                          {p.isMicrophoneEnabled ? <Mic size={14} /> : <MicOff size={14} className="text-red-400" />}
                         </span>
                       </div>
                     </div>
@@ -1251,18 +1268,18 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                   : 'bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600'
               }`}
             >
-              {micMuted ? '\u{1F507}' : '\u{1F3A4}'}<span className="hidden sm:inline ml-1">{micMuted ? 'Unmute' : 'Mute'}</span>
+              {micMuted ? <MicOff size={18} /> : <Mic size={18} />}<span className="hidden sm:inline ml-1">{micMuted ? 'Unmute' : 'Mute'}</span>
             </button>
 
             <button
               onClick={() => room.localParticipant.setCameraEnabled(!isCameraOn)}
               className={`px-3 md:px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 isCameraOn
-                  ? 'bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600'
-                  : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-400 hover:bg-zinc-300 dark:hover:bg-zinc-600'
+                  ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
+                  : 'bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600'
               }`}
             >
-              {'\u{1F4F7}'}<span className="hidden sm:inline ml-1">{isCameraOn ? 'Cam Off' : 'Cam On'}</span>
+              {isCameraOn ? <Camera size={18} /> : <CameraOff size={18} />}<span className="hidden sm:inline ml-1">{isCameraOn ? 'Cam Off' : 'Cam On'}</span>
             </button>
 
             <button
@@ -1274,7 +1291,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
               }`}
               title={deafened ? 'Undeafen' : 'Deafen'}
             >
-              {deafened ? '\u{1F515}' : '\u{1F514}'}<span className="hidden sm:inline ml-1">{deafened ? 'Deafened' : 'Deafen'}</span>
+              {deafened ? <BellOff size={18} /> : <Bell size={18} />}<span className="hidden sm:inline ml-1">{deafened ? 'Deafened' : 'Deafen'}</span>
             </button>
 
             {/* Screen share with quality picker — hidden on mobile */}
@@ -1290,10 +1307,10 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                 className={`px-3 md:px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                   isSharing
                     ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
-                    : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-400 hover:bg-zinc-300 dark:hover:bg-zinc-600'
+                    : 'bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600'
                 }`}
               >
-                {'\u{1F5B5}'}<span className="hidden sm:inline ml-1">{isSharing ? `Stop (${shareQuality.charAt(0).toUpperCase() + shareQuality.slice(1)})` : 'Share'}</span>
+                {isSharing ? <Monitor size={18} /> : <MonitorOff size={18} />}<span className="hidden sm:inline ml-1">{isSharing ? `Stop (${shareQuality.charAt(0).toUpperCase() + shareQuality.slice(1)})` : 'Share'}</span>
               </button>
               {showStopShareConfirm && isSharing && (
                 <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg p-3 min-w-[160px] z-50">
@@ -1354,7 +1371,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                 className="px-3 md:px-4 py-2 rounded-lg text-sm font-medium bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors"
                 title="Volume controls"
               >
-                {'\u{1F50A}'}<span className="hidden sm:inline ml-1">Volumes</span>
+                <Volume2 size={18} /><span className="hidden sm:inline ml-1">Volumes</span>
               </button>
               {showVolumes && (
                 <div className="absolute bottom-full mb-2 right-0 bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg py-2 px-3 min-w-[200px] z-50" onClick={(e) => e.stopPropagation()}>
@@ -1381,7 +1398,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                 onClick={() => setShowSettings(!showSettings)}
                 className="px-3 md:px-4 py-2 rounded-lg text-sm font-medium bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors"
               >
-                {'\u2699'}<span className="hidden sm:inline ml-1">Settings</span>
+                <Settings size={18} /><span className="hidden sm:inline ml-1">Settings</span>
               </button>
               {showSettings && room && (
                 <DeviceSettings room={room} hotkeyBindings={hotkeyBindings} onHotkeyChange={setHotkeyBindings} isMobile={isMobile} />

@@ -22,6 +22,11 @@ function saveVolumes(volumes: Record<string, number>) {
   localStorage.setItem(VOLUMES_KEY, JSON.stringify(volumes));
 }
 
+/** Build composite key: `identity:source` */
+function compositeKey(identity: string, source: Track.Source): string {
+  return `${identity}:${source}`;
+}
+
 export function useAudioMixer() {
   const nodesRef = useRef<Map<string, ParticipantAudio>>(new Map());
   const [deafened, setDeafenedState] = useState(false);
@@ -33,19 +38,18 @@ export function useAudioMixer() {
 
       const track = publication.track;
       const identity = participant.identity;
+      const source = publication.source ?? Track.Source.Microphone;
+      const key = compositeKey(identity, source);
 
-      // Skip if already attached for this participant
-      if (nodesRef.current.has(identity)) return;
+      // Skip if already attached for this participant+source
+      if (nodesRef.current.has(key)) return;
 
-      // Create an <audio> element in the DOM ourselves for maximum
-      // browser autoplay compatibility. LiveKit's track.attach(el)
-      // wires the MediaStream into our element.
       const el = document.createElement('audio');
       el.autoplay = true;
       el.dataset.participant = identity;
+      el.dataset.source = source;
       document.body.appendChild(el);
 
-      // Let LiveKit set up srcObject on our element
       track.attach(el);
 
       // Apply saved per-user volume (0–1), respecting deafen state
@@ -53,33 +57,49 @@ export function useAudioMixer() {
       const volume = Math.max(0, Math.min(1, saved[identity] ?? 1.0));
       el.volume = deafenedRef.current ? 0 : volume;
 
-      // Explicitly play to ensure audio starts
       el.play().catch((err) => {
-        console.warn(`Audio play failed for ${identity}:`, err);
+        console.warn(`Audio play failed for ${key}:`, err);
       });
 
-      nodesRef.current.set(identity, { element: el, volume, muted: false });
+      nodesRef.current.set(key, { element: el, volume, muted: false });
     },
     [],
   );
 
-  const detachTrack = useCallback((participant: RemoteParticipant) => {
-    const node = nodesRef.current.get(participant.identity);
-    if (node) {
-      node.element.pause();
-      node.element.srcObject = null;
-      node.element.remove();
-      nodesRef.current.delete(participant.identity);
+  const detachTrack = useCallback((participant: RemoteParticipant, source?: Track.Source) => {
+    const identity = participant.identity;
+    if (source != null) {
+      // Detach specific source
+      const key = compositeKey(identity, source);
+      const node = nodesRef.current.get(key);
+      if (node) {
+        node.element.pause();
+        node.element.srcObject = null;
+        node.element.remove();
+        nodesRef.current.delete(key);
+      }
+    } else {
+      // Detach all sources for this identity
+      for (const [key, node] of nodesRef.current.entries()) {
+        if (key.startsWith(identity + ':')) {
+          node.element.pause();
+          node.element.srcObject = null;
+          node.element.remove();
+          nodesRef.current.delete(key);
+        }
+      }
     }
   }, []);
 
   const setVolume = useCallback((identity: string, volume: number) => {
     const clamped = Math.max(0, Math.min(1, volume));
-    const node = nodesRef.current.get(identity);
-    if (node) {
-      node.volume = clamped;
-      if (!node.muted) {
-        node.element.volume = clamped;
+    // Apply to all sources for this identity
+    for (const [key, node] of nodesRef.current.entries()) {
+      if (key.startsWith(identity + ':')) {
+        node.volume = clamped;
+        if (!node.muted) {
+          node.element.volume = clamped;
+        }
       }
     }
     const saved = loadSavedVolumes();
@@ -88,22 +108,45 @@ export function useAudioMixer() {
   }, []);
 
   const getVolume = useCallback((identity: string): number => {
-    const node = nodesRef.current.get(identity);
-    if (node) return node.volume;
+    // Check any source for this identity
+    for (const [key, node] of nodesRef.current.entries()) {
+      if (key.startsWith(identity + ':')) return node.volume;
+    }
     const saved = loadSavedVolumes();
     return Math.min(1, saved[identity] ?? 1.0);
   }, []);
 
   const setMuted = useCallback((identity: string, muted: boolean) => {
-    const node = nodesRef.current.get(identity);
+    // Mute/unmute all sources for this identity
+    for (const [key, node] of nodesRef.current.entries()) {
+      if (key.startsWith(identity + ':')) {
+        node.muted = muted;
+        node.element.volume = muted ? 0 : node.volume;
+      }
+    }
+  }, []);
+
+  const isMuted = useCallback((identity: string): boolean => {
+    for (const [key, node] of nodesRef.current.entries()) {
+      if (key.startsWith(identity + ':')) return node.muted;
+    }
+    return false;
+  }, []);
+
+  /** Mute/unmute a specific track source for a participant */
+  const setTrackMuted = useCallback((identity: string, source: Track.Source, muted: boolean) => {
+    const key = compositeKey(identity, source);
+    const node = nodesRef.current.get(key);
     if (node) {
       node.muted = muted;
       node.element.volume = muted ? 0 : node.volume;
     }
   }, []);
 
-  const isMuted = useCallback((identity: string): boolean => {
-    const node = nodesRef.current.get(identity);
+  /** Check if a specific track source is muted */
+  const isTrackMuted = useCallback((identity: string, source: Track.Source): boolean => {
+    const key = compositeKey(identity, source);
+    const node = nodesRef.current.get(key);
     return node?.muted ?? false;
   }, []);
 
@@ -127,5 +170,5 @@ export function useAudioMixer() {
     };
   }, []);
 
-  return { attachTrack, detachTrack, setVolume, getVolume, setMuted, isMuted, deafened, setDeafened };
+  return { attachTrack, detachTrack, setVolume, getVolume, setMuted, isMuted, setTrackMuted, isTrackMuted, deafened, setDeafened };
 }

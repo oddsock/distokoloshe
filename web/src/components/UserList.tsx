@@ -38,7 +38,7 @@ export function UserList({ users, currentUserId, open, onClose }: UserListProps)
       <aside className={`fixed inset-y-0 right-0 z-40 w-52 bg-white dark:bg-zinc-800 border-l border-zinc-200 dark:border-zinc-700 flex flex-col transform transition-transform duration-200 ease-in-out md:relative md:translate-x-0 md:z-auto ${open ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}`}>
         <div className="h-14 px-3 border-b border-zinc-200 dark:border-zinc-700 flex items-center justify-between shrink-0">
           <h3 className="text-xs font-semibold uppercase text-zinc-500">Members</h3>
-          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-200 md:hidden">&times;</button>
+          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 md:hidden">&times;</button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-2">
