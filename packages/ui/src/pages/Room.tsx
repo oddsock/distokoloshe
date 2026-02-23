@@ -90,7 +90,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     startScreenShare,
     stopScreenShare,
   } = useScreenShare(room);
-  const { clips, playingId, previewingId, playClip, stopPlaying, previewClip, stopPreview, uploadClip, deleteClip, onClipCreated, onClipDeleted } = useSoundboard(room);
+  const { clips, playingId, previewingId, volume: sbVolume, setVolume: setSbVolume, playClip, stopPlaying, previewClip, stopPreview, uploadClip, deleteClip, onClipCreated, onClipDeleted } = useSoundboard(room);
   const [showQualityMenu, setShowQualityMenu] = useState(false);
   const [showStopShareConfirm, setShowStopShareConfirm] = useState(false);
   const [spotlight, setSpotlight] = useState<{ identity: string; source: 'screen_share' | 'camera' } | null>(null);
@@ -1492,6 +1492,8 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                   clips={clips}
                   playingId={playingId}
                   previewingId={previewingId}
+                  volume={sbVolume}
+                  onVolumeChange={setSbVolume}
                   onPlay={playClip}
                   onStop={stopPlaying}
                   onPreview={previewClip}

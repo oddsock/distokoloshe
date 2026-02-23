@@ -9,15 +9,31 @@ interface Pipeline {
   ctx: AudioContext;
   dest: MediaStreamAudioDestinationNode;
   track: MediaStreamTrack;
+  gain: GainNode;
 }
+
+const VOLUME_KEY = 'distokoloshe_soundboard_volume';
 
 export function useSoundboard(room: LiveKitRoom | null) {
   const [clips, setClips] = useState<api.SoundboardClip[]>([]);
   const [playingId, setPlayingId] = useState<number | null>(null);
+  const [volume, setVolumeState] = useState(() => {
+    const saved = localStorage.getItem(VOLUME_KEY);
+    return saved != null ? parseFloat(saved) : 0.5;
+  });
   const audioCache = useRef<Map<number, AudioBuffer>>(new Map());
   const playLock = useRef(false);
   const pipeline = useRef<Pipeline | null>(null);
   const activeSource = useRef<AudioBufferSourceNode | null>(null);
+
+  const setVolume = useCallback((v: number) => {
+    setVolumeState(v);
+    localStorage.setItem(VOLUME_KEY, String(v));
+    // Update gain node in real-time if pipeline is active
+    if (pipeline.current && pipeline.current.ctx.state !== 'closed') {
+      pipeline.current.gain.gain.value = v;
+    }
+  }, []);
 
   // Fetch clip list on mount
   useEffect(() => {
@@ -41,14 +57,18 @@ export function useSoundboard(room: LiveKitRoom | null) {
     }
     const ctx = new AudioContext();
     const dest = ctx.createMediaStreamDestination();
+    const gain = ctx.createGain();
+    gain.gain.value = volume;
+    gain.connect(ctx.destination); // local playback (self-hear)
+    gain.connect(dest);            // LiveKit stream (remote participants)
     const track = dest.stream.getAudioTracks()[0];
     await room!.localParticipant.publishTrack(track, {
       source: Track.Source.Unknown,
       name: 'soundboard',
     });
-    pipeline.current = { ctx, dest, track };
+    pipeline.current = { ctx, dest, track, gain };
     return pipeline.current;
-  }, [room]);
+  }, [room, volume]);
 
   // Tear down the pipeline (unpublish + close)
   const teardownPipeline = useCallback(() => {
@@ -95,11 +115,10 @@ export function useSoundboard(room: LiveKitRoom | null) {
         // Get persistent pipeline (publishes track on first call)
         const p = await ensurePipeline();
 
-        // Create a source node for this clip
+        // Create a source node — route through gain for volume control
         const source = p.ctx.createBufferSource();
         source.buffer = buffer;
-        source.connect(p.ctx.destination); // local playback (self-hear)
-        source.connect(p.dest);            // LiveKit stream (remote participants)
+        source.connect(p.gain);
 
         activeSource.current = source;
 
@@ -157,9 +176,12 @@ export function useSoundboard(room: LiveKitRoom | null) {
         audioCache.current.set(clipId, buffer);
       }
       const ctx = new AudioContext();
+      const gain = ctx.createGain();
+      gain.gain.value = volume;
+      gain.connect(ctx.destination);
       const source = ctx.createBufferSource();
       source.buffer = buffer;
-      source.connect(ctx.destination);
+      source.connect(gain);
       previewRef.current = { source, ctx };
       setPreviewingId(clipId);
       source.onended = () => {
@@ -171,7 +193,7 @@ export function useSoundboard(room: LiveKitRoom | null) {
     } catch {
       setPreviewingId(null);
     }
-  }, [previewingId]);
+  }, [previewingId, volume]);
 
   const stopPreview = useCallback(() => {
     if (previewRef.current) {
@@ -221,6 +243,8 @@ export function useSoundboard(room: LiveKitRoom | null) {
     clips,
     playingId,
     previewingId,
+    volume,
+    setVolume,
     playClip,
     stopPlaying,
     previewClip,

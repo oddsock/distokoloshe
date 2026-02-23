@@ -1,11 +1,13 @@
 import { useState, useRef } from 'react';
-import { Volume2, Trash2, Plus, Loader2, Square, Play } from 'lucide-react';
+import { Volume2, Volume1, VolumeX, Trash2, Plus, Loader2, Square, Play } from 'lucide-react';
 import type { SoundboardClip } from '../lib/api';
 
 interface SoundboardProps {
   clips: SoundboardClip[];
   playingId: number | null;
   previewingId: number | null;
+  volume: number;
+  onVolumeChange: (v: number) => void;
   onPlay: (clipId: number) => void;
   onStop: () => void;
   onPreview: (clipId: number) => void;
@@ -14,7 +16,7 @@ interface SoundboardProps {
   onDelete: (clipId: number) => Promise<string | null>;
 }
 
-export function Soundboard({ clips, playingId, previewingId, onPlay, onStop, onPreview, onStopPreview, onUpload, onDelete }: SoundboardProps) {
+export function Soundboard({ clips, playingId, previewingId, volume, onVolumeChange, onPlay, onStop, onPreview, onStopPreview, onUpload, onDelete }: SoundboardProps) {
   const [showUpload, setShowUpload] = useState(false);
   const [uploadName, setUploadName] = useState('');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -50,7 +52,27 @@ export function Soundboard({ clips, playingId, previewingId, onPlay, onStop, onP
       className="absolute bottom-full mb-2 right-0 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-xl shadow-2xl p-4 w-[min(420px,calc(100vw-2rem))] z-50 max-h-[400px] flex flex-col"
       onClick={(e) => e.stopPropagation()}
     >
-      <h3 className="text-sm font-semibold text-zinc-900 dark:text-white mb-3">Soundboard</h3>
+      <div className="flex items-center gap-2 mb-3">
+        <h3 className="text-sm font-semibold text-zinc-900 dark:text-white">Soundboard</h3>
+        <div className="flex items-center gap-1.5 ml-auto">
+          <button
+            onClick={() => onVolumeChange(volume > 0 ? 0 : 0.5)}
+            className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors"
+            data-tooltip={volume === 0 ? 'Unmute' : 'Mute'}
+          >
+            {volume === 0 ? <VolumeX size={14} /> : volume < 0.5 ? <Volume1 size={14} /> : <Volume2 size={14} />}
+          </button>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={volume}
+            onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
+            className="w-20 h-1 accent-indigo-500"
+          />
+        </div>
+      </div>
 
       {/* Error banner */}
       {error && (
