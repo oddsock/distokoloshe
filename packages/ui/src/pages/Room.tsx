@@ -848,8 +848,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                         className="flex items-center gap-1.5 py-0.5 text-xs text-zinc-500 dark:text-zinc-400 group"
                       >
                         <span className={`w-1.5 h-1.5 rounded-full shrink-0 transition-colors ${
-                          memberPlayingSB ? 'bg-amber-400 shadow-[0_0_4px_rgba(251,191,36,0.8)]'
-                          : memberSpeaking && !memberMuted ? 'bg-blue-400 shadow-[0_0_4px_rgba(96,165,250,0.8)]'
+                          (memberSpeaking || memberPlayingSB) && !memberMuted ? 'bg-blue-400 shadow-[0_0_4px_rgba(96,165,250,0.8)]'
                           : 'bg-green-500'
                         }`} />
                         <span className="truncate flex-1">{m.display_name}</span>
@@ -1226,8 +1225,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                   <div
                     key={p.identity}
                     className={`group bg-white dark:bg-zinc-800 rounded-xl p-4 border border-zinc-200 dark:border-zinc-700 ring-2 transition-all ${
-                      playingSB ? 'ring-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.5)]'
-                      : speaking && !userMuted && !whisperDimmed ? 'ring-blue-400 shadow-[0_0_12px_rgba(96,165,250,0.5)]'
+                      (speaking || playingSB) && !userMuted && !whisperDimmed ? 'ring-blue-400 shadow-[0_0_12px_rgba(96,165,250,0.5)]'
                       : 'ring-transparent'
                     } ${whisperDimmed ? 'opacity-40' : ''}`}
                   >
@@ -1245,7 +1243,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                       ) : (
                         <div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold text-white transition-shadow ${
                           isMyWhisperSource ? 'bg-purple-600' : 'bg-indigo-600'
-                        } ${speaking && !userMuted && !whisperDimmed ? 'shadow-[0_0_16px_rgba(96,165,250,0.6)]' : ''}`}>
+                        } ${(speaking || playingSB) && !userMuted && !whisperDimmed ? 'shadow-[0_0_16px_rgba(96,165,250,0.6)]' : ''}`}>
                           {(p.name || p.identity).charAt(0).toUpperCase()}
                         </div>
                       )}
