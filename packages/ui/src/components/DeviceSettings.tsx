@@ -323,7 +323,7 @@ export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile 
             ))}
           </select>
           {soundPack !== 'none' && (
-            <div className="mt-2 mb-1 flex items-center gap-2">
+            <div className="mt-2 mb-3 flex items-center gap-2">
               <span className="text-[10px] text-zinc-500 dark:text-zinc-400 w-10 flex-shrink-0">Vol</span>
               <input
                 type="range"

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { TrackPublication } from 'livekit-client';
 import { Track } from 'livekit-client';
-import { Monitor, Volume2, VolumeX } from 'lucide-react';
+import { Monitor, Volume2, VolumeX, Maximize2, Minimize2 } from 'lucide-react';
 
 interface ScreenShareViewProps {
   publication: TrackPublication;
@@ -52,44 +52,55 @@ export function ScreenShareView({ publication, participantName, compact, hasAudi
   return (
     <div
       ref={containerRef}
-      className={`bg-black overflow-hidden border border-zinc-200 dark:border-zinc-700 flex flex-col ${
+      className={`group/screen bg-black overflow-hidden border border-zinc-200 dark:border-zinc-700 flex flex-col ${
         isFullscreen ? '' : 'rounded-xl'
       }`}
     >
-      <div className={`flex items-center justify-between px-3 ${compact ? 'py-1' : 'py-1.5'} bg-zinc-200 dark:bg-zinc-800 text-xs text-zinc-500 dark:text-zinc-400 shrink-0`}>
+      {/* Header — participant name */}
+      <div className={`flex items-center px-3 ${compact ? 'py-1' : 'py-1.5'} bg-zinc-200 dark:bg-zinc-800 text-xs text-zinc-500 dark:text-zinc-400 shrink-0`}>
         <div className="flex items-center gap-2">
           <Monitor size={14} />
           <span>{compact ? participantName : participantName === 'You' ? 'You are sharing your screen' : `${participantName} is sharing their screen`}</span>
         </div>
-        <div className="flex items-center gap-2">
-          {hasAudio && onToggleAudioMute && (
-            <button
-              onClick={onToggleAudioMute}
-              className={`transition-colors ${audioMuted ? 'text-red-400 hover:text-red-300' : 'text-zinc-400 hover:text-white'}`}
-              data-tooltip={audioMuted ? 'Unmute stream audio' : 'Mute stream audio'}
-            >
-              {audioMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
-            </button>
-          )}
-          {!compact && (
-            <button
-              onClick={handleFullscreen}
-              className="text-zinc-400 hover:text-white transition-colors text-xs"
-              data-tooltip="Toggle fullscreen"
-            >
-              {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
-            </button>
-          )}
-        </div>
       </div>
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        className={`w-full object-contain ${
-          isFullscreen ? 'flex-1 min-h-0' : compact ? '' : 'max-h-[70vh]'
-        }`}
-      />
+      {/* Video + overlay controls */}
+      <div className="relative">
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          className={`w-full object-contain ${
+            isFullscreen ? 'flex-1 min-h-0' : compact ? '' : 'max-h-[70vh]'
+          }`}
+        />
+        {/* Player controls — bottom-left overlay, visible on hover */}
+        {(!compact || hasAudio) && (
+          <div className="absolute bottom-2 left-2 flex items-center gap-1 opacity-0 group-hover/screen:opacity-100 transition-opacity">
+            {hasAudio && onToggleAudioMute && (
+              <button
+                onClick={onToggleAudioMute}
+                className={`p-1.5 rounded-lg transition-colors ${
+                  audioMuted
+                    ? 'bg-red-500/80 text-white hover:bg-red-500'
+                    : 'bg-black/60 text-white hover:bg-black/80'
+                }`}
+                data-tooltip={audioMuted ? 'Unmute stream audio' : 'Mute stream audio'}
+              >
+                {audioMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+              </button>
+            )}
+            {!compact && (
+              <button
+                onClick={handleFullscreen}
+                className="p-1.5 rounded-lg bg-black/60 text-white hover:bg-black/80 transition-colors"
+                data-tooltip={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+              >
+                {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
