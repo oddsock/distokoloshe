@@ -37,6 +37,15 @@ All popup panels, modals, and overlays should follow these conventions.
 - Label to control: `mb-1` or `mb-1.5`
 - Within groups: `gap-1.5`
 
+## Fullscreen / Safe-Area Positioning
+- Never use fixed pixel offsets for fullscreen controls — they break across resolutions and bezels
+- Use `env(safe-area-inset-bottom)` combined with viewport-relative units:
+  ```
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 3vh)
+  ```
+- `viewport-fit=cover` must be set on the viewport meta tag for `env()` to report values
+- Non-fullscreen overlays can use fixed offsets (e.g. `0.5rem`)
+
 ## Colors
 - Accent: `indigo-600` (primary actions), `indigo-500` (hover/active states)
 - Danger: `red-500` / `red-400`
