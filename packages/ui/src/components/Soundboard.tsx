@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { Volume2, Trash2, Plus, Loader2, Square } from 'lucide-react';
+import { Volume2, Trash2, Plus, Loader2, Square, Play } from 'lucide-react';
 import type { SoundboardClip } from '../lib/api';
 
 interface SoundboardProps {
@@ -15,7 +15,7 @@ interface SoundboardProps {
   onDelete: (clipId: number) => Promise<string | null>;
 }
 
-export function Soundboard({ clips, playingId, previewingId, userId, onPlay, onStop, onPreview, onStopPreview, onUpload, onDelete }: SoundboardProps) {
+export function Soundboard({ clips, playingId, previewingId, onPlay, onStop, onPreview, onStopPreview, onUpload, onDelete }: SoundboardProps) {
   const [showUpload, setShowUpload] = useState(false);
   const [uploadName, setUploadName] = useState('');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -72,7 +72,7 @@ export function Soundboard({ clips, playingId, previewingId, userId, onPlay, onS
               const isPreviewing = previewingId === clip.id;
               const isActive = isPlaying || isPreviewing;
               const isConfirming = confirmDelete === clip.id;
-              const isOwner = clip.uploaded_by === userId;
+              const canPlay = playingId == null || isPlaying;
 
               return (
                 <div key={clip.id} className="relative flex flex-col">
@@ -97,7 +97,7 @@ export function Soundboard({ clips, playingId, previewingId, userId, onPlay, onS
                     </div>
                   )}
 
-                  <div className={`flex items-center rounded-lg transition-colors ${
+                  <div className={`group flex items-center rounded-lg transition-colors ${
                     isActive
                       ? 'bg-indigo-500/20 ring-1 ring-indigo-500/40'
                       : 'bg-zinc-100 dark:bg-zinc-700 hover:bg-zinc-200 dark:hover:bg-zinc-600'
@@ -118,29 +118,38 @@ export function Soundboard({ clips, playingId, previewingId, userId, onPlay, onS
                     {/* Main play button (sends to room) */}
                     <button
                       onClick={() => isPlaying ? onStop() : onPlay(clip.id)}
-                      disabled={playingId != null && !isPlaying}
-                      className={`flex-1 min-w-0 py-1.5 pr-1 text-left transition-colors ${
+                      disabled={!canPlay}
+                      className={`flex-1 min-w-0 py-1.5 pr-1 text-left transition-colors relative ${
                         isPlaying
                           ? 'text-indigo-400'
-                          : playingId != null
+                          : !canPlay
                             ? 'text-zinc-400 opacity-50 cursor-not-allowed'
                             : 'text-zinc-700 dark:text-zinc-200'
                       }`}
                     >
+                      {/* Play icon overlay on hover */}
+                      {canPlay && !isPlaying && (
+                        <span className="absolute inset-0 flex items-center justify-center bg-zinc-200/80 dark:bg-zinc-600/80 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                          <Play size={16} className="text-zinc-600 dark:text-zinc-200" />
+                        </span>
+                      )}
+                      {isPlaying && (
+                        <span className="absolute inset-0 flex items-center justify-center bg-indigo-500/20 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                          <Square size={14} className="text-indigo-400" />
+                        </span>
+                      )}
                       <span className="text-[11px] font-medium block truncate leading-tight">{clip.name}</span>
                       <span className="text-[9px] italic text-zinc-400 block truncate leading-tight">{clip.uploaderName}</span>
                     </button>
 
-                    {/* Delete button (owner only) */}
-                    {isOwner && (
-                      <button
-                        onClick={() => setConfirmDelete(clip.id)}
-                        className="flex-shrink-0 p-1.5 rounded-r-lg text-zinc-400 hover:text-red-400 transition-colors"
-                        title="Delete clip"
-                      >
-                        <Trash2 size={11} />
-                      </button>
-                    )}
+                    {/* Delete button (any user) */}
+                    <button
+                      onClick={() => setConfirmDelete(clip.id)}
+                      className="flex-shrink-0 p-1.5 rounded-r-lg text-zinc-400 hover:text-red-400 transition-colors"
+                      title="Delete clip"
+                    >
+                      <Trash2 size={11} />
+                    </button>
                   </div>
                 </div>
               );
@@ -179,7 +188,7 @@ export function Soundboard({ clips, playingId, previewingId, userId, onPlay, onS
               <input
                 ref={fileRef}
                 type="file"
-                accept="audio/*"
+                accept="audio/*,.ogg,.webm"
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0];

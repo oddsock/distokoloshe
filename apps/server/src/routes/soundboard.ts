@@ -10,7 +10,12 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 15 * 1024 * 1024 }, // 15MB
   fileFilter: (_req, file, cb) => {
-    if (file.mimetype.startsWith('audio/')) {
+    // Accept audio/* plus ogg/webm containers that browsers may report as application/ or video/
+    const allowed = file.mimetype.startsWith('audio/')
+      || file.mimetype === 'application/ogg'
+      || file.mimetype === 'video/ogg'
+      || file.mimetype === 'video/webm';
+    if (allowed) {
       cb(null, true);
     } else {
       cb(new Error('Only audio files are allowed'));
@@ -113,7 +118,7 @@ router.get('/:id/audio', requireAuth, (req: Request, res: Response) => {
   res.send(clip.data);
 });
 
-// DELETE /api/soundboard/:id — delete a clip (uploader only)
+// DELETE /api/soundboard/:id — delete a clip (any authenticated user)
 router.delete('/:id', requireAuth, (req: Request, res: Response) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) {
@@ -122,16 +127,11 @@ router.delete('/:id', requireAuth, (req: Request, res: Response) => {
   }
 
   const clip = db
-    .prepare('SELECT id, uploaded_by FROM soundboard_clips WHERE id = ?')
-    .get(id) as { id: number; uploaded_by: number } | undefined;
+    .prepare('SELECT id FROM soundboard_clips WHERE id = ?')
+    .get(id) as { id: number } | undefined;
 
   if (!clip) {
     res.status(404).json({ error: 'Clip not found' });
-    return;
-  }
-
-  if (clip.uploaded_by !== req.user!.sub) {
-    res.status(403).json({ error: 'Only the uploader can delete this clip' });
     return;
   }
 

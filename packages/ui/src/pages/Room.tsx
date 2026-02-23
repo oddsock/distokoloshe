@@ -1423,7 +1423,6 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                   clips={clips}
                   playingId={playingId}
                   previewingId={previewingId}
-                  userId={user.id}
                   onPlay={playClip}
                   onStop={stopPlaying}
                   onPreview={previewClip}
