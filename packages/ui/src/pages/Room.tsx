@@ -429,10 +429,10 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
       onClipDeleted(clipId);
     },
     'soundboard:playing': (data) => {
-      const { user: sbUser, clipName } = data as { user: { username: string }; clipName: string };
+      const { user: sbUser, clipName, durationMs } = data as { user: { username: string }; clipName: string; durationMs?: number };
       setSoundboardPlaying({ username: sbUser.username, clipName });
       if (soundboardTimerRef.current) clearTimeout(soundboardTimerRef.current);
-      soundboardTimerRef.current = setTimeout(() => setSoundboardPlaying(null), 10_000);
+      soundboardTimerRef.current = setTimeout(() => setSoundboardPlaying(null), durationMs || 10_000);
     },
   }, onReconnect: handleSSEReconnect });
 

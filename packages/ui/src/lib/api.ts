@@ -279,8 +279,12 @@ export function deleteSoundboardClip(id: number) {
   return request<{ deleted: boolean }>(`/soundboard/${id}`, { method: 'DELETE' });
 }
 
-export function notifySoundboardPlay(clipId: number) {
-  return request<{ notified: boolean }>(`/soundboard/${clipId}/play`, { method: 'POST' });
+export function notifySoundboardPlay(clipId: number, durationMs: number) {
+  return request<{ notified: boolean }>(`/soundboard/${clipId}/play`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ durationMs }),
+  });
 }
 
 export async function fetchSoundboardAudio(id: number): Promise<ArrayBuffer> {

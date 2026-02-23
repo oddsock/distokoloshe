@@ -134,11 +134,14 @@ router.post('/:id/play', requireAuth, (req: Request, res: Response) => {
     return;
   }
 
+  const durationMs = typeof req.body?.durationMs === 'number' ? req.body.durationMs : 10000;
+
   const roomId = getUserRoomId(req.user!.sub);
   if (roomId != null) {
     broadcastToRoom(roomId, 'soundboard:playing', {
       user: { id: req.user!.sub, username: req.user!.username, display_name: req.user!.display_name },
       clipName: clip.name,
+      durationMs,
     });
   }
 

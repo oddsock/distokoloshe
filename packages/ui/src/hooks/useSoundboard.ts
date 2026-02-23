@@ -134,7 +134,7 @@ export function useSoundboard(room: LiveKitRoom | null) {
         source.start();
 
         // Notify room who is playing (fire-and-forget)
-        api.notifySoundboardPlay(clipId).catch(() => {});
+        api.notifySoundboardPlay(clipId, Math.round(buffer.duration * 1000)).catch(() => {});
       } catch (err) {
         console.warn('Soundboard play failed:', err);
         playLock.current = false;
