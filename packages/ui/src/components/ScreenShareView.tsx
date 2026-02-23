@@ -80,7 +80,7 @@ export function ScreenShareView({ publication, participantName, compact, hasAudi
         </div>
         {/* Player controls — bottom-left overlay, outside overflow-hidden so tooltips aren't clipped */}
         {(!compact || hasAudio || onDismiss) && (
-          <div className="absolute bottom-2 left-2 flex items-center gap-1 opacity-0 group-hover/screen:opacity-100 transition-opacity z-10">
+          <div className={`absolute left-2 flex items-center gap-1 opacity-0 group-hover/screen:opacity-100 transition-opacity z-10 ${isFullscreen ? 'bottom-6' : 'bottom-2'}`}>
             {onDismiss && (
               <button
                 onClick={onDismiss}
