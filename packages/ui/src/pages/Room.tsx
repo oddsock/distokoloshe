@@ -162,11 +162,16 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     ? whisperChain.find((e) => e.position === (myChainEntry.position - 1 + whisperChain.length) % whisperChain.length)
     : null;
 
-  // Signal intentional leave on tab close/navigation so server skips grace period
+  // Signal intentional leave on tab close/navigation so server skips grace period.
+  // beforeunload: reliable on desktop. pagehide: reliable on mobile Safari (swipe-close).
   useEffect(() => {
-    const handleUnload = () => api.sendLeaveBeacon();
-    window.addEventListener('beforeunload', handleUnload);
-    return () => window.removeEventListener('beforeunload', handleUnload);
+    const sendLeave = () => api.sendLeaveBeacon();
+    window.addEventListener('beforeunload', sendLeave);
+    window.addEventListener('pagehide', sendLeave);
+    return () => {
+      window.removeEventListener('beforeunload', sendLeave);
+      window.removeEventListener('pagehide', sendLeave);
+    };
   }, []);
 
   // Fetch server city once on mount
