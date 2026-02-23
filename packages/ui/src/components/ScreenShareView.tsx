@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { TrackPublication } from 'livekit-client';
 import { Track } from 'livekit-client';
-import { Monitor, Volume2, VolumeX, Maximize2, Minimize2 } from 'lucide-react';
+import { Monitor, Volume2, VolumeX, Maximize2, Minimize2, X } from 'lucide-react';
 
 interface ScreenShareViewProps {
   publication: TrackPublication;
@@ -10,9 +10,10 @@ interface ScreenShareViewProps {
   hasAudio?: boolean;
   audioMuted?: boolean;
   onToggleAudioMute?: () => void;
+  onDismiss?: () => void;
 }
 
-export function ScreenShareView({ publication, participantName, compact, hasAudio, audioMuted, onToggleAudioMute }: ScreenShareViewProps) {
+export function ScreenShareView({ publication, participantName, compact, hasAudio, audioMuted, onToggleAudioMute, onDismiss }: ScreenShareViewProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -78,8 +79,17 @@ export function ScreenShareView({ publication, participantName, compact, hasAudi
           />
         </div>
         {/* Player controls — bottom-left overlay, outside overflow-hidden so tooltips aren't clipped */}
-        {(!compact || hasAudio) && (
+        {(!compact || hasAudio || onDismiss) && (
           <div className="absolute bottom-2 left-2 flex items-center gap-1 opacity-0 group-hover/screen:opacity-100 transition-opacity z-10">
+            {onDismiss && (
+              <button
+                onClick={onDismiss}
+                className="p-1.5 rounded-lg bg-black/60 text-white hover:bg-black/80 transition-colors"
+                data-tooltip="Dismiss"
+              >
+                <X size={14} />
+              </button>
+            )}
             {hasAudio && onToggleAudioMute && (
               <button
                 onClick={onToggleAudioMute}

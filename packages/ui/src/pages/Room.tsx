@@ -18,7 +18,7 @@ import { useHotkeys } from '../hooks/useHotkeys';
 import { getRoomInitials, toggleTheme, getTheme } from '../lib/utils';
 import * as api from '../lib/api';
 import { playSound } from '../lib/sounds';
-import { Mic, MicOff, Camera, CameraOff, Ear, EarOff, Monitor, MonitorOff, Volume2, VolumeX, Settings, Sun, Moon, LogOut, AudioLines } from 'lucide-react';
+import { Mic, MicOff, Camera, CameraOff, Ear, EarOff, Monitor, MonitorOff, Volume2, VolumeX, Settings, Sun, Moon, LogOut, AudioLines, X } from 'lucide-react';
 
 interface RoomPageProps {
   user: api.User;
@@ -1069,18 +1069,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
             if (!mainPub) return null;
             return (
               <div className="mb-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs text-zinc-500">
-                    {name === 'You' ? 'Your' : <>{name}&apos;s</>} {source === 'screen_share' ? 'screen share' : 'camera'}
-                  </span>
-                  <button
-                    onClick={() => setSpotlight(null)}
-                    className="text-xs text-zinc-400 hover:text-zinc-200 px-2 py-0.5 rounded bg-zinc-200 dark:bg-zinc-700"
-                  >
-                    Dismiss
-                  </button>
-                </div>
-                <div className="relative">
+                <div className="relative group/spotlight">
                   {source === 'screen_share' ? (
                     <ScreenShareView
                       publication={mainPub}
@@ -1088,11 +1077,22 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                       hasAudio={hasScreenShareAudio}
                       audioMuted={screenShareAudioMuted}
                       onToggleAudioMute={() => toggleStreamAudioMute(identity)}
+                      onDismiss={() => setSpotlight(null)}
                     />
                   ) : (
                     <div className="bg-black rounded-xl overflow-hidden">
                       <VideoTrackView publication={mainPub} mirror={isLocal} fit="contain" className="max-h-[70vh]" />
                     </div>
+                  )}
+                  {/* Dismiss — bottom-left overlay (camera spotlight only; screen share has it in ScreenShareView) */}
+                  {source !== 'screen_share' && (
+                    <button
+                      onClick={() => setSpotlight(null)}
+                      className="absolute bottom-2 left-2 z-20 p-1.5 rounded-lg bg-black/60 text-white hover:bg-black/80 transition-colors opacity-0 group-hover/spotlight:opacity-100"
+                      data-tooltip="Dismiss"
+                    >
+                      <X size={14} />
+                    </button>
                   )}
                   {/* PIP of alternate source — click to swap */}
                   {altPub && (
