@@ -31,6 +31,17 @@ const clients: SSEClient[] = [];
 const MAX_CONNECTIONS_PER_USER = 3;
 const MAX_CONNECTIONS_TOTAL = 500;
 
+// Grace period: defer leave/offline broadcasts so brief SSE reconnects are invisible
+const GRACE_PERIOD_MS = 15_000;
+
+interface PendingDisconnect {
+  timer: NodeJS.Timeout;
+  roomId: number | null;
+  userId: number;
+}
+
+const pendingDisconnects = new Map<number, PendingDisconnect>();
+
 export function canAddClient(userId: number): { allowed: boolean; reason?: string } {
   if (clients.length >= MAX_CONNECTIONS_TOTAL) {
     return { allowed: false, reason: 'Server connection limit reached' };
@@ -89,18 +100,77 @@ export function getRoomMembers(): Record<number, number[]> {
   return members;
 }
 
+/**
+ * Schedule a deferred disconnect. If the user reconnects within GRACE_PERIOD_MS,
+ * cancelPendingDisconnect() restores their roomId on the new connection.
+ * If the timer expires, onExpire runs the actual leave/offline broadcasts.
+ */
+export function scheduleDisconnect(
+  userId: number,
+  roomId: number | null,
+  onExpire: () => void,
+): void {
+  // Cancel any existing pending disconnect for this user
+  cancelPendingDisconnect(userId);
+
+  const timer = setTimeout(() => {
+    pendingDisconnects.delete(userId);
+    onExpire();
+  }, GRACE_PERIOD_MS);
+
+  pendingDisconnects.set(userId, { timer, roomId, userId });
+}
+
+/**
+ * Cancel a pending disconnect for a user (they reconnected in time).
+ * Returns the preserved roomId so it can be transferred to the new connection.
+ */
+export function cancelPendingDisconnect(userId: number): { roomId: number | null } | null {
+  const pending = pendingDisconnects.get(userId);
+  if (pending) {
+    clearTimeout(pending.timer);
+    pendingDisconnects.delete(userId);
+    return { roomId: pending.roomId };
+  }
+  return null;
+}
+
 export function broadcast(event: EventType, data: unknown): void {
   const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  const dead: Response[] = [];
   for (const client of clients) {
-    client.res.write(message);
+    try {
+      if (client.res.writableEnded) {
+        dead.push(client.res);
+      } else {
+        client.res.write(message);
+      }
+    } catch {
+      dead.push(client.res);
+    }
+  }
+  for (const res of dead) {
+    removeClient(res);
   }
 }
 
 export function broadcastToRoom(roomId: number, event: EventType, data: unknown): void {
   const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  const dead: Response[] = [];
   for (const client of clients) {
     if (client.roomId === roomId) {
-      client.res.write(message);
+      try {
+        if (client.res.writableEnded) {
+          dead.push(client.res);
+        } else {
+          client.res.write(message);
+        }
+      } catch {
+        dead.push(client.res);
+      }
     }
+  }
+  for (const res of dead) {
+    removeClient(res);
   }
 }

@@ -187,8 +187,19 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     }).catch(() => setPunishmentChecked(true));
   }, []);
 
+  // Re-sync room membership when SSE reconnects after a drop
+  const handleSSEReconnect = useCallback(async () => {
+    if (currentRoom && connectionState === ConnectionState.Connected) {
+      try {
+        await api.syncRoom(currentRoom.id);
+      } catch (err) {
+        console.warn('Room sync after SSE reconnect failed:', err);
+      }
+    }
+  }, [currentRoom, connectionState]);
+
   // SSE events for real-time updates
-  useEvents({
+  useEvents({ handlers: {
     'room:created': (data) => {
       const { room: newRoom } = data as { room: api.Room };
       setRooms((prev) => {
@@ -403,7 +414,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
       const { clipId } = data as { clipId: number };
       onClipDeleted(clipId);
     },
-  });
+  }, onReconnect: handleSSEReconnect });
 
   // Close quality menu on outside click
   useEffect(() => {

@@ -3,9 +3,17 @@ import { getStoredToken, getBaseUrl } from '../lib/api';
 
 type EventHandler = (data: unknown) => void;
 
-export function useEvents(handlers: Record<string, EventHandler>) {
+interface UseEventsOptions {
+  handlers: Record<string, EventHandler>;
+  onReconnect?: () => void;
+}
+
+export function useEvents({ handlers, onReconnect }: UseEventsOptions) {
   const handlersRef = useRef(handlers);
   handlersRef.current = handlers;
+
+  const onReconnectRef = useRef(onReconnect);
+  onReconnectRef.current = onReconnect;
 
   const eventSourceRef = useRef<EventSource | null>(null);
 
@@ -19,6 +27,9 @@ export function useEvents(handlers: Record<string, EventHandler>) {
     // EventSource doesn't support custom headers, so pass token as query param
     const es = new EventSource(`${getBaseUrl()}/api/events?token=${encodeURIComponent(token)}`);
     eventSourceRef.current = es;
+
+    // Track whether this is the initial connection or a reconnect
+    let hasConnectedBefore = false;
 
     // Use a generic message handler that routes by event type.
     // SSE `event:` field becomes MessageEvent.type when using addEventListener,
@@ -44,6 +55,14 @@ export function useEvents(handlers: Record<string, EventHandler>) {
 
     // Re-sync periodically in case new handlers are added after mount
     const syncInterval = setInterval(syncListeners, 2000);
+
+    es.onopen = () => {
+      if (hasConnectedBefore) {
+        // SSE reconnected after a drop — notify caller so it can re-sync state
+        onReconnectRef.current?.();
+      }
+      hasConnectedBefore = true;
+    };
 
     es.onerror = () => {
       // EventSource auto-reconnects, no action needed

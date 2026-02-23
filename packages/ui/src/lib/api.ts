@@ -123,6 +123,10 @@ export function joinRoom(roomId: number) {
   return request<JoinRoomResponse>(`/rooms/${roomId}/join`, { method: 'POST' });
 }
 
+export function syncRoom(roomId: number) {
+  return request<{ synced: boolean }>(`/rooms/${roomId}/sync`, { method: 'POST' });
+}
+
 // Users
 export interface UserListItem {
   id: number;

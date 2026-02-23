@@ -167,6 +167,59 @@ router.post('/:id/join', requireAuth, async (req: Request, res: Response) => {
   }
 });
 
+// POST /api/rooms/:id/sync — Lightweight room re-sync (no token generation)
+// Used when SSE reconnects after a drop but the user's LiveKit connection is still alive.
+router.post('/:id/sync', requireAuth, (req: Request, res: Response) => {
+  const roomId = parseInt(req.params.id, 10);
+  if (isNaN(roomId)) {
+    res.status(400).json({ error: 'Invalid room ID' });
+    return;
+  }
+
+  const room = db.prepare('SELECT * FROM rooms WHERE id = ?').get(roomId) as RoomRow | undefined;
+  if (!room) {
+    res.status(404).json({ error: 'Room not found' });
+    return;
+  }
+
+  // Check for active punishment blocking this room
+  const activePunishment = db.prepare(
+    "SELECT * FROM punishments WHERE target_user_id = ? AND source_room_id = ? AND active = 1 AND expires_at > datetime('now')",
+  ).get(req.user!.sub, roomId);
+  if (activePunishment) {
+    res.status(403).json({ error: 'You are currently punished from this room' });
+    return;
+  }
+
+  // Re-establish room membership
+  const previousRoomId = getUserRoomId(req.user!.sub);
+  if (previousRoomId !== null && previousRoomId !== roomId) {
+    setUserRoom(req.user!.sub, null);
+    const leaveUser = db.prepare(
+      'SELECT id, username, display_name FROM users WHERE id = ?',
+    ).get(req.user!.sub) as UserRow;
+    broadcast('user:room_leave', { user: leaveUser, roomId: previousRoomId });
+  }
+
+  if (previousRoomId !== roomId) {
+    setUserRoom(req.user!.sub, roomId);
+    broadcast('user:room_join', {
+      user: { id: req.user!.sub, username: req.user!.username, display_name: req.user!.display_name },
+      roomId,
+    });
+
+    if (room.mode === 'whispers') {
+      const chain = addToChain(roomId, req.user!.sub);
+      broadcastToRoom(roomId, 'whispers:chain_updated', { roomId, chain, reason: 'user_synced' });
+    }
+  } else {
+    // Already tracked in this room — just ensure it's set
+    setUserRoom(req.user!.sub, roomId);
+  }
+
+  res.json({ synced: true });
+});
+
 // POST /api/rooms/:id/mode — Toggle room mode (any room member)
 router.post('/:id/mode', requireAuth, (req: Request, res: Response) => {
   const roomId = parseInt(req.params.id, 10);
