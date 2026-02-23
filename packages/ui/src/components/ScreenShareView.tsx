@@ -52,12 +52,14 @@ export function ScreenShareView({ publication, participantName, compact, hasAudi
   return (
     <div
       ref={containerRef}
-      className={`group/screen bg-black overflow-hidden border border-zinc-200 dark:border-zinc-700 flex flex-col ${
+      className={`group/screen bg-black border border-zinc-200 dark:border-zinc-700 flex flex-col ${
         isFullscreen ? '' : 'rounded-xl'
       }`}
     >
       {/* Header — participant name */}
-      <div className={`flex items-center px-3 ${compact ? 'py-1' : 'py-1.5'} bg-zinc-200 dark:bg-zinc-800 text-xs text-zinc-500 dark:text-zinc-400 shrink-0`}>
+      <div className={`flex items-center px-3 ${compact ? 'py-1' : 'py-1.5'} bg-zinc-200 dark:bg-zinc-800 text-xs text-zinc-500 dark:text-zinc-400 shrink-0 ${
+        isFullscreen ? '' : 'rounded-t-xl'
+      }`}>
         <div className="flex items-center gap-2">
           <Monitor size={14} />
           <span>{compact ? participantName : participantName === 'You' ? 'You are sharing your screen' : `${participantName} is sharing their screen`}</span>
@@ -65,17 +67,19 @@ export function ScreenShareView({ publication, participantName, compact, hasAudi
       </div>
       {/* Video + overlay controls */}
       <div className="relative">
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          className={`w-full object-contain ${
-            isFullscreen ? 'flex-1 min-h-0' : compact ? '' : 'max-h-[70vh]'
-          }`}
-        />
-        {/* Player controls — bottom-left overlay, visible on hover */}
+        <div className={`${isFullscreen ? '' : 'rounded-b-xl'} overflow-hidden`}>
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            className={`w-full object-contain ${
+              isFullscreen ? 'flex-1 min-h-0' : compact ? '' : 'max-h-[70vh]'
+            }`}
+          />
+        </div>
+        {/* Player controls — bottom-left overlay, outside overflow-hidden so tooltips aren't clipped */}
         {(!compact || hasAudio) && (
-          <div className="absolute bottom-2 left-2 flex items-center gap-1 opacity-0 group-hover/screen:opacity-100 transition-opacity">
+          <div className="absolute bottom-2 left-2 flex items-center gap-1 opacity-0 group-hover/screen:opacity-100 transition-opacity z-10">
             {hasAudio && onToggleAudioMute && (
               <button
                 onClick={onToggleAudioMute}
