@@ -3,7 +3,7 @@ import { useDevices } from '../hooks/useDevices';
 import { Track } from 'livekit-client';
 import type { Room } from 'livekit-client';
 import { type HotkeyBindings, formatKey } from '../hooks/useHotkeys';
-import { type SoundPack, PACK_LABELS, getStoredPack, setStoredPack, previewSound } from '../lib/sounds';
+import { type SoundPack, PACK_LABELS, getStoredPack, setStoredPack, getStoredVolume, setStoredVolume, previewSound } from '../lib/sounds';
 import { Music } from 'lucide-react';
 
 interface DeviceSettingsProps {
@@ -21,6 +21,7 @@ export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile 
   const [selectedMicId, setSelectedMicId] = useState('');
   const [selectedSpeakerId, setSelectedSpeakerId] = useState('');
   const [soundPack, setSoundPack] = useState<SoundPack>(getStoredPack);
+  const [notifVolume, setNotifVolume] = useState(() => Math.round(getStoredVolume() * 100));
   const analyserRef = useRef<{
     ctx: AudioContext;
     stream: MediaStream;
@@ -321,6 +322,24 @@ export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile 
               <option key={pack} value={pack}>{PACK_LABELS[pack]}</option>
             ))}
           </select>
+          {soundPack !== 'none' && (
+            <div className="mt-2 flex items-center gap-2">
+              <span className="text-[10px] text-zinc-500 w-10 flex-shrink-0">Vol</span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={notifVolume}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value);
+                  setNotifVolume(v);
+                  setStoredVolume(v / 100);
+                }}
+                className="flex-1 h-1 accent-indigo-500 cursor-pointer"
+              />
+              <span className="text-[10px] text-zinc-500 w-7 text-right">{notifVolume}%</span>
+            </div>
+          )}
           {soundPack !== 'none' && (
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {([
