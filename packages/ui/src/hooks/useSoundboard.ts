@@ -4,20 +4,20 @@ import * as api from '../lib/api';
 
 const MAX_DURATION_SECS = 5;
 
-interface ActivePlayback {
-  source: AudioBufferSourceNode;
+/** Persistent audio pipeline — published once, reused across clips */
+interface Pipeline {
   ctx: AudioContext;
+  dest: MediaStreamAudioDestinationNode;
   track: MediaStreamTrack;
-  cleaning: boolean;
 }
 
 export function useSoundboard(room: LiveKitRoom | null) {
   const [clips, setClips] = useState<api.SoundboardClip[]>([]);
   const [playingId, setPlayingId] = useState<number | null>(null);
   const audioCache = useRef<Map<number, AudioBuffer>>(new Map());
-  const activeSource = useRef<ActivePlayback | null>(null);
-  // Synchronous lock — prevents race conditions from rapid clicks
   const playLock = useRef(false);
+  const pipeline = useRef<Pipeline | null>(null);
+  const activeSource = useRef<AudioBufferSourceNode | null>(null);
 
   // Fetch clip list on mount
   useEffect(() => {
@@ -34,28 +34,49 @@ export function useSoundboard(room: LiveKitRoom | null) {
     audioCache.current.delete(clipId);
   }, []);
 
-  const cleanup = useCallback(async () => {
-    const active = activeSource.current;
-    if (!active || active.cleaning) return;
-    active.cleaning = true;
-    try {
-      active.source.onended = null;
-      try { active.source.stop(); } catch {}
+  // Lazily create the pipeline and publish the track once
+  const ensurePipeline = useCallback(async (): Promise<Pipeline> => {
+    if (pipeline.current && pipeline.current.ctx.state !== 'closed') {
+      return pipeline.current;
+    }
+    const ctx = new AudioContext();
+    const dest = ctx.createMediaStreamDestination();
+    const track = dest.stream.getAudioTracks()[0];
+    await room!.localParticipant.publishTrack(track, {
+      source: Track.Source.Unknown,
+      name: 'soundboard',
+    });
+    pipeline.current = { ctx, dest, track };
+    return pipeline.current;
+  }, [room]);
+
+  // Tear down the pipeline (unpublish + close)
+  const teardownPipeline = useCallback(() => {
+    if (activeSource.current) {
+      activeSource.current.onended = null;
+      try { activeSource.current.stop(); } catch {}
+      activeSource.current = null;
+    }
+    if (pipeline.current) {
       if (room) {
-        try { await room.localParticipant.unpublishTrack(active.track); } catch {}
+        try { room.localParticipant.unpublishTrack(pipeline.current.track); } catch {}
       }
-      active.track.stop();
-      await active.ctx.close();
-    } catch {}
-    activeSource.current = null;
+      pipeline.current.track.stop();
+      try { pipeline.current.ctx.close(); } catch {}
+      pipeline.current = null;
+    }
     playLock.current = false;
     setPlayingId(null);
   }, [room]);
 
+  // Tear down when room changes or unmounts
+  useEffect(() => {
+    return () => { teardownPipeline(); };
+  }, [teardownPipeline]);
+
   const playClip = useCallback(
     async (clipId: number) => {
       if (!room) return;
-      // Synchronous ref check prevents concurrent plays
       if (playLock.current) return;
       playLock.current = true;
       setPlayingId(clipId);
@@ -65,46 +86,48 @@ export function useSoundboard(room: LiveKitRoom | null) {
         let buffer = audioCache.current.get(clipId);
         if (!buffer) {
           const data = await api.fetchSoundboardAudio(clipId);
-          const ctx = new AudioContext();
-          buffer = await ctx.decodeAudioData(data);
-          await ctx.close();
+          const tempCtx = new AudioContext();
+          buffer = await tempCtx.decodeAudioData(data);
+          await tempCtx.close();
           audioCache.current.set(clipId, buffer);
         }
 
-        // Create audio pipeline: buffer → local speakers + LiveKit stream
-        const ctx = new AudioContext({ sampleRate: buffer.sampleRate });
-        const dest = ctx.createMediaStreamDestination();
-        const source = ctx.createBufferSource();
+        // Get persistent pipeline (publishes track on first call)
+        const p = await ensurePipeline();
+
+        // Create a source node for this clip
+        const source = p.ctx.createBufferSource();
         source.buffer = buffer;
-        // Connect to both: local output (self-hear) and stream destination (LiveKit)
-        source.connect(ctx.destination);
-        source.connect(dest);
+        source.connect(p.ctx.destination); // local playback (self-hear)
+        source.connect(p.dest);            // LiveKit stream (remote participants)
+
+        activeSource.current = source;
+
+        source.onended = () => {
+          activeSource.current = null;
+          playLock.current = false;
+          setPlayingId(null);
+        };
+
         source.start();
-
-        // Publish the destination track to LiveKit
-        const track = dest.stream.getAudioTracks()[0];
-        activeSource.current = { source, ctx, track, cleaning: false };
-
-        await room.localParticipant.publishTrack(track, {
-          source: Track.Source.Unknown,
-          name: 'soundboard',
-        });
-
-        // Auto-cleanup when clip finishes
-        source.onended = () => { cleanup(); };
       } catch (err) {
         console.warn('Soundboard play failed:', err);
-        activeSource.current = null;
         playLock.current = false;
         setPlayingId(null);
       }
     },
-    [room, cleanup],
+    [room, ensurePipeline],
   );
 
-  const stopPlaying = useCallback(async () => {
-    await cleanup();
-  }, [cleanup]);
+  const stopPlaying = useCallback(() => {
+    if (activeSource.current) {
+      activeSource.current.onended = null;
+      try { activeSource.current.stop(); } catch {}
+      activeSource.current = null;
+    }
+    playLock.current = false;
+    setPlayingId(null);
+  }, []);
 
   const uploadClip = useCallback(
     async (name: string, file: File): Promise<string | null> => {
@@ -138,19 +161,6 @@ export function useSoundboard(room: LiveKitRoom | null) {
     } catch (err) {
       return err instanceof api.ApiError ? err.message : 'Delete failed';
     }
-  }, []);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      const active = activeSource.current;
-      if (active) {
-        active.source.onended = null;
-        try { active.source.stop(); } catch {}
-        active.track.stop();
-        active.ctx.close();
-      }
-    };
   }, []);
 
   return {

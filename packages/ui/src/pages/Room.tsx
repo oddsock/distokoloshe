@@ -1410,7 +1410,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
               )}
             </div>}
 
-            {!isMobile && <div className="relative">
+            <div className="relative">
               <button
                 onClick={() => setShowSoundboard(!showSoundboard)}
                 className="p-2.5 rounded-lg bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors"
@@ -1430,7 +1430,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                   onDelete={deleteClip}
                 />
               )}
-            </div>}
+            </div>
 
             <div className="relative">
               <button
