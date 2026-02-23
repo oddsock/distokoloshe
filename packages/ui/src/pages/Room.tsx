@@ -91,6 +91,8 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     stopScreenShare,
   } = useScreenShare(room);
   const { clips, playingId, previewingId, volume: sbVolume, setVolume: setSbVolume, playClip, stopPlaying, previewClip, stopPreview, uploadClip, deleteClip, onClipCreated, onClipDeleted } = useSoundboard(room);
+  const [soundboardPlaying, setSoundboardPlaying] = useState<{ username: string; clipName: string } | null>(null);
+  const soundboardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showQualityMenu, setShowQualityMenu] = useState(false);
   const [showStopShareConfirm, setShowStopShareConfirm] = useState(false);
   const [spotlight, setSpotlight] = useState<{ identity: string; source: 'screen_share' | 'camera' } | null>(null);
@@ -425,6 +427,12 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     'soundboard:deleted': (data) => {
       const { clipId } = data as { clipId: number };
       onClipDeleted(clipId);
+    },
+    'soundboard:playing': (data) => {
+      const { user: sbUser, clipName } = data as { user: { username: string }; clipName: string };
+      setSoundboardPlaying({ username: sbUser.username, clipName });
+      if (soundboardTimerRef.current) clearTimeout(soundboardTimerRef.current);
+      soundboardTimerRef.current = setTimeout(() => setSoundboardPlaying(null), 10_000);
     },
   }, onReconnect: handleSSEReconnect });
 
@@ -832,6 +840,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                   {roomMembers[r.id].map((m) => {
                     const memberSpeaking = activeSpeakers.includes(m.username);
                     const memberMuted = mutedUsers.has(m.username);
+                    const memberPlayingSB = soundboardPlaying?.username === m.username;
                     const isMe = m.id === user.id;
                     return (
                       <div
@@ -839,7 +848,9 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                         className="flex items-center gap-1.5 py-0.5 text-xs text-zinc-500 dark:text-zinc-400 group"
                       >
                         <span className={`w-1.5 h-1.5 rounded-full shrink-0 transition-colors ${
-                          memberSpeaking && !memberMuted ? 'bg-blue-400 shadow-[0_0_4px_rgba(96,165,250,0.8)]' : 'bg-green-500'
+                          memberPlayingSB ? 'bg-amber-400 shadow-[0_0_4px_rgba(251,191,36,0.8)]'
+                          : memberSpeaking && !memberMuted ? 'bg-blue-400 shadow-[0_0_4px_rgba(96,165,250,0.8)]'
+                          : 'bg-green-500'
                         }`} />
                         <span className="truncate flex-1">{m.display_name}</span>
                         {!isMe && (
@@ -1196,6 +1207,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
               {remoteParticipants.map((p) => {
                 const userMuted = mutedUsers.has(p.identity);
                 const speaking = activeSpeakers.includes(p.identity);
+                const playingSB = soundboardPlaying?.username === p.identity;
                 const memberEntry = currentRoom ? roomMembers[currentRoom.id]?.find((m) => m.username === p.identity) : null;
                 const isMyWhisperSource = whisperSource?.username === p.identity;
                 const whisperDimmed = isWhispersMode && !isMyWhisperSource;
@@ -1214,7 +1226,9 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                   <div
                     key={p.identity}
                     className={`group bg-white dark:bg-zinc-800 rounded-xl p-4 border border-zinc-200 dark:border-zinc-700 ring-2 transition-all ${
-                      speaking && !userMuted && !whisperDimmed ? 'ring-blue-400 shadow-[0_0_12px_rgba(96,165,250,0.5)]' : 'ring-transparent'
+                      playingSB ? 'ring-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.5)]'
+                      : speaking && !userMuted && !whisperDimmed ? 'ring-blue-400 shadow-[0_0_12px_rgba(96,165,250,0.5)]'
+                      : 'ring-transparent'
                     } ${whisperDimmed ? 'opacity-40' : ''}`}
                   >
                     {/* Main video area: camera > screen share > avatar */}
@@ -1283,9 +1297,16 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                       </div>
                     )}
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium truncate">
-                        {p.name || p.identity}
-                      </span>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-sm font-medium truncate">
+                          {p.name || p.identity}
+                        </span>
+                        {playingSB && (
+                          <span className="text-[10px] text-amber-500 dark:text-amber-400 truncate shrink-0">
+                            🔊 {soundboardPlaying.clipName}
+                          </span>
+                        )}
+                      </div>
                       <div className="flex items-center gap-1.5">
                         {!activeVote && !currentRoom?.is_jail && memberEntry && (
                           <div className="relative">

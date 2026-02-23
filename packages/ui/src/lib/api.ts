@@ -279,6 +279,10 @@ export function deleteSoundboardClip(id: number) {
   return request<{ deleted: boolean }>(`/soundboard/${id}`, { method: 'DELETE' });
 }
 
+export function notifySoundboardPlay(clipId: number) {
+  return request<{ notified: boolean }>(`/soundboard/${clipId}/play`, { method: 'POST' });
+}
+
 export async function fetchSoundboardAudio(id: number): Promise<ArrayBuffer> {
   const token = getStoredToken();
   const headers: Record<string, string> = {};

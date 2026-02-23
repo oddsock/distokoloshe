@@ -29,9 +29,12 @@ export function useSoundboard(room: LiveKitRoom | null) {
   const setVolume = useCallback((v: number) => {
     setVolumeState(v);
     localStorage.setItem(VOLUME_KEY, String(v));
-    // Update gain node in real-time if pipeline is active
+    // Update gain nodes in real-time for both pipeline (room play) and preview
     if (pipeline.current && pipeline.current.ctx.state !== 'closed') {
       pipeline.current.gain.gain.value = v;
+    }
+    if (previewRef.current && previewRef.current.ctx.state !== 'closed') {
+      previewRef.current.gain.gain.value = v;
     }
   }, []);
 
@@ -129,6 +132,9 @@ export function useSoundboard(room: LiveKitRoom | null) {
         };
 
         source.start();
+
+        // Notify room who is playing (fire-and-forget)
+        api.notifySoundboardPlay(clipId).catch(() => {});
       } catch (err) {
         console.warn('Soundboard play failed:', err);
         playLock.current = false;
@@ -149,7 +155,7 @@ export function useSoundboard(room: LiveKitRoom | null) {
   }, []);
 
   // Local-only preview (not sent to LiveKit)
-  const previewRef = useRef<{ source: AudioBufferSourceNode; ctx: AudioContext } | null>(null);
+  const previewRef = useRef<{ source: AudioBufferSourceNode; ctx: AudioContext; gain: GainNode } | null>(null);
   const [previewingId, setPreviewingId] = useState<number | null>(null);
 
   const previewClip = useCallback(async (clipId: number) => {
@@ -182,7 +188,7 @@ export function useSoundboard(room: LiveKitRoom | null) {
       const source = ctx.createBufferSource();
       source.buffer = buffer;
       source.connect(gain);
-      previewRef.current = { source, ctx };
+      previewRef.current = { source, ctx, gain };
       setPreviewingId(clipId);
       source.onended = () => {
         previewRef.current = null;

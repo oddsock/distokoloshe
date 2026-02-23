@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import { requireAuth } from '../middleware/auth.js';
 import db from '../db.js';
-import { broadcast } from '../events.js';
+import { broadcast, broadcastToRoom, getUserRoomId } from '../events.js';
 
 const router = Router();
 
@@ -116,6 +116,33 @@ router.get('/:id/audio', requireAuth, (req: Request, res: Response) => {
   res.set('Content-Length', String(clip.data.length));
   res.set('Cache-Control', 'public, max-age=86400');
   res.send(clip.data);
+});
+
+// POST /api/soundboard/:id/play — notify room that a user is playing a clip
+router.post('/:id/play', requireAuth, (req: Request, res: Response) => {
+  const clipId = parseInt(req.params.id, 10);
+  if (isNaN(clipId)) {
+    res.status(400).json({ error: 'Invalid clip ID' });
+    return;
+  }
+
+  const clip = db
+    .prepare('SELECT id, name FROM soundboard_clips WHERE id = ?')
+    .get(clipId) as { id: number; name: string } | undefined;
+  if (!clip) {
+    res.status(404).json({ error: 'Clip not found' });
+    return;
+  }
+
+  const roomId = getUserRoomId(req.user!.sub);
+  if (roomId != null) {
+    broadcastToRoom(roomId, 'soundboard:playing', {
+      user: { id: req.user!.sub, username: req.user!.username, display_name: req.user!.display_name },
+      clipName: clip.name,
+    });
+  }
+
+  res.json({ notified: true });
 });
 
 // DELETE /api/soundboard/:id — delete a clip (any authenticated user)
