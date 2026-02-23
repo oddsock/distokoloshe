@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { Room as LiveKitRoom, Track } from 'livekit-client';
 import * as api from '../lib/api';
 
-const MAX_DURATION_SECS = 5;
+const MAX_DURATION_SECS = 10;
 
 /** Persistent audio pipeline — published once, reused across clips */
 interface Pipeline {
