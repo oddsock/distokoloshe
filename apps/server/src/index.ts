@@ -18,6 +18,7 @@ import userRoutes from './routes/users.js';
 import eventRoutes from './routes/events.js';
 import voteRoutes from './routes/votes.js';
 import punishmentRoutes from './routes/punishments.js';
+import soundboardRoutes from './routes/soundboard.js';
 
 const app = express();
 
@@ -47,6 +48,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/events', eventRoutes);
 app.use('/api/votes', voteRoutes);
 app.use('/api/punishments', punishmentRoutes);
+app.use('/api/soundboard', soundboardRoutes);
 
 // Restore active vote/punishment timers from DB (handles API restarts)
 restoreTimers();

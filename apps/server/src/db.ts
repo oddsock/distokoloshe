@@ -96,6 +96,19 @@ try { db.exec("ALTER TABLE rooms ADD COLUMN mode TEXT DEFAULT 'normal'"); } catc
 try { db.exec('ALTER TABLE rooms ADD COLUMN is_jail INTEGER NOT NULL DEFAULT 0'); } catch {}
 try { db.exec('ALTER TABLE rooms ADD COLUMN jail_source_room_id INTEGER REFERENCES rooms(id)'); } catch {}
 
+// Soundboard clips table
+db.exec(`
+  CREATE TABLE IF NOT EXISTS soundboard_clips (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    data BLOB NOT NULL,
+    mime_type TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    uploaded_by INTEGER NOT NULL REFERENCES users(id),
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+`);
+
 // Seed a default "General" room if no rooms exist
 const roomCount = db.prepare('SELECT COUNT(*) as count FROM rooms').get() as { count: number };
 if (roomCount.count === 0) {

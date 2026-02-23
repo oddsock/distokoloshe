@@ -224,3 +224,59 @@ export interface ChainEntry {
 export function getRoomChain(roomId: number) {
   return request<{ chain: ChainEntry[] }>(`/rooms/${roomId}/chain`);
 }
+
+// Soundboard
+export interface SoundboardClip {
+  id: number;
+  name: string;
+  mime_type: string;
+  size: number;
+  uploaded_by: number;
+  uploaderName: string;
+  created_at: string;
+}
+
+export function listSoundboardClips() {
+  return request<{ clips: SoundboardClip[] }>('/soundboard');
+}
+
+export async function uploadSoundboardClip(name: string, file: File): Promise<{ clip: SoundboardClip }> {
+  const token = getStoredToken();
+  const form = new FormData();
+  form.append('name', name);
+  form.append('file', file);
+
+  const headers: Record<string, string> = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const res = await fetch(`${baseUrl}/api/soundboard`, {
+    method: 'POST',
+    headers,
+    body: form,
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: 'Upload failed' }));
+    throw new ApiError(res.status, body.error || 'Upload failed');
+  }
+
+  return res.json();
+}
+
+export function deleteSoundboardClip(id: number) {
+  return request<{ deleted: boolean }>(`/soundboard/${id}`, { method: 'DELETE' });
+}
+
+export async function fetchSoundboardAudio(id: number): Promise<ArrayBuffer> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const res = await fetch(`${baseUrl}/api/soundboard/${id}/audio`, { headers });
+
+  if (!res.ok) {
+    throw new ApiError(res.status, 'Failed to fetch audio');
+  }
+
+  return res.arrayBuffer();
+}

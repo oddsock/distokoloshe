@@ -16,7 +16,9 @@ export type EventType =
   | 'punishment:lifted'
   | 'whispers:activated'
   | 'whispers:deactivated'
-  | 'whispers:chain_updated';
+  | 'whispers:chain_updated'
+  | 'soundboard:created'
+  | 'soundboard:deleted';
 
 interface SSEClient {
   userId: number;
