@@ -129,6 +129,60 @@ export function useSoundboard(room: LiveKitRoom | null) {
     setPlayingId(null);
   }, []);
 
+  // Local-only preview (not sent to LiveKit)
+  const previewRef = useRef<{ source: AudioBufferSourceNode; ctx: AudioContext } | null>(null);
+  const [previewingId, setPreviewingId] = useState<number | null>(null);
+
+  const previewClip = useCallback(async (clipId: number) => {
+    // Stop any existing preview
+    if (previewRef.current) {
+      previewRef.current.source.onended = null;
+      try { previewRef.current.source.stop(); } catch {}
+      try { previewRef.current.ctx.close(); } catch {}
+      previewRef.current = null;
+    }
+    // Toggle off if same clip
+    if (previewingId === clipId) {
+      setPreviewingId(null);
+      return;
+    }
+
+    try {
+      let buffer = audioCache.current.get(clipId);
+      if (!buffer) {
+        const data = await api.fetchSoundboardAudio(clipId);
+        const tempCtx = new AudioContext();
+        buffer = await tempCtx.decodeAudioData(data);
+        await tempCtx.close();
+        audioCache.current.set(clipId, buffer);
+      }
+      const ctx = new AudioContext();
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      previewRef.current = { source, ctx };
+      setPreviewingId(clipId);
+      source.onended = () => {
+        previewRef.current = null;
+        setPreviewingId(null);
+        ctx.close();
+      };
+      source.start();
+    } catch {
+      setPreviewingId(null);
+    }
+  }, [previewingId]);
+
+  const stopPreview = useCallback(() => {
+    if (previewRef.current) {
+      previewRef.current.source.onended = null;
+      try { previewRef.current.source.stop(); } catch {}
+      try { previewRef.current.ctx.close(); } catch {}
+      previewRef.current = null;
+    }
+    setPreviewingId(null);
+  }, []);
+
   const uploadClip = useCallback(
     async (name: string, file: File): Promise<string | null> => {
       // Client-side duration check
@@ -166,8 +220,11 @@ export function useSoundboard(room: LiveKitRoom | null) {
   return {
     clips,
     playingId,
+    previewingId,
     playClip,
     stopPlaying,
+    previewClip,
+    stopPreview,
     uploadClip,
     deleteClip,
     onClipCreated,
