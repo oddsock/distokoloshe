@@ -208,7 +208,7 @@ router.post('/:id/mode', requireAuth, (req: Request, res: Response) => {
     if (memberIds.length < 2) {
       // Need at least 2 people for whispers
       db.prepare("UPDATE rooms SET mode = 'normal' WHERE id = ?").run(roomId);
-      res.status(400).json({ error: 'Need at least 2 participants for Chinese Whispers' });
+      res.status(400).json({ error: 'Need at least 2 participants for Whispers' });
       return;
     }
 

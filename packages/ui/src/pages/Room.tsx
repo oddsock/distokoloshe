@@ -870,7 +870,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                       ? 'bg-purple-500/20 text-purple-400 hover:bg-purple-500/30'
                       : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-500 hover:bg-zinc-300 dark:hover:bg-zinc-600'
                   }`}
-                  title={isWhispersMode ? 'Disable Chinese Whispers' : 'Enable Chinese Whispers'}
+                  title={isWhispersMode ? 'Disable Whispers' : 'Enable Whispers'}
                 >
                   {isWhispersMode ? 'Disable Whispers' : 'Enable Whispers'}
                 </button>

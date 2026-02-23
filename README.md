@@ -145,11 +145,16 @@ The SQLite database in `data/api/` persists across rebuilds.
 
 ## Features
 
-- **Voice & video rooms** — Auto-joins your last room on login
-- **Screen sharing** — Quality picker (720p/1080p/1080p60/native), AV1 and VP9 codec support, optional audio capture
-- **End-to-end encryption** — AES-GCM via LiveKit's E2EE (where browser supports `RTCRtpSender.prototype.transform`)
-- **Per-user volume control** — Individual volume sliders (0-200%) with persistent settings
-- **Real-time presence** — SSE-based online/offline status and room membership display
+- **Voice & video rooms** — Create voice or video rooms. Auto-joins your last room on login
+- **Screen sharing** — Quality picker (720p/1080p/1080p60/native), browser-aware codec selection (AV1 on Firefox, VP9 on Chromium, VP8/H.264 on Safari), optional audio capture
+- **End-to-end encryption** — AES-GCM via LiveKit Encoded Transforms with per-room HMAC-SHA256 key derivation. Graceful fallback to unencrypted on unsupported browsers (Safari)
+- **Per-user volume control** — Individual volume sliders (0-200%) with persistent settings per participant
+- **Democratic moderation** — Vote to jail disruptive users. 30-second voting window, quorum of 3, simple majority. Passed votes auto-create a timed jail room and kick the target from LiveKit. Room creator can lift punishments early
+- **Whispers mode** — Room mode that shuffles participants into a random chain (Fisher-Yates). Chain updates live as users join/leave
+- **Sound notifications** — 4 synthesized sound packs (Mystical Chimes, Mischievous Pops, Retro Arcade, Digital Whispers) with 8 events each. All generated via Web Audio API oscillators — no audio files
+- **Real-time presence** — SSE-based online/offline status, room membership, vote/punishment/whispers events (13 event types)
+- **Connection quality** — Live signal strength indicator with RTT (round-trip time) and jitter stats, server region display
+- **Desktop client** — Tauri v2 app (Windows/Linux/macOS) sharing UI code with web via `@distokoloshe/ui`. Configurable server URL, window state persistence across restarts
 - **Light/dark theme** — Toggle with persistent preference
 - **Device selection** — Choose microphone, speaker, and camera from settings
 
@@ -166,7 +171,7 @@ The SQLite database in `data/api/` persists across rebuilds.
 │   │   └── src/             # Web-specific entry (App.tsx, main.tsx)
 │   ├── desktop/             # Tauri v2 desktop client
 │   │   ├── src/             # Desktop entry (App.tsx, ServerConfig.tsx)
-│   │   └── src-tauri/       # Rust shell (tray, global shortcuts, window state)
+│   │   └── src-tauri/       # Rust shell (global shortcuts, window state)
 │   └── server/              # Node.js/Express API (JWT + SQLite)
 │       └── src/
 │           ├── routes/      # auth, rooms, users, events (SSE)
@@ -191,18 +196,20 @@ The SQLite database in `data/api/` persists across rebuilds.
 ## Planned Features
 
 - **Music bot** — A LiveKit participant that streams internet radio (SomaFM) into a room with queue support and station switching. Blocked by a LiveKit server-side SDK bug where `wait_pc_connection` times out before the peer connection is established — reproduced in both `@livekit/rtc-node` and the Python `livekit` SDK (same underlying `livekit-ffi` Rust FFI). Archived at `archive/music-room` tag. Will revisit when LiveKit fixes the FFI peer connection handshake.
-- **Desktop: global push-to-talk** — Register a system-wide hotkey via `tauri-plugin-global-shortcut` (scaffolded, not yet wired to mute toggle).
-- **Desktop: system tray menu** — Tray icon is present; context menu with mute/deafen/quit not yet implemented.
+- **Desktop: global push-to-talk** — Register a system-wide hotkey via `tauri-plugin-global-shortcut` (plugin loaded, not yet wired to mute toggle).
+- **Desktop: system tray menu** — Context menu with mute/deafen/quit actions.
 - **Desktop: auto-updater** — `tauri-plugin-updater` with GitHub Releases endpoint for seamless updates.
 
 ## Security
 
-- **Auth** — bcrypt password hashing, JWT with 7-day expiry, rate-limited login (20/15min) and registration (5/hour)
-- **E2EE** — AES-GCM end-to-end encryption via LiveKit Encoded Transforms (separate `E2EE_SECRET` from `JWT_SECRET`)
+- **Auth** — bcrypt password hashing (12 rounds), JWT with 7-day expiry (HS256), rate-limited login (20/15min) and registration (5/hour per IP)
+- **E2EE** — AES-GCM end-to-end encryption via LiveKit Encoded Transforms. Per-room key derivation using HMAC-SHA256 with a dedicated `E2EE_SECRET` (separate from `JWT_SECRET`)
 - **TLS** — TLS 1.2/1.3 only, HSTS with 2-year max-age, OCSP stapling, HTTP/3 (QUIC)
-- **Headers** — CSP, X-Frame-Options DENY, Permissions-Policy (camera/mic/screenshare self-only)
-- **API** — CORS locked down (`origin: false`), 16KB body limit, input validation, room ownership for deletion
-- **SSE** — Per-user connection cap (3) and global cap (500)
+- **Headers** — CSP (frame-ancestors 'none', strict script/connect/media sources), X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy strict-origin-when-cross-origin, Permissions-Policy (camera/mic/display-capture self-only)
+- **API** — CORS disabled at Express level (`origin: false`), nginx whitelists only Tauri desktop origins. 16KB body limit, parameterized SQL queries (no injection), input validation with regex/whitelist on all user inputs
+- **Database** — SQLite with WAL mode, foreign key constraints enabled
+- **SSE** — Per-user connection cap (3) and global cap (500), 30s keepalive ping
+- **Desktop** — Tauri CSP restricts connect-src, media-src, script-src. WASM eval allowed only for livekit-client
 
 ## License
 
