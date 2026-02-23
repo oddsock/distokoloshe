@@ -127,6 +127,14 @@ export function syncRoom(roomId: number) {
   return request<{ synced: boolean }>(`/rooms/${roomId}/sync`, { method: 'POST' });
 }
 
+/** Fire-and-forget leave signal (used on beforeunload via sendBeacon) */
+export function sendLeaveBeacon(): void {
+  const token = getStoredToken();
+  if (!token) return;
+  const url = `${getBaseUrl()}/api/events/leave?token=${encodeURIComponent(token)}`;
+  navigator.sendBeacon(url);
+}
+
 // Users
 export interface UserListItem {
   id: number;

@@ -162,6 +162,13 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     ? whisperChain.find((e) => e.position === (myChainEntry.position - 1 + whisperChain.length) % whisperChain.length)
     : null;
 
+  // Signal intentional leave on tab close/navigation so server skips grace period
+  useEffect(() => {
+    const handleUnload = () => api.sendLeaveBeacon();
+    window.addEventListener('beforeunload', handleUnload);
+    return () => window.removeEventListener('beforeunload', handleUnload);
+  }, []);
+
   // Fetch server city once on mount
   useEffect(() => {
     fetch('/api/server-info').then((r) => r.json()).then((d) => {

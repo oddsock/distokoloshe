@@ -4,7 +4,7 @@ import { requireAuth } from '../middleware/auth.js';
 import {
   addClient, removeClient, broadcast, broadcastToRoom,
   isUserOnline, isUserInRoom, canAddClient,
-  scheduleDisconnect, cancelPendingDisconnect, setUserRoom,
+  scheduleDisconnect, cancelPendingDisconnect, setUserRoom, getUserRoomId,
 } from '../events.js';
 import { removeFromChain } from '../whispers.js';
 
@@ -114,6 +114,46 @@ router.get('/', requireAuth, (req: Request, res: Response) => {
       }
     });
   });
+});
+
+// POST /api/events/leave — Explicit leave signal (skips grace period)
+// Called by the client on tab close (sendBeacon) or intentional disconnect.
+router.post('/leave', requireAuth, (req: Request, res: Response) => {
+  const userId = req.user!.sub;
+
+  // Cancel any pending grace period — this is an intentional leave
+  const pending = cancelPendingDisconnect(userId);
+  const roomId = pending?.roomId ?? getUserRoomId(userId);
+
+  // Clear room membership
+  if (roomId != null) {
+    setUserRoom(userId, null);
+
+    if (!isUserInRoom(userId, roomId)) {
+      const user = db.prepare(
+        'SELECT id, username, display_name FROM users WHERE id = ?',
+      ).get(userId) as { id: number; username: string; display_name: string };
+      broadcast('user:room_leave', { user, roomId });
+
+      const room = db.prepare('SELECT mode FROM rooms WHERE id = ?').get(roomId) as { mode: string } | undefined;
+      if (room?.mode === 'whispers') {
+        const chain = removeFromChain(roomId, userId);
+        broadcastToRoom(roomId, 'whispers:chain_updated', { roomId, chain, reason: 'user_left' });
+      }
+    }
+  }
+
+  // If no active SSE connections remain, mark offline immediately
+  if (!isUserOnline(userId)) {
+    const user = db.prepare(
+      'SELECT id, username, display_name FROM users WHERE id = ?',
+    ).get(userId) as { id: number; username: string; display_name: string };
+    broadcast('user:offline', { user });
+  }
+
+  db.prepare("UPDATE users SET last_seen = datetime('now') WHERE id = ?").run(userId);
+
+  res.json({ left: true });
 });
 
 export default router;
