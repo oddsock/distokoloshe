@@ -4,11 +4,20 @@ import * as api from '../lib/api';
 
 const MAX_DURATION_SECS = 5;
 
+interface ActivePlayback {
+  source: AudioBufferSourceNode;
+  ctx: AudioContext;
+  track: MediaStreamTrack;
+  cleaning: boolean;
+}
+
 export function useSoundboard(room: LiveKitRoom | null) {
   const [clips, setClips] = useState<api.SoundboardClip[]>([]);
   const [playingId, setPlayingId] = useState<number | null>(null);
   const audioCache = useRef<Map<number, AudioBuffer>>(new Map());
-  const activeSource = useRef<{ source: AudioBufferSourceNode; ctx: AudioContext; track: MediaStreamTrack } | null>(null);
+  const activeSource = useRef<ActivePlayback | null>(null);
+  // Synchronous lock — prevents race conditions from rapid clicks
+  const playLock = useRef(false);
 
   // Fetch clip list on mount
   useEffect(() => {
@@ -25,14 +34,33 @@ export function useSoundboard(room: LiveKitRoom | null) {
     audioCache.current.delete(clipId);
   }, []);
 
+  const cleanup = useCallback(async () => {
+    const active = activeSource.current;
+    if (!active || active.cleaning) return;
+    active.cleaning = true;
+    try {
+      active.source.onended = null;
+      try { active.source.stop(); } catch {}
+      if (room) {
+        try { await room.localParticipant.unpublishTrack(active.track); } catch {}
+      }
+      active.track.stop();
+      await active.ctx.close();
+    } catch {}
+    activeSource.current = null;
+    playLock.current = false;
+    setPlayingId(null);
+  }, [room]);
+
   const playClip = useCallback(
     async (clipId: number) => {
       if (!room) return;
-      if (playingId != null) return; // already playing
+      // Synchronous ref check prevents concurrent plays
+      if (playLock.current) return;
+      playLock.current = true;
+      setPlayingId(clipId);
 
       try {
-        setPlayingId(clipId);
-
         // Get or fetch+decode the audio
         let buffer = audioCache.current.get(clipId);
         if (!buffer) {
@@ -43,17 +71,19 @@ export function useSoundboard(room: LiveKitRoom | null) {
           audioCache.current.set(clipId, buffer);
         }
 
-        // Create audio pipeline: buffer → destination stream
+        // Create audio pipeline: buffer → local speakers + LiveKit stream
         const ctx = new AudioContext({ sampleRate: buffer.sampleRate });
         const dest = ctx.createMediaStreamDestination();
         const source = ctx.createBufferSource();
         source.buffer = buffer;
+        // Connect to both: local output (self-hear) and stream destination (LiveKit)
+        source.connect(ctx.destination);
         source.connect(dest);
         source.start();
 
         // Publish the destination track to LiveKit
         const track = dest.stream.getAudioTracks()[0];
-        activeSource.current = { source, ctx, track };
+        activeSource.current = { source, ctx, track, cleaning: false };
 
         await room.localParticipant.publishTrack(track, {
           source: Track.Source.Unknown,
@@ -61,36 +91,20 @@ export function useSoundboard(room: LiveKitRoom | null) {
         });
 
         // Auto-cleanup when clip finishes
-        source.onended = async () => {
-          try {
-            await room.localParticipant.unpublishTrack(track);
-          } catch {}
-          track.stop();
-          await ctx.close();
-          activeSource.current = null;
-          setPlayingId(null);
-        };
+        source.onended = () => { cleanup(); };
       } catch (err) {
         console.warn('Soundboard play failed:', err);
         activeSource.current = null;
+        playLock.current = false;
         setPlayingId(null);
       }
     },
-    [room, playingId],
+    [room, cleanup],
   );
 
   const stopPlaying = useCallback(async () => {
-    const active = activeSource.current;
-    if (!active || !room) return;
-    try {
-      active.source.stop();
-      await room.localParticipant.unpublishTrack(active.track);
-      active.track.stop();
-      await active.ctx.close();
-    } catch {}
-    activeSource.current = null;
-    setPlayingId(null);
-  }, [room]);
+    await cleanup();
+  }, [cleanup]);
 
   const uploadClip = useCallback(
     async (name: string, file: File): Promise<string | null> => {
@@ -131,6 +145,7 @@ export function useSoundboard(room: LiveKitRoom | null) {
     return () => {
       const active = activeSource.current;
       if (active) {
+        active.source.onended = null;
         try { active.source.stop(); } catch {}
         active.track.stop();
         active.ctx.close();
