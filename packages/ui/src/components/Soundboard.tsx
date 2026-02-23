@@ -6,7 +6,6 @@ interface SoundboardProps {
   clips: SoundboardClip[];
   playingId: number | null;
   previewingId: number | null;
-  userId: number;
   onPlay: (clipId: number) => void;
   onStop: () => void;
   onPreview: (clipId: number) => void;
@@ -48,10 +47,10 @@ export function Soundboard({ clips, playingId, previewingId, onPlay, onStop, onP
 
   return (
     <div
-      className="absolute bottom-full mb-2 right-0 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-xl shadow-2xl p-3 w-[min(420px,calc(100vw-2rem))] z-50 max-h-[400px] flex flex-col"
+      className="absolute bottom-full mb-2 right-0 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-xl shadow-2xl p-4 w-[min(420px,calc(100vw-2rem))] z-50 max-h-[400px] flex flex-col"
       onClick={(e) => e.stopPropagation()}
     >
-      <span className="text-[10px] font-semibold uppercase text-zinc-500 block mb-2">Soundboard</span>
+      <h3 className="text-sm font-semibold text-zinc-900 dark:text-white mb-3">Soundboard</h3>
 
       {/* Error banner */}
       {error && (
@@ -79,17 +78,17 @@ export function Soundboard({ clips, playingId, previewingId, onPlay, onStop, onP
                   {/* Delete confirmation overlay */}
                   {isConfirming && (
                     <div className="absolute inset-0 z-10 bg-zinc-800/90 rounded-lg flex flex-col items-center justify-center gap-1 p-1">
-                      <span className="text-[9px] text-zinc-300 text-center">Delete?</span>
-                      <div className="flex gap-1">
+                      <span className="text-[10px] text-zinc-300 text-center">Delete?</span>
+                      <div className="flex gap-1.5">
                         <button
                           onClick={() => handleDelete(clip.id)}
-                          className="text-[9px] px-2 py-0.5 rounded bg-red-500 text-white hover:bg-red-600 transition-colors"
+                          className="text-[10px] px-2 py-0.5 rounded bg-red-500 text-white hover:bg-red-600 transition-colors"
                         >
                           Yes
                         </button>
                         <button
                           onClick={() => setConfirmDelete(null)}
-                          className="text-[9px] px-2 py-0.5 rounded bg-zinc-600 text-zinc-200 hover:bg-zinc-500 transition-colors"
+                          className="text-[10px] px-2 py-0.5 rounded bg-zinc-600 text-zinc-200 hover:bg-zinc-500 transition-colors"
                         >
                           No
                         </button>
@@ -138,8 +137,8 @@ export function Soundboard({ clips, playingId, previewingId, onPlay, onStop, onP
                           <Square size={14} className="text-indigo-400" />
                         </span>
                       )}
-                      <span className="text-[11px] font-medium block truncate leading-tight">{clip.name}</span>
-                      <span className="text-[9px] italic text-zinc-400 block truncate leading-tight">{clip.uploaderName}</span>
+                      <span className="text-xs font-medium block truncate leading-tight">{clip.name}</span>
+                      <span className="text-[10px] italic text-zinc-400 dark:text-zinc-500 block truncate leading-tight">{clip.uploaderName}</span>
                     </button>
 
                     {/* Delete button (any user) */}
@@ -158,7 +157,7 @@ export function Soundboard({ clips, playingId, previewingId, onPlay, onStop, onP
             {/* Add Sound button — always last in grid */}
             <button
               onClick={() => setShowUpload(!showUpload)}
-              className={`flex items-center justify-center gap-1 rounded-lg py-2.5 text-[11px] font-medium transition-colors ${
+              className={`flex items-center justify-center gap-1 rounded-lg py-2.5 text-xs font-medium transition-colors ${
                 showUpload
                   ? 'bg-indigo-500/20 text-indigo-400 ring-1 ring-indigo-500/40'
                   : 'bg-zinc-100 dark:bg-zinc-700 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-600 hover:text-zinc-700 dark:hover:text-zinc-200'
@@ -180,10 +179,10 @@ export function Soundboard({ clips, playingId, previewingId, onPlay, onStop, onP
             onChange={(e) => setUploadName(e.target.value)}
             placeholder="Clip name"
             maxLength={64}
-            className="w-full text-xs px-2 py-1.5 rounded bg-zinc-100 dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 outline-none focus:border-indigo-500"
+            className="w-full text-xs px-2 py-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-700 border border-zinc-300 dark:border-zinc-600 text-zinc-900 dark:text-white placeholder-zinc-400 outline-none focus:border-indigo-500"
           />
           <div className="flex gap-2">
-            <label className="flex-1 flex items-center gap-1 text-xs px-2 py-1.5 rounded bg-zinc-100 dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 text-zinc-500 cursor-pointer hover:border-indigo-500 transition-colors truncate">
+            <label className="flex-1 flex items-center gap-1 text-xs px-2 py-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-700 border border-zinc-300 dark:border-zinc-600 text-zinc-500 cursor-pointer hover:border-indigo-500 transition-colors truncate">
               <span className="truncate">{uploadFile ? uploadFile.name : 'Choose file...'}</span>
               <input
                 ref={fileRef}
@@ -204,7 +203,7 @@ export function Soundboard({ clips, playingId, previewingId, onPlay, onStop, onP
             <button
               onClick={handleUpload}
               disabled={uploading || !uploadFile || !uploadName.trim()}
-              className="px-3 py-1.5 text-xs rounded bg-indigo-500 text-white hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
+              className="px-2.5 py-1 text-xs font-medium rounded-lg bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
             >
               {uploading ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
               Upload

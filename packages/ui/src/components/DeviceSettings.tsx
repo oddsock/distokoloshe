@@ -323,8 +323,8 @@ export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile 
             ))}
           </select>
           {soundPack !== 'none' && (
-            <div className="mt-2 flex items-center gap-2">
-              <span className="text-[10px] text-zinc-500 w-10 flex-shrink-0">Vol</span>
+            <div className="mt-2 mb-1 flex items-center gap-2">
+              <span className="text-[10px] text-zinc-500 dark:text-zinc-400 w-10 flex-shrink-0">Vol</span>
               <input
                 type="range"
                 min={0}
@@ -337,7 +337,7 @@ export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile 
                 }}
                 className="flex-1 h-1 accent-indigo-500 cursor-pointer"
               />
-              <span className="text-[10px] text-zinc-500 w-7 text-right">{notifVolume}%</span>
+              <span className="text-[10px] text-zinc-500 dark:text-zinc-400 w-7 text-right">{notifVolume}%</span>
             </div>
           )}
           {soundPack !== 'none' && (

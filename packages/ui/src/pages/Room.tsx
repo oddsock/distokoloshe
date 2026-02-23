@@ -83,6 +83,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
 
   const { attachTrack, detachTrack, setVolume, getVolume, setMuted, isMuted, setTrackMuted, isTrackMuted, deafened, setDeafened } = useAudioMixer();
   const [mutedUsers, setMutedUsers] = useState<Set<string>>(new Set());
+  const [mutedStreamAudio, setMutedStreamAudio] = useState<Set<string>>(new Set());
   const {
     isSharing,
     shareQuality,
@@ -688,6 +689,17 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     });
   }, [isMuted, setMuted]);
 
+  const toggleStreamAudioMute = useCallback((identity: string) => {
+    const muted = !mutedStreamAudio.has(identity);
+    setTrackMuted(identity, Track.Source.ScreenShareAudio, muted);
+    setMutedStreamAudio((prev) => {
+      const next = new Set(prev);
+      if (muted) next.add(identity);
+      else next.delete(identity);
+      return next;
+    });
+  }, [mutedStreamAudio, setTrackMuted]);
+
   // Vote actions
   const handleStartVote = useCallback(async (targetUserId: number, durationSecs: number) => {
     try {
@@ -1051,7 +1063,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                 )
               : false;
             const screenShareAudioMuted = !isLocal
-              ? isTrackMuted(identity, Track.Source.ScreenShareAudio)
+              ? mutedStreamAudio.has(identity)
               : false;
 
             if (!mainPub) return null;
@@ -1075,7 +1087,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                       participantName={name}
                       hasAudio={hasScreenShareAudio}
                       audioMuted={screenShareAudioMuted}
-                      onToggleAudioMute={() => setTrackMuted(identity, Track.Source.ScreenShareAudio, !screenShareAudioMuted)}
+                      onToggleAudioMute={() => toggleStreamAudioMute(identity)}
                     />
                   ) : (
                     <div className="bg-black rounded-xl overflow-hidden">
@@ -1170,6 +1182,10 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                 const screenSharePub = Array.from(p.trackPublications.values()).find(
                   (pub) => pub.source === Track.Source.ScreenShare && pub.isSubscribed && pub.track,
                 );
+                const hasStreamAudio = Array.from(p.trackPublications.values()).some(
+                  (pub) => pub.source === Track.Source.ScreenShareAudio && pub.isSubscribed && pub.track,
+                );
+                const streamAudioMuted = hasStreamAudio && mutedStreamAudio.has(p.identity);
 
                 return (
                   <div
@@ -1201,17 +1217,47 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                           Your source
                         </span>
                       )}
+                      {/* Stream audio mute — shown on main area when screen share is primary (no camera) */}
+                      {screenSharePub && !cameraPub && hasStreamAudio && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); toggleStreamAudioMute(p.identity); }}
+                          className={`absolute bottom-1 right-1 z-10 p-1 rounded transition-colors ${
+                            streamAudioMuted
+                              ? 'bg-red-500/80 text-white hover:bg-red-500'
+                              : 'bg-black/50 text-white hover:bg-black/70'
+                          }`}
+                          data-tooltip={streamAudioMuted ? 'Unmute stream audio' : 'Mute stream audio'}
+                        >
+                          {streamAudioMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
+                        </button>
+                      )}
                     </div>
                     {/* Screen share thumbnail — only shown when camera is ON */}
                     {screenSharePub && cameraPub && (
-                      <button
-                        onClick={() => setSpotlight({ identity: p.identity, source: 'screen_share' })}
-                        className="w-full rounded-lg overflow-hidden border-2 transition-colors mb-3 border-zinc-600 hover:border-indigo-500 bg-black"
-                      >
-                        <div className="aspect-video flex items-center justify-center">
-                          <VideoTrackView publication={screenSharePub} fit="contain" />
-                        </div>
-                      </button>
+                      <div className="relative mb-3">
+                        <button
+                          onClick={() => setSpotlight({ identity: p.identity, source: 'screen_share' })}
+                          className="w-full rounded-lg overflow-hidden border-2 transition-colors border-zinc-600 hover:border-indigo-500 bg-black"
+                        >
+                          <div className="aspect-video flex items-center justify-center">
+                            <VideoTrackView publication={screenSharePub} fit="contain" />
+                          </div>
+                        </button>
+                        {/* Stream audio mute — shown on thumbnail when camera is primary */}
+                        {hasStreamAudio && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); toggleStreamAudioMute(p.identity); }}
+                            className={`absolute bottom-1 right-1 z-10 p-1 rounded transition-colors ${
+                              streamAudioMuted
+                                ? 'bg-red-500/80 text-white hover:bg-red-500'
+                                : 'bg-black/50 text-white hover:bg-black/70'
+                            }`}
+                            data-tooltip={streamAudioMuted ? 'Unmute stream audio' : 'Mute stream audio'}
+                          >
+                            {streamAudioMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
+                          </button>
+                        )}
+                      </div>
                     )}
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium truncate">
