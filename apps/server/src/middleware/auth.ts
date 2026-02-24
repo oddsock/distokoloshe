@@ -24,6 +24,8 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     token = header.slice(7);
   } else if (typeof req.query.token === 'string') {
     token = req.query.token;
+  } else if (typeof req.body?.token === 'string') {
+    token = req.body.token;
   }
 
   if (!token) {

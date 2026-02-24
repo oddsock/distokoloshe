@@ -131,8 +131,11 @@ export function syncRoom(roomId: number) {
 export function sendLeaveBeacon(): void {
   const token = getStoredToken();
   if (!token) return;
-  const url = `${getBaseUrl()}/api/events/leave?token=${encodeURIComponent(token)}`;
-  navigator.sendBeacon(url);
+  const url = `${getBaseUrl()}/api/events/leave`;
+  navigator.sendBeacon(url, new Blob(
+    [JSON.stringify({ token })],
+    { type: 'application/json' },
+  ));
 }
 
 // Users

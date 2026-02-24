@@ -117,8 +117,8 @@ router.post('/', requireAuth, (req: Request, res: Response) => {
   // Create the vote
   const result = db.prepare(`
     INSERT INTO votes (source_room_id, target_user_id, initiated_by, duration_secs, expires_at, eligible_count, yes_count)
-    VALUES (?, ?, ?, ?, datetime('now', '+${VOTE_WINDOW_SECS} seconds'), ?, 1)
-  `).run(callerRoomId, targetUserId, callerId, durationSecs, eligibleCount);
+    VALUES (?, ?, ?, ?, datetime('now', ?), ?, 1)
+  `).run(callerRoomId, targetUserId, callerId, durationSecs, `+${VOTE_WINDOW_SECS} seconds`, eligibleCount);
 
   const voteId = result.lastInsertRowid as number;
 
@@ -256,8 +256,8 @@ setVotePassedHandler(async (vote) => {
   // Insert punishment
   const punishResult = db.prepare(`
     INSERT INTO punishments (target_user_id, source_room_id, jail_room_id, duration_secs, expires_at)
-    VALUES (?, ?, ?, ?, datetime('now', '+${vote.duration_secs} seconds'))
-  `).run(vote.target_user_id, vote.source_room_id, jailRoom.id, vote.duration_secs);
+    VALUES (?, ?, ?, ?, datetime('now', ?))
+  `).run(vote.target_user_id, vote.source_room_id, jailRoom.id, vote.duration_secs, `+${vote.duration_secs} seconds`);
 
   const punishmentId = punishResult.lastInsertRowid as number;
   const punishment = db.prepare('SELECT * FROM punishments WHERE id = ?').get(punishmentId) as {
