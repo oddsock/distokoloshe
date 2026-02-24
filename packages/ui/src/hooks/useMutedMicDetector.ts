@@ -1,6 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import { Track } from 'livekit-client';
-import type { Room } from 'livekit-client';
 
 const THRESHOLD = 0.015; // RMS amplitude threshold for "talking"
 const CHECK_INTERVAL_MS = 150;
@@ -9,9 +7,10 @@ const AUTO_DISMISS_MS = 4_000; // Auto-hide after 4s
 
 /**
  * Detects microphone audio while the user is muted.
- * Taps into the LiveKit room's existing mic track (no extra getUserMedia).
+ * Opens an independent getUserMedia stream so audio isn't silenced
+ * by LiveKit's track.enabled = false.
  */
-export function useMutedMicDetector(room: Room | null, micMuted: boolean, connected: boolean) {
+export function useMutedMicDetector(micMuted: boolean, connected: boolean) {
   const [showWarning, setShowWarning] = useState(false);
   const cooldownUntil = useRef(0);
   const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -26,7 +25,7 @@ export function useMutedMicDetector(room: Room | null, micMuted: boolean, connec
   };
 
   useEffect(() => {
-    if (!micMuted || !connected || !room) {
+    if (!micMuted || !connected) {
       setShowWarning(false);
       if (dismissTimer.current) {
         clearTimeout(dismissTimer.current);
@@ -35,45 +34,48 @@ export function useMutedMicDetector(room: Room | null, micMuted: boolean, connec
       return;
     }
 
-    // Get the existing mic MediaStreamTrack from LiveKit
-    const micPub = Array.from(room.localParticipant.trackPublications.values()).find(
-      (p) => p.source === Track.Source.Microphone,
-    );
-    const mediaTrack = micPub?.track?.mediaStreamTrack;
-    if (!mediaTrack) return;
+    let cancelled = false;
+    let intervalId: ReturnType<typeof setInterval>;
+    let ctx: AudioContext;
+    let stream: MediaStream;
 
-    // Build an AnalyserNode from the existing track (no new getUserMedia)
-    const stream = new MediaStream([mediaTrack]);
-    const ctx = new AudioContext();
-    const source = ctx.createMediaStreamSource(stream);
-    const analyser = ctx.createAnalyser();
-    analyser.fftSize = 512;
-    source.connect(analyser);
+    navigator.mediaDevices.getUserMedia({ audio: true }).then((s) => {
+      if (cancelled) { s.getTracks().forEach((t) => t.stop()); return; }
 
-    const data = new Float32Array(analyser.fftSize);
+      stream = s;
+      ctx = new AudioContext();
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 512;
+      source.connect(analyser);
 
-    const intervalId = setInterval(() => {
-      analyser.getFloatTimeDomainData(data);
-      let sum = 0;
-      for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
-      const rms = Math.sqrt(sum / data.length);
+      const data = new Float32Array(analyser.fftSize);
 
-      if (rms > THRESHOLD && Date.now() > cooldownUntil.current) {
-        setShowWarning(true);
-        if (dismissTimer.current) clearTimeout(dismissTimer.current);
-        dismissTimer.current = setTimeout(() => {
-          setShowWarning(false);
-          cooldownUntil.current = Date.now() + COOLDOWN_MS;
-          dismissTimer.current = null;
-        }, AUTO_DISMISS_MS);
-      }
-    }, CHECK_INTERVAL_MS);
+      intervalId = setInterval(() => {
+        analyser.getFloatTimeDomainData(data);
+        let sum = 0;
+        for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
+        const rms = Math.sqrt(sum / data.length);
+
+        if (rms > THRESHOLD && Date.now() > cooldownUntil.current) {
+          setShowWarning(true);
+          if (dismissTimer.current) clearTimeout(dismissTimer.current);
+          dismissTimer.current = setTimeout(() => {
+            setShowWarning(false);
+            cooldownUntil.current = Date.now() + COOLDOWN_MS;
+            dismissTimer.current = null;
+          }, AUTO_DISMISS_MS);
+        }
+      }, CHECK_INTERVAL_MS);
+    }).catch(() => { /* mic permission denied — silently skip */ });
 
     return () => {
-      clearInterval(intervalId);
-      ctx.close().catch(() => {});
+      cancelled = true;
+      if (intervalId) clearInterval(intervalId);
+      if (stream) stream.getTracks().forEach((t) => t.stop());
+      if (ctx) ctx.close().catch(() => {});
     };
-  }, [room, micMuted, connected]);
+  }, [micMuted, connected]);
 
   return { showWarning, dismiss };
 }
