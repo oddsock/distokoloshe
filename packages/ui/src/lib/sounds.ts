@@ -1,7 +1,7 @@
 // Notification sounds synthesized via Web Audio API — no audio files needed
 
 export type SoundPack = 'mystical' | 'pops' | 'retro' | 'whispers' | 'none';
-export type SoundEvent = 'connect' | 'join' | 'leave' | 'mute' | 'unmute' | 'cameraOn' | 'cameraOff';
+export type SoundEvent = 'connect' | 'join' | 'leave' | 'mute' | 'unmute' | 'cameraOn' | 'cameraOff' | 'screenShare';
 
 const STORAGE_KEY = 'distokoloshe_sound_pack';
 const VOLUME_KEY = 'distokoloshe_notification_volume';
@@ -195,6 +195,27 @@ function playMysticalCameraOff() {
   }
 }
 
+function playMysticalScreenShare() {
+  const c = getCtx();
+  const now = c.currentTime;
+  // Shimmering triple-note cascade — distinct from join/camera
+  const freqs = [440, 660, 1047]; // A4, E5, C6
+  for (let i = 0; i < 3; i++) {
+    const osc = c.createOscillator();
+    const gain = c.createGain();
+    osc.type = 'triangle';
+    osc.frequency.value = freqs[i];
+    osc.connect(gain);
+    gain.connect(getDest());
+    const t = now + i * 0.1;
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(0.18, t + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+    osc.start(t);
+    osc.stop(t + 0.35);
+  }
+}
+
 // ── Mischievous Pops ──
 
 function playPopsConnect() {
@@ -334,6 +355,28 @@ function playPopsCameraOff() {
   }
 }
 
+function playPopsScreenShare() {
+  const c = getCtx();
+  const now = c.currentTime;
+  // Bubbly triple-pop ascending — like something expanding
+  const freqs = [350, 700, 1100];
+  for (let i = 0; i < 3; i++) {
+    const osc = c.createOscillator();
+    const gain = c.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freqs[i], now + i * 0.07);
+    osc.frequency.exponentialRampToValueAtTime(freqs[i] * 1.3, now + i * 0.07 + 0.06);
+    osc.connect(gain);
+    gain.connect(getDest());
+    const t = now + i * 0.07;
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(0.16, t + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+    osc.start(t);
+    osc.stop(t + 0.14);
+  }
+}
+
 // ── Retro Arcade (replaced Tribal Drums) ──
 
 function playRetroConnect() {
@@ -469,6 +512,28 @@ function playRetroCameraOff() {
   gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
   osc.start(now);
   osc.stop(now + 0.18);
+}
+
+function playRetroScreenShare() {
+  const c = getCtx();
+  const now = c.currentTime;
+  // Stage-select fanfare: quick 4-note square wave ascending
+  const notes = [330, 440, 554, 880]; // E4, A4, C#5, A5
+  for (let i = 0; i < notes.length; i++) {
+    const osc = c.createOscillator();
+    const gain = c.createGain();
+    osc.type = 'square';
+    osc.frequency.value = notes[i];
+    osc.connect(gain);
+    gain.connect(getDest());
+    const t = now + i * 0.06;
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(0.07, t + 0.005);
+    gain.gain.setValueAtTime(0.07, t + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+    osc.start(t);
+    osc.stop(t + 0.1);
+  }
 }
 
 // ── Digital Whispers ──
@@ -640,6 +705,31 @@ function playWhispersCameraOff() {
   }
 }
 
+function playWhispersScreenShare() {
+  const c = getCtx();
+  const now = c.currentTime;
+  // Digital unfold: filtered sawtooth sweep with wide Q
+  const osc = c.createOscillator();
+  const gain = c.createGain();
+  const filter = c.createBiquadFilter();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(200, now);
+  osc.frequency.exponentialRampToValueAtTime(1200, now + 0.25);
+  filter.type = 'bandpass';
+  filter.frequency.setValueAtTime(300, now);
+  filter.frequency.exponentialRampToValueAtTime(1500, now + 0.25);
+  filter.Q.value = 1.5;
+  osc.connect(filter);
+  filter.connect(gain);
+  gain.connect(getDest());
+  gain.gain.setValueAtTime(0, now);
+  gain.gain.linearRampToValueAtTime(0.18, now + 0.05);
+  gain.gain.setValueAtTime(0.18, now + 0.2);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+  osc.start(now);
+  osc.stop(now + 0.4);
+}
+
 // ── Dispatch table ──
 
 const SOUNDS: Record<SoundPack, Record<SoundEvent, (() => void) | null>> = {
@@ -647,25 +737,30 @@ const SOUNDS: Record<SoundPack, Record<SoundEvent, (() => void) | null>> = {
     connect: playMysticalConnect, join: playMysticalJoin, leave: playMysticalLeave,
     mute: playMysticalMute, unmute: playMysticalUnmute,
     cameraOn: playMysticalCameraOn, cameraOff: playMysticalCameraOff,
+    screenShare: playMysticalScreenShare,
   },
   pops: {
     connect: playPopsConnect, join: playPopsJoin, leave: playPopsLeave,
     mute: playPopsMute, unmute: playPopsUnmute,
     cameraOn: playPopsCameraOn, cameraOff: playPopsCameraOff,
+    screenShare: playPopsScreenShare,
   },
   retro: {
     connect: playRetroConnect, join: playRetroJoin, leave: playRetroLeave,
     mute: playRetroMute, unmute: playRetroUnmute,
     cameraOn: playRetroCameraOn, cameraOff: playRetroCameraOff,
+    screenShare: playRetroScreenShare,
   },
   whispers: {
     connect: playWhispersConnect, join: playWhispersJoin, leave: playWhispersLeave,
     mute: playWhispersMute, unmute: playWhispersUnmute,
     cameraOn: playWhispersCameraOn, cameraOff: playWhispersCameraOff,
+    screenShare: playWhispersScreenShare,
   },
   none: {
     connect: null, join: null, leave: null,
     mute: null, unmute: null, cameraOn: null, cameraOff: null,
+    screenShare: null,
   },
 };
 

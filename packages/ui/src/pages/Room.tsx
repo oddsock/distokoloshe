@@ -515,6 +515,9 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
         attachTrack(participant, publication);
         setAudioTrackVersion((v) => v + 1);
       }
+      if (publication.source === Track.Source.ScreenShare && publication.kind === Track.Kind.Video) {
+        playSound('screenShare');
+      }
     };
 
     const handleTrackUnsubscribed = (
