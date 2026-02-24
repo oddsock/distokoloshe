@@ -2,12 +2,15 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 
 // ── Fail fast if required env vars are missing ──────────────
-const REQUIRED_ENV = ['JWT_SECRET', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET'];
+const REQUIRED_ENV = ['JWT_SECRET', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET', 'LIVEKIT_URL'];
 for (const key of REQUIRED_ENV) {
   if (!process.env[key]) {
     console.error(`FATAL: Missing required environment variable: ${key}`);
     process.exit(1);
   }
+}
+if (!process.env.E2EE_SECRET) {
+  console.warn('WARN: E2EE_SECRET not set — falling back to JWT_SECRET for room key derivation');
 }
 
 import './db.js'; // Initialize database on startup
@@ -59,7 +62,24 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
+// ── Process-level error handlers ─────────────────────────
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled Rejection:', reason);
+  process.exit(1);
+});
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+  process.exit(1);
+});
+
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`disTokoloshe API listening on :${PORT}`);
+});
+
+// ── Graceful shutdown ────────────────────────────────────
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, shutting down…');
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(1), 10_000);
 });

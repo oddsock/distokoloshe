@@ -64,6 +64,12 @@ router.post('/', requireAuth, (req: Request, res: Response) => {
       return;
     }
 
+    const clipCount = (db.prepare('SELECT COUNT(*) as cnt FROM soundboard_clips WHERE uploaded_by = ?').get(req.user!.sub) as { cnt: number }).cnt;
+    if (clipCount >= 100) {
+      res.status(400).json({ error: 'You have reached the 100-clip upload limit' });
+      return;
+    }
+
     const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
     if (!name || name.length === 0) {
       res.status(400).json({ error: 'Clip name is required' });

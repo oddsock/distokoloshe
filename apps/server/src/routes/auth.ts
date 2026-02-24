@@ -69,6 +69,10 @@ router.post('/register', registerLimiter, async (req: Request, res: Response) =>
     res.status(400).json({ error: 'Password must be 8-128 characters' });
     return;
   }
+  if (!/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/[^a-zA-Z]/.test(password)) {
+    res.status(400).json({ error: 'Password must include uppercase, lowercase, and a number or symbol' });
+    return;
+  }
 
   const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
   if (existing) {
