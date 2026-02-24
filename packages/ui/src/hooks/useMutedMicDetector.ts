@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 
-const THRESHOLD = 0.015; // RMS amplitude threshold for "talking"
+const THRESHOLD = 0.04; // RMS amplitude threshold for "talking"
 const CHECK_INTERVAL_MS = 150;
 const COOLDOWN_MS = 8_000; // Don't re-show for 8s after dismissal
 const AUTO_DISMISS_MS = 4_000; // Auto-hide after 4s

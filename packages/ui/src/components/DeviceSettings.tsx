@@ -350,6 +350,7 @@ export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile 
                 ['unmute', 'Unmute'],
                 ['cameraOn', 'Cam On'],
                 ['cameraOff', 'Cam Off'],
+                ['screenShare', 'Screen Share'],
               ] as const).map(([evt, label]) => (
                 <button
                   key={evt}
