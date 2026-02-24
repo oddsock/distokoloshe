@@ -693,6 +693,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
   const micMuted = localParticipant ? !localParticipant.isMicrophoneEnabled : true;
   const isCameraOn = localParticipant ? localParticipant.isCameraEnabled : false;
   const { showWarning: showMutedWarning, dismiss: dismissMutedWarning } = useMutedMicDetector(
+    room,
     micMuted,
     connectionState === ConnectionState.Connected,
   );
