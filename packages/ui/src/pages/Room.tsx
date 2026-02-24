@@ -15,6 +15,7 @@ import { Soundboard } from '../components/Soundboard';
 import { useSoundboard } from '../hooks/useSoundboard';
 import { useConnectionStats } from '../hooks/useConnectionStats';
 import { useHotkeys } from '../hooks/useHotkeys';
+import { useMutedMicDetector } from '../hooks/useMutedMicDetector';
 import { getRoomInitials, toggleTheme, getTheme } from '../lib/utils';
 import * as api from '../lib/api';
 import { playSound } from '../lib/sounds';
@@ -691,6 +692,10 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
 
   const micMuted = localParticipant ? !localParticipant.isMicrophoneEnabled : true;
   const isCameraOn = localParticipant ? localParticipant.isCameraEnabled : false;
+  const { showWarning: showMutedWarning, dismiss: dismissMutedWarning } = useMutedMicDetector(
+    micMuted,
+    connectionState === ConnectionState.Connected,
+  );
 
   // Auto-dismiss spotlight when the spotlighted track disappears
   useEffect(() => {
@@ -1056,6 +1061,15 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                   <span className="text-xs text-red-400">You are being voted on!</span>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* Muted mic warning */}
+          {showMutedWarning && (
+            <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-sm flex items-center animate-[fadeIn_0.2s_ease-out]">
+              <MicOff size={16} className="text-red-400 shrink-0 mr-2" />
+              <span className="text-red-400 font-medium flex-1">You're muted — others can't hear you</span>
+              <button onClick={dismissMutedWarning} className="text-red-400/60 hover:text-red-400 ml-2 shrink-0">&times;</button>
             </div>
           )}
 
