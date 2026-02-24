@@ -1,7 +1,7 @@
 // Notification sounds synthesized via Web Audio API — no audio files needed
 
 export type SoundPack = 'mystical' | 'pops' | 'retro' | 'whispers' | 'none';
-export type SoundEvent = 'connect' | 'join' | 'leave' | 'mute' | 'unmute' | 'cameraOn' | 'cameraOff' | 'screenShare';
+export type SoundEvent = 'connect' | 'join' | 'leave' | 'mute' | 'unmute' | 'cameraOn' | 'cameraOff' | 'screenShare' | 'chatMessage';
 
 const STORAGE_KEY = 'distokoloshe_sound_pack';
 const VOLUME_KEY = 'distokoloshe_notification_volume';
@@ -216,6 +216,23 @@ function playMysticalScreenShare() {
   }
 }
 
+function playMysticalChatMessage() {
+  const c = getCtx();
+  const now = c.currentTime;
+  // Soft high chime — gentle notification
+  const osc = c.createOscillator();
+  const gain = c.createGain();
+  osc.type = 'sine';
+  osc.frequency.value = 1047; // C6
+  osc.connect(gain);
+  gain.connect(getDest());
+  gain.gain.setValueAtTime(0, now);
+  gain.gain.linearRampToValueAtTime(0.10, now + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+  osc.start(now);
+  osc.stop(now + 0.15);
+}
+
 // ── Mischievous Pops ──
 
 function playPopsConnect() {
@@ -377,6 +394,24 @@ function playPopsScreenShare() {
   }
 }
 
+function playPopsChatMessage() {
+  const c = getCtx();
+  const now = c.currentTime;
+  // Quick soft pop
+  const osc = c.createOscillator();
+  const gain = c.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(600, now);
+  osc.frequency.exponentialRampToValueAtTime(900, now + 0.06);
+  osc.connect(gain);
+  gain.connect(getDest());
+  gain.gain.setValueAtTime(0, now);
+  gain.gain.linearRampToValueAtTime(0.10, now + 0.005);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+  osc.start(now);
+  osc.stop(now + 0.08);
+}
+
 // ── Retro Arcade (replaced Tribal Drums) ──
 
 function playRetroConnect() {
@@ -534,6 +569,24 @@ function playRetroScreenShare() {
     osc.start(t);
     osc.stop(t + 0.1);
   }
+}
+
+function playRetroChatMessage() {
+  const c = getCtx();
+  const now = c.currentTime;
+  // Tiny square wave blip
+  const osc = c.createOscillator();
+  const gain = c.createGain();
+  osc.type = 'square';
+  osc.frequency.value = 880; // A5
+  osc.connect(gain);
+  gain.connect(getDest());
+  gain.gain.setValueAtTime(0, now);
+  gain.gain.linearRampToValueAtTime(0.04, now + 0.005);
+  gain.gain.setValueAtTime(0.04, now + 0.04);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+  osc.start(now);
+  osc.stop(now + 0.06);
 }
 
 // ── Digital Whispers ──
@@ -730,6 +783,28 @@ function playWhispersScreenShare() {
   osc.stop(now + 0.4);
 }
 
+function playWhispersChatMessage() {
+  const c = getCtx();
+  const now = c.currentTime;
+  // Breathy filtered tick
+  const osc = c.createOscillator();
+  const gain = c.createGain();
+  const filter = c.createBiquadFilter();
+  osc.type = 'sawtooth';
+  osc.frequency.value = 900;
+  filter.type = 'bandpass';
+  filter.frequency.value = 900;
+  filter.Q.value = 8;
+  osc.connect(filter);
+  filter.connect(gain);
+  gain.connect(getDest());
+  gain.gain.setValueAtTime(0, now);
+  gain.gain.linearRampToValueAtTime(0.10, now + 0.005);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+  osc.start(now);
+  osc.stop(now + 0.05);
+}
+
 // ── Dispatch table ──
 
 const SOUNDS: Record<SoundPack, Record<SoundEvent, (() => void) | null>> = {
@@ -737,30 +812,30 @@ const SOUNDS: Record<SoundPack, Record<SoundEvent, (() => void) | null>> = {
     connect: playMysticalConnect, join: playMysticalJoin, leave: playMysticalLeave,
     mute: playMysticalMute, unmute: playMysticalUnmute,
     cameraOn: playMysticalCameraOn, cameraOff: playMysticalCameraOff,
-    screenShare: playMysticalScreenShare,
+    screenShare: playMysticalScreenShare, chatMessage: playMysticalChatMessage,
   },
   pops: {
     connect: playPopsConnect, join: playPopsJoin, leave: playPopsLeave,
     mute: playPopsMute, unmute: playPopsUnmute,
     cameraOn: playPopsCameraOn, cameraOff: playPopsCameraOff,
-    screenShare: playPopsScreenShare,
+    screenShare: playPopsScreenShare, chatMessage: playPopsChatMessage,
   },
   retro: {
     connect: playRetroConnect, join: playRetroJoin, leave: playRetroLeave,
     mute: playRetroMute, unmute: playRetroUnmute,
     cameraOn: playRetroCameraOn, cameraOff: playRetroCameraOff,
-    screenShare: playRetroScreenShare,
+    screenShare: playRetroScreenShare, chatMessage: playRetroChatMessage,
   },
   whispers: {
     connect: playWhispersConnect, join: playWhispersJoin, leave: playWhispersLeave,
     mute: playWhispersMute, unmute: playWhispersUnmute,
     cameraOn: playWhispersCameraOn, cameraOff: playWhispersCameraOff,
-    screenShare: playWhispersScreenShare,
+    screenShare: playWhispersScreenShare, chatMessage: playWhispersChatMessage,
   },
   none: {
     connect: null, join: null, leave: null,
     mute: null, unmute: null, cameraOn: null, cameraOff: null,
-    screenShare: null,
+    screenShare: null, chatMessage: null,
   },
 };
 

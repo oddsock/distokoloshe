@@ -19,7 +19,8 @@ import { useMutedMicDetector } from '../hooks/useMutedMicDetector';
 import { getRoomInitials, toggleTheme, getTheme } from '../lib/utils';
 import * as api from '../lib/api';
 import { playSound } from '../lib/sounds';
-import { Mic, MicOff, Camera, CameraOff, Ear, EarOff, Monitor, MonitorOff, Volume2, VolumeX, Settings, Sun, Moon, LogOut, AudioLines, X } from 'lucide-react';
+import { resizeImage } from '../lib/imageResize';
+import { Mic, MicOff, Camera, CameraOff, Ear, EarOff, Monitor, MonitorOff, Volume2, VolumeX, Settings, Sun, Moon, LogOut, AudioLines, X, MessageCircle } from 'lucide-react';
 
 interface RoomPageProps {
   user: api.User;
@@ -94,6 +95,14 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
   const { clips, playingId, previewingId, volume: sbVolume, setVolume: setSbVolume, playClip, stopPlaying, previewClip, stopPreview, uploadClip, deleteClip, onClipCreated, onClipDeleted } = useSoundboard(room);
   const [soundboardPlaying, setSoundboardPlaying] = useState<{ username: string; clipName: string } | null>(null);
   const soundboardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Chat speech bubbles (ephemeral)
+  type ChatMsg = { id: number; text?: string; imageUrl?: string; ts: number };
+  const [chatBubbles, setChatBubbles] = useState<Map<string, ChatMsg[]>>(new Map());
+  const chatIdRef = useRef(0);
+  const [chatInput, setChatInput] = useState('');
+  const [chatPendingImage, setChatPendingImage] = useState<Blob | null>(null);
+  const [chatImagePreview, setChatImagePreview] = useState<string | null>(null);
+
   const [showQualityMenu, setShowQualityMenu] = useState(false);
   const [showStopShareConfirm, setShowStopShareConfirm] = useState(false);
   const [spotlight, setSpotlight] = useState<{ identity: string; source: 'screen_share' | 'camera' } | null>(null);
@@ -118,6 +127,38 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     onToggleDeafen: handleToggleDeafen,
     enabled: connectionState === ConnectionState.Connected,
   });
+
+  // Chat send handler
+  const handleChatSend = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    const text = chatInput.trim();
+    if (!text && !chatPendingImage) return;
+
+    let imageId: string | undefined;
+    if (chatPendingImage) {
+      try {
+        const res = await api.uploadChatImage(chatPendingImage);
+        imageId = res.imageId;
+      } catch { /* upload failed — send text only */ }
+      setChatPendingImage(null);
+      if (chatImagePreview) { URL.revokeObjectURL(chatImagePreview); setChatImagePreview(null); }
+    }
+    if (text || imageId) {
+      api.sendChatMessage(text || undefined, imageId).catch(() => {});
+    }
+    setChatInput('');
+  }, [chatInput, chatPendingImage, chatImagePreview]);
+
+  const handleChatPaste = useCallback((e: React.ClipboardEvent) => {
+    const file = Array.from(e.clipboardData?.files || []).find(f => f.type.startsWith('image/'));
+    if (file) {
+      e.preventDefault();
+      resizeImage(file).then(blob => {
+        setChatPendingImage(blob);
+        setChatImagePreview(URL.createObjectURL(blob));
+      });
+    }
+  }, []);
 
   // Mobile detection (JS-based, responds to orientation changes)
   const [isMobile, setIsMobile] = useState(() => window.matchMedia('(max-width: 767px)').matches);
@@ -434,6 +475,34 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
       setSoundboardPlaying({ username: sbUser.username, clipName });
       if (soundboardTimerRef.current) clearTimeout(soundboardTimerRef.current);
       soundboardTimerRef.current = setTimeout(() => setSoundboardPlaying(null), durationMs || 10_000);
+    },
+    'chat:message': (data) => {
+      const { user: chatUser, text, imageId } = data as { user: { id: number; username: string }; text?: string; imageId?: string };
+      const identity = chatUser.username;
+      const msgId = ++chatIdRef.current;
+      const imageUrl = imageId ? `${api.getBaseUrl()}/api/chat/image/${imageId}` : undefined;
+
+      // Play sound for messages from others
+      if (chatUser.id !== user.id) playSound('chatMessage');
+
+      setChatBubbles(prev => {
+        const next = new Map(prev);
+        const existing = next.get(identity) || [];
+        next.set(identity, [{ id: msgId, text, imageUrl, ts: Date.now() }, ...existing].slice(0, 3));
+        return next;
+      });
+      setTimeout(() => {
+        setChatBubbles(prev => {
+          const next = new Map(prev);
+          const msgs = next.get(identity);
+          if (msgs) {
+            const filtered = msgs.filter(m => m.id !== msgId);
+            if (filtered.length === 0) next.delete(identity);
+            else next.set(identity, filtered);
+          }
+          return next;
+        });
+      }, 15_000);
     },
   }, onReconnect: handleSSEReconnect });
 
@@ -1173,6 +1242,18 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                 );
                 const hasScreenShare = !!localScreenShare;
                 return (
+                  <div className="relative overflow-visible">
+                    {/* Speech bubbles */}
+                    {(chatBubbles.get(localParticipant.identity) || []).map((msg, i) => (
+                      <div key={msg.id} className="absolute left-4 z-40 pointer-events-none animate-[fadeSlideIn_0.2s_ease-out]"
+                        style={{ bottom: `calc(100% + 0.25rem + ${i * 3}rem)` }}>
+                        <div className="max-w-[220px] px-3 py-1.5 rounded-xl bg-blue-500 text-white text-xs shadow-lg relative break-all overflow-hidden">
+                          {msg.imageUrl && <img src={msg.imageUrl} className="max-w-full max-h-32 rounded mb-1" alt="" />}
+                          {msg.text}
+                          <div className="absolute -bottom-1.5 left-3 w-3 h-3 bg-blue-500 rotate-45" />
+                        </div>
+                      </div>
+                    ))}
                   <div className={`bg-white dark:bg-zinc-800 rounded-xl p-4 border border-zinc-200 dark:border-zinc-700 ring-2 transition-shadow ${
                     localSpeaking ? 'ring-blue-400 shadow-[0_0_12px_rgba(96,165,250,0.5)]' : 'ring-indigo-500/30'
                   }`}>
@@ -1216,6 +1297,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                       </div>
                     </div>
                   </div>
+                  </div>
                 );
               })()}
 
@@ -1239,8 +1321,19 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                 const streamAudioMuted = hasStreamAudio && mutedStreamAudio.has(p.identity);
 
                 return (
+                  <div key={p.identity} className="relative overflow-visible">
+                    {/* Speech bubbles */}
+                    {(chatBubbles.get(p.identity) || []).map((msg, i) => (
+                      <div key={msg.id} className="absolute left-4 z-40 pointer-events-none animate-[fadeSlideIn_0.2s_ease-out]"
+                        style={{ bottom: `calc(100% + 0.25rem + ${i * 3}rem)` }}>
+                        <div className="max-w-[220px] px-3 py-1.5 rounded-xl bg-green-600 text-white text-xs shadow-lg relative break-all overflow-hidden">
+                          {msg.imageUrl && <img src={msg.imageUrl} className="max-w-full max-h-32 rounded mb-1" alt="" />}
+                          {msg.text}
+                          <div className="absolute -bottom-1.5 left-3 w-3 h-3 bg-green-600 rotate-45" />
+                        </div>
+                      </div>
+                    ))}
                   <div
-                    key={p.identity}
                     className={`group bg-white dark:bg-zinc-800 rounded-xl p-4 border border-zinc-200 dark:border-zinc-700 ring-2 transition-all ${
                       (speaking || playingSB) && !userMuted && !whisperDimmed ? 'ring-blue-400 shadow-[0_0_12px_rgba(96,165,250,0.5)]'
                       : 'ring-transparent'
@@ -1368,6 +1461,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                       </div>
                     </div>
                   </div>
+                  </div>
                 );
               })}
             </div>
@@ -1388,7 +1482,28 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
 
         {/* Floating control bar */}
         {connectionState === ConnectionState.Connected && room && (
-          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 flex flex-wrap items-center justify-center gap-2 md:gap-3 bg-white/80 dark:bg-zinc-800/80 backdrop-blur-xl rounded-2xl px-4 py-2.5 shadow-lg border border-zinc-200/50 dark:border-zinc-700/50">
+          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 w-[calc(100%-2rem)] max-w-2xl bg-white/80 dark:bg-zinc-800/80 backdrop-blur-xl rounded-2xl px-4 py-2.5 shadow-lg border border-zinc-200/50 dark:border-zinc-700/50 flex flex-col gap-2">
+            {/* Chat input */}
+            <form onSubmit={handleChatSend} className="w-full flex gap-2 items-center">
+              {chatImagePreview && (
+                <div className="relative shrink-0">
+                  <img src={chatImagePreview} className="h-8 w-8 rounded object-cover" alt="" />
+                  <button type="button" onClick={() => { setChatPendingImage(null); if (chatImagePreview) { URL.revokeObjectURL(chatImagePreview); setChatImagePreview(null); } }}
+                    className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center leading-none">&times;</button>
+                </div>
+              )}
+              <input
+                type="text"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value.slice(0, 200))}
+                onPaste={handleChatPaste}
+                placeholder="Send a message…"
+                maxLength={200}
+                className="flex-1 min-w-0 px-3 py-1.5 rounded-lg text-sm bg-zinc-100 dark:bg-zinc-700 text-zinc-900 dark:text-white border border-zinc-300 dark:border-zinc-600 focus:border-indigo-500 outline-none placeholder-zinc-400 dark:placeholder-zinc-500"
+              />
+            </form>
+            {/* Icon buttons */}
+            <div className="flex flex-wrap items-center justify-center gap-2 md:gap-3">
             <button
               onClick={() => { const willMute = room.localParticipant.isMicrophoneEnabled; room.localParticipant.setMicrophoneEnabled(!willMute); playSound(willMute ? 'mute' : 'unmute'); }}
               className={`p-2.5 rounded-lg transition-colors ${
@@ -1552,7 +1667,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                 <DeviceSettings room={room} hotkeyBindings={hotkeyBindings} onHotkeyChange={setHotkeyBindings} isMobile={isMobile} />
               )}
             </div>
-
+            </div>
           </div>
         )}
       </main>

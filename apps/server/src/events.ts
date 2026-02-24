@@ -19,7 +19,8 @@ export type EventType =
   | 'whispers:chain_updated'
   | 'soundboard:created'
   | 'soundboard:deleted'
-  | 'soundboard:playing';
+  | 'soundboard:playing'
+  | 'chat:message';
 
 interface SSEClient {
   userId: number;

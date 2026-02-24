@@ -290,6 +290,36 @@ export function notifySoundboardPlay(clipId: number, durationMs: number) {
   });
 }
 
+// Chat (ephemeral speech bubbles)
+export function sendChatMessage(text?: string, imageId?: string) {
+  return request<{ sent: boolean }>('/chat/send', {
+    method: 'POST',
+    body: JSON.stringify({ text, imageId }),
+  });
+}
+
+export async function uploadChatImage(blob: Blob): Promise<{ imageId: string }> {
+  const token = getStoredToken();
+  const form = new FormData();
+  form.append('image', blob);
+
+  const headers: Record<string, string> = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const res = await fetch(`${baseUrl}/api/chat/image`, {
+    method: 'POST',
+    headers,
+    body: form,
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: 'Upload failed' }));
+    throw new ApiError(res.status, body.error || 'Upload failed');
+  }
+
+  return res.json();
+}
+
 export async function fetchSoundboardAudio(id: number): Promise<ArrayBuffer> {
   const token = getStoredToken();
   const headers: Record<string, string> = {};
