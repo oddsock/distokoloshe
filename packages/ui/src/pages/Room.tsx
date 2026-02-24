@@ -1242,16 +1242,16 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                 );
                 const hasScreenShare = !!localScreenShare;
                 return (
-                  <div className="relative overflow-visible">
-                    {/* Speech bubbles */}
+                  <div className="relative">
+                    {/* Speech bubbles — overlaid on card, centered, above username */}
                     {(chatBubbles.get(localParticipant.identity) || []).map((msg, i) => (
-                      <div key={msg.id} className="absolute left-4 z-40 pointer-events-none animate-[fadeSlideIn_0.2s_ease-out]"
-                        style={{ bottom: `calc(100% + 0.25rem + ${i * 3}rem)` }}>
-                        <div className="max-w-[220px] px-3 py-1.5 rounded-xl bg-blue-500 text-white text-xs shadow-lg relative break-all overflow-hidden">
+                      <div key={msg.id} className="absolute left-1/2 -translate-x-1/2 z-40 pointer-events-none animate-[fadeSlideIn_0.2s_ease-out]"
+                        style={{ bottom: `calc(2.5rem + ${i * 3}rem)` }}>
+                        <div className="max-w-[220px] px-3 py-1.5 rounded-xl bg-blue-500 text-white text-xs shadow-lg relative break-all">
                           {msg.imageUrl && <img src={msg.imageUrl} className="max-w-full max-h-32 rounded mb-1" alt="" />}
                           {msg.text}
-                          <div className="absolute -bottom-1.5 left-3 w-3 h-3 bg-blue-500 rotate-45" />
                         </div>
+                        <div className="absolute -bottom-1.5 left-4 w-3 h-3 bg-blue-500 rotate-45" />
                       </div>
                     ))}
                   <div className={`bg-white dark:bg-zinc-800 rounded-xl p-4 border border-zinc-200 dark:border-zinc-700 ring-2 transition-shadow ${
@@ -1321,16 +1321,16 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                 const streamAudioMuted = hasStreamAudio && mutedStreamAudio.has(p.identity);
 
                 return (
-                  <div key={p.identity} className="relative overflow-visible">
-                    {/* Speech bubbles */}
+                  <div key={p.identity} className="relative">
+                    {/* Speech bubbles — overlaid on card, centered, above username */}
                     {(chatBubbles.get(p.identity) || []).map((msg, i) => (
-                      <div key={msg.id} className="absolute left-4 z-40 pointer-events-none animate-[fadeSlideIn_0.2s_ease-out]"
-                        style={{ bottom: `calc(100% + 0.25rem + ${i * 3}rem)` }}>
-                        <div className="max-w-[220px] px-3 py-1.5 rounded-xl bg-green-600 text-white text-xs shadow-lg relative break-all overflow-hidden">
+                      <div key={msg.id} className="absolute left-1/2 -translate-x-1/2 z-40 pointer-events-none animate-[fadeSlideIn_0.2s_ease-out]"
+                        style={{ bottom: `calc(2.5rem + ${i * 3}rem)` }}>
+                        <div className="max-w-[220px] px-3 py-1.5 rounded-xl bg-green-600 text-white text-xs shadow-lg relative break-all">
                           {msg.imageUrl && <img src={msg.imageUrl} className="max-w-full max-h-32 rounded mb-1" alt="" />}
                           {msg.text}
-                          <div className="absolute -bottom-1.5 left-3 w-3 h-3 bg-green-600 rotate-45" />
                         </div>
+                        <div className="absolute -bottom-1.5 left-4 w-3 h-3 bg-green-600 rotate-45" />
                       </div>
                     ))}
                   <div
