@@ -1,6 +1,6 @@
 {
   "productName": "disTokoloshe",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "identifier": "com.distokoloshe.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -37,7 +37,8 @@
     "linux": {
       "deb": {},
       "appimage": {}
-    }
+    },
+    "createUpdaterArtifacts": true
   },
   "plugins": {
     "updater": {
