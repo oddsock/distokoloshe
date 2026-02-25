@@ -16,7 +16,7 @@ interface DeviceSettingsProps {
 
 export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile }: DeviceSettingsProps) {
   const { audioInputs, audioOutputs, videoInputs } = useDevices();
-  const { status: updateStatus, updateInfo, error: updateError, autoUpdate, setAutoUpdate, checkNow, installUpdate, isTauri } = useAutoUpdate();
+  const { status: updateStatus, updateInfo, error: updateError, autoUpdate, setAutoUpdate, checkNow, installUpdate, appVersion, isTauri } = useAutoUpdate();
   const [micLevel, setMicLevel] = useState(0);
   const [rebinding, setRebinding] = useState<keyof HotkeyBindings | null>(null);
   const [playingTone, setPlayingTone] = useState(false);
@@ -417,9 +417,14 @@ export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile 
         {/* ── Updates (Tauri desktop only) ── */}
         {isTauri && (
           <div>
-            <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1.5">
-              Updates
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                Updates
+              </label>
+              {appVersion && (
+                <span className="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono">v{appVersion}</span>
+              )}
+            </div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs text-zinc-600 dark:text-zinc-400">Auto-check on launch</span>
               <button

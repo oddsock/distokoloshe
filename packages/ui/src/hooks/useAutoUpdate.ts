@@ -24,7 +24,19 @@ export function useAutoUpdate() {
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [autoUpdate, setAutoUpdateState] = useState(getAutoUpdateEnabled);
+  const [appVersion, setAppVersion] = useState<string | null>(null);
   const checkedRef = useRef(false);
+
+  // Fetch app version from Tauri on mount
+  useEffect(() => {
+    if (!isTauri()) return;
+    (async () => {
+      try {
+        const { getVersion } = await import('@tauri-apps/api/app');
+        setAppVersion(await getVersion());
+      } catch { /* ignore */ }
+    })();
+  }, []);
 
   const setAutoUpdate = useCallback((enabled: boolean) => {
     setAutoUpdateState(enabled);
@@ -92,6 +104,7 @@ export function useAutoUpdate() {
     setAutoUpdate,
     checkNow,
     installUpdate,
+    appVersion,
     isTauri: isTauri(),
   };
 }

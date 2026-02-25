@@ -20,6 +20,7 @@ export default defineConfig({
         '@tauri-apps/plugin-updater',
         '@tauri-apps/plugin-process',
         '@tauri-apps/api/core',
+        '@tauri-apps/api/app',
       ],
     },
   },
