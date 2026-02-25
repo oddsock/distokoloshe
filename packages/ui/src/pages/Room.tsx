@@ -1280,7 +1280,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                           <div key={msg.id} className="animate-[fadeSlideIn_0.2s_ease-out]">
                             <div className="max-w-[220px] px-3 py-1.5 rounded-xl bg-blue-500 text-white text-xs shadow-lg break-all select-text cursor-text">
                               {msg.lines.map((line, li) => (
-                                <div key={li} className={li > 0 ? 'mt-1 pt-1 border-t border-blue-400/30' : ''}>
+                                <div key={li} className={li > 0 ? 'mt-1' : ''}>
                                   {line.imageUrl && <a href={line.imageUrl} target="_blank" rel="noopener noreferrer"><img src={line.imageUrl} className="max-w-full max-h-32 rounded mb-1 cursor-pointer" alt="" /></a>}
                                   {line.text}
                                 </div>
@@ -1365,7 +1365,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                           <div key={msg.id} className="animate-[fadeSlideIn_0.2s_ease-out]">
                             <div className="max-w-[220px] px-3 py-1.5 rounded-xl bg-green-600 text-white text-xs shadow-lg break-all select-text cursor-text">
                               {msg.lines.map((line, li) => (
-                                <div key={li} className={li > 0 ? 'mt-1 pt-1 border-t border-green-500/30' : ''}>
+                                <div key={li} className={li > 0 ? 'mt-1' : ''}>
                                   {line.imageUrl && <a href={line.imageUrl} target="_blank" rel="noopener noreferrer"><img src={line.imageUrl} className="max-w-full max-h-32 rounded mb-1 cursor-pointer" alt="" /></a>}
                                   {line.text}
                                 </div>
