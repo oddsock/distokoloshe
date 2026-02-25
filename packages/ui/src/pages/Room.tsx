@@ -1253,12 +1253,6 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                         </div>
                       </div>
                     ))}
-                    {/* Tail — fixed to bottom-left above username */}
-                    {(chatBubbles.get(localParticipant.identity) || []).length > 0 && (
-                      <div className="absolute left-7 z-40" style={{ bottom: 'calc(2.5rem - 0.375rem)' }}>
-                        <div className="w-3 h-3 bg-blue-500 rotate-45" />
-                      </div>
-                    )}
                   <div className={`bg-white dark:bg-zinc-800 rounded-xl p-4 border border-zinc-200 dark:border-zinc-700 ring-2 transition-shadow ${
                     localSpeaking ? 'ring-blue-400 shadow-[0_0_12px_rgba(96,165,250,0.5)]' : 'ring-indigo-500/30'
                   }`}>
@@ -1337,12 +1331,6 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                         </div>
                       </div>
                     ))}
-                    {/* Tail — fixed to bottom-left above username */}
-                    {(chatBubbles.get(p.identity) || []).length > 0 && (
-                      <div className="absolute left-7 z-40" style={{ bottom: 'calc(2.5rem - 0.375rem)' }}>
-                        <div className="w-3 h-3 bg-green-600 rotate-45" />
-                      </div>
-                    )}
                   <div
                     className={`group bg-white dark:bg-zinc-800 rounded-xl p-4 border border-zinc-200 dark:border-zinc-700 ring-2 transition-all ${
                       (speaking || playingSB) && !userMuted && !whisperDimmed ? 'ring-blue-400 shadow-[0_0_12px_rgba(96,165,250,0.5)]'
