@@ -4,7 +4,8 @@ import { Track } from 'livekit-client';
 import type { Room } from 'livekit-client';
 import { type HotkeyBindings, formatKey } from '../hooks/useHotkeys';
 import { type SoundPack, PACK_LABELS, getStoredPack, setStoredPack, getStoredVolume, setStoredVolume, previewSound } from '../lib/sounds';
-import { Music } from 'lucide-react';
+import { Music, Download, RefreshCw } from 'lucide-react';
+import { useAutoUpdate } from '../hooks/useAutoUpdate';
 
 interface DeviceSettingsProps {
   room: Room;
@@ -15,6 +16,7 @@ interface DeviceSettingsProps {
 
 export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile }: DeviceSettingsProps) {
   const { audioInputs, audioOutputs, videoInputs } = useDevices();
+  const { status: updateStatus, updateInfo, error: updateError, autoUpdate, setAutoUpdate, checkNow, installUpdate, isTauri } = useAutoUpdate();
   const [micLevel, setMicLevel] = useState(0);
   const [rebinding, setRebinding] = useState<keyof HotkeyBindings | null>(null);
   const [playingTone, setPlayingTone] = useState(false);
@@ -133,21 +135,66 @@ export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile 
     }
   }, [playingTone, selectedSpeakerId]);
 
-  // --- Hotkey rebinding ---
+  // --- Hotkey rebinding (captures modifiers) ---
+  const [heldMods, setHeldMods] = useState<string[]>([]);
+
   useEffect(() => {
     if (!rebinding) return;
+
+    const MODIFIER_CODES = [
+      'ControlLeft', 'ControlRight', 'AltLeft', 'AltRight',
+      'ShiftLeft', 'ShiftRight', 'MetaLeft', 'MetaRight',
+    ];
+
     const handler = (e: KeyboardEvent) => {
       e.preventDefault();
       e.stopPropagation();
       if (e.code === 'Escape') {
         setRebinding(null);
+        setHeldMods([]);
         return;
       }
-      onHotkeyChange({ ...hotkeyBindings, [rebinding]: e.code });
+      // Ignore lone modifier presses — wait for a non-modifier key
+      if (MODIFIER_CODES.includes(e.code)) {
+        const mods: string[] = [];
+        if (e.ctrlKey) mods.push('Ctrl');
+        if (e.altKey) mods.push('Alt');
+        if (e.shiftKey) mods.push('Shift');
+        if (e.metaKey) mods.push('Meta');
+        setHeldMods(mods);
+        return;
+      }
+
+      // Build the full binding: modifiers + key code
+      const parts: string[] = [];
+      if (e.ctrlKey) parts.push('Ctrl');
+      if (e.altKey) parts.push('Alt');
+      if (e.shiftKey) parts.push('Shift');
+      if (e.metaKey) parts.push('Meta');
+      parts.push(e.code);
+
+      onHotkeyChange({ ...hotkeyBindings, [rebinding]: parts.join('+') });
       setRebinding(null);
+      setHeldMods([]);
     };
+
+    const upHandler = (e: KeyboardEvent) => {
+      if (!MODIFIER_CODES.includes(e.code)) return;
+      const mods: string[] = [];
+      if (e.ctrlKey) mods.push('Ctrl');
+      if (e.altKey) mods.push('Alt');
+      if (e.shiftKey) mods.push('Shift');
+      if (e.metaKey) mods.push('Meta');
+      setHeldMods(mods);
+    };
+
     document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
+    document.addEventListener('keyup', upHandler);
+    return () => {
+      document.removeEventListener('keydown', handler);
+      document.removeEventListener('keyup', upHandler);
+      setHeldMods([]);
+    };
   }, [rebinding, hotkeyBindings, onHotkeyChange]);
 
   // --- LiveKit mic diagnostics ---
@@ -297,7 +344,9 @@ export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile 
                       : 'bg-zinc-100 dark:bg-zinc-600 text-zinc-700 dark:text-zinc-300 border border-zinc-300 dark:border-zinc-500 hover:border-indigo-500'
                   }`}
                 >
-                  {rebinding === action ? 'Press a key...' : formatKey(hotkeyBindings[action])}
+                  {rebinding === action
+                    ? (heldMods.length > 0 ? heldMods.join(' + ') + ' + ...' : 'Press a key...')
+                    : formatKey(hotkeyBindings[action])}
                 </button>
               </div>
             ))}
@@ -364,6 +413,65 @@ export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile 
             </div>
           )}
         </div>
+
+        {/* ── Updates (Tauri desktop only) ── */}
+        {isTauri && (
+          <div>
+            <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1.5">
+              Updates
+            </label>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-zinc-600 dark:text-zinc-400">Auto-check on launch</span>
+              <button
+                onClick={() => setAutoUpdate(!autoUpdate)}
+                className={`w-9 h-5 rounded-full transition-colors relative ${
+                  autoUpdate ? 'bg-indigo-500' : 'bg-zinc-300 dark:bg-zinc-600'
+                }`}
+              >
+                <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                  autoUpdate ? 'left-[18px]' : 'left-0.5'
+                }`} />
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={checkNow}
+                disabled={updateStatus === 'checking' || updateStatus === 'downloading'}
+                className={`flex-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+                  updateStatus === 'checking' || updateStatus === 'downloading'
+                    ? 'bg-zinc-300 dark:bg-zinc-600 text-zinc-500 cursor-not-allowed'
+                    : 'bg-indigo-600 text-white hover:bg-indigo-500'
+                }`}
+              >
+                <RefreshCw size={12} className={`inline mr-1 ${updateStatus === 'checking' ? 'animate-spin' : ''}`} />
+                {updateStatus === 'checking' ? 'Checking...' : 'Check Now'}
+              </button>
+              {updateStatus === 'available' && updateInfo && (
+                <button
+                  onClick={installUpdate}
+                  className="flex-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-green-600 text-white hover:bg-green-500 transition-colors"
+                >
+                  <Download size={12} className="inline mr-1" />
+                  Install v{updateInfo.version}
+                </button>
+              )}
+            </div>
+            {updateStatus === 'downloading' && (
+              <p className="mt-1.5 text-[10px] text-indigo-400">Downloading and installing update...</p>
+            )}
+            {updateStatus === 'idle' && (
+              <p className="mt-1.5 text-[10px] text-zinc-500 dark:text-zinc-400">Up to date</p>
+            )}
+            {updateStatus === 'available' && updateInfo && (
+              <p className="mt-1.5 text-[10px] text-green-500">
+                v{updateInfo.version} available{updateInfo.body ? ` \u2014 ${updateInfo.body.slice(0, 100)}` : ''}
+              </p>
+            )}
+            {updateStatus === 'error' && updateError && (
+              <p className="mt-1.5 text-[10px] text-red-400">{updateError}</p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

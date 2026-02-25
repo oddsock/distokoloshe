@@ -142,6 +142,9 @@ The SQLite database in `data/api/` persists across rebuilds.
 | `WEB_PORT` | No | `3080` | Host port for HTTP |
 | `WEB_TLS_PORT` | No | `3443` | Host port for HTTPS / HTTP/3 |
 | `LK_PORT` | No | `7881` | LiveKit WebSocket port |
+| `SERVER_CITY` | No | — | Server location label (shown in connection quality UI) |
+| `GITHUB_REPO` | No | — | GitHub repo for auto-update sync (e.g., `user/distokoloshe`) |
+| `GITHUB_TOKEN` | No | — | GitHub token (only needed for private repos) |
 
 ## Features
 
@@ -154,7 +157,7 @@ The SQLite database in `data/api/` persists across rebuilds.
 - **Sound notifications** — 4 synthesized sound packs (Mystical Chimes, Mischievous Pops, Retro Arcade, Digital Whispers) with 8 events each. All generated via Web Audio API oscillators — no audio files
 - **Real-time presence** — SSE-based online/offline status, room membership, vote/punishment/whispers events (13 event types)
 - **Connection quality** — Live signal strength indicator with RTT (round-trip time) and jitter stats, server region display
-- **Desktop client** — Tauri v2 app (Windows/Linux/macOS) sharing UI code with web via `@distokoloshe/ui`. Configurable server URL, window state persistence across restarts
+- **Desktop client** — Tauri v2 app (Windows/Linux/macOS) sharing UI code with web via `@distokoloshe/ui`. Configurable server URL, window state persistence, global shortcuts (OS-level mute/deafen with modifier keys), and self-hosted auto-updater with ed25519 signed updates
 - **Light/dark theme** — Toggle with persistent preference
 - **Device selection** — Choose microphone, speaker, and camera from settings
 
@@ -193,12 +196,31 @@ The SQLite database in `data/api/` persists across rebuilds.
     └── certbot/www/         # ACME challenge webroot
 ```
 
+## Desktop Auto-Updates
+
+The desktop app supports self-hosted auto-updates via ed25519-signed binaries. Updates flow through the server the client is connected to.
+
+### Setup
+
+1. **Generate signing keys**: `npx tauri signer generate -w ~/.tauri/distokoloshe.key`
+2. **Configure**: Put the public key in `apps/desktop/src-tauri/tauri.conf.json` under `plugins.updater.pubkey`
+3. **CI**: Add `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` as GitHub Actions secrets
+4. **Server**: Set `GITHUB_REPO=youruser/distokoloshe` in `.env` — the server auto-downloads new releases from GitHub every 60 minutes
+
+### Pipeline
+
+Push a version tag (e.g., `git tag v1.1.0 && git push --tags`) → CI builds + signs → GitHub Release created → server syncs within 60 min → connected clients auto-update.
+
+Without `GITHUB_REPO`, admins can manually place the `.exe` + `.sig` files in the server's `data/api/updates/` directory.
+
+### Security
+
+The public key is baked into the app binary at build time. Only updates signed with the matching private key are accepted — even a compromised server cannot push unsigned updates.
+
 ## Planned Features
 
 - **Music bot** — A LiveKit participant that streams internet radio (SomaFM) into a room with queue support and station switching. Blocked by a LiveKit server-side SDK bug where `wait_pc_connection` times out before the peer connection is established — reproduced in both `@livekit/rtc-node` and the Python `livekit` SDK (same underlying `livekit-ffi` Rust FFI). Archived at `archive/music-room` tag. Will revisit when LiveKit fixes the FFI peer connection handshake.
-- **Desktop: global push-to-talk** — Register a system-wide hotkey via `tauri-plugin-global-shortcut` (plugin loaded, not yet wired to mute toggle).
 - **Desktop: system tray menu** — Context menu with mute/deafen/quit actions.
-- **Desktop: auto-updater** — `tauri-plugin-updater` with GitHub Releases endpoint for seamless updates.
 
 ## Security
 

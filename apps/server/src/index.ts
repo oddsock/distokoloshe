@@ -23,6 +23,8 @@ import voteRoutes from './routes/votes.js';
 import punishmentRoutes from './routes/punishments.js';
 import soundboardRoutes from './routes/soundboard.js';
 import chatRoutes from './routes/chat.js';
+import updateRoutes from './routes/updates.js';
+import { startUpdateSync } from './updater.js';
 
 const app = express();
 
@@ -54,9 +56,13 @@ app.use('/api/votes', voteRoutes);
 app.use('/api/punishments', punishmentRoutes);
 app.use('/api/soundboard', soundboardRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/updates', updateRoutes);
 
 // Restore active vote/punishment timers from DB (handles API restarts)
 restoreTimers();
+
+// Start GitHub Release auto-sync (if GITHUB_REPO is set)
+startUpdateSync();
 
 // Global error handler — prevent stack trace leakage
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {

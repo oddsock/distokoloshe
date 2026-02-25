@@ -59,6 +59,8 @@ services:
       - E2EE_SECRET=${E2EE_SECRET:-}
       - LIVEKIT_URL=ws://host.docker.internal:${LK_PORT:-7881}
       - SERVER_CITY=${SERVER_CITY:-}
+      - GITHUB_REPO=${GITHUB_REPO:-}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
