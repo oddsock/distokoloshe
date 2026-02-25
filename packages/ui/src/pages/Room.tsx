@@ -95,9 +95,11 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
   const [soundboardPlaying, setSoundboardPlaying] = useState<{ username: string; clipName: string } | null>(null);
   const soundboardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Chat speech bubbles (ephemeral)
-  type ChatMsg = { id: number; text?: string; imageUrl?: string; ts: number };
+  type ChatLine = { text?: string; imageUrl?: string };
+  type ChatMsg = { id: number; lines: ChatLine[]; ts: number };
   const [chatBubbles, setChatBubbles] = useState<Map<string, ChatMsg[]>>(new Map());
   const chatIdRef = useRef(0);
+  const chatTimersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
   const [chatInput, setChatInput] = useState('');
   const [chatPendingImage, setChatPendingImage] = useState<Blob | null>(null);
   const [chatImagePreview, setChatImagePreview] = useState<string | null>(null);
@@ -476,8 +478,9 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     'chat:message': (data) => {
       const { user: chatUser, text, imageId } = data as { user: { id: number; username: string }; text?: string; imageId?: string };
       const identity = chatUser.username;
-      const msgId = ++chatIdRef.current;
+      const now = Date.now();
       const imageUrl = imageId ? `${api.getBaseUrl()}/api/chat/image/${imageId}` : undefined;
+      const newLine: ChatLine = { text: text || undefined, imageUrl };
 
       // Play sound for messages from others
       if (chatUser.id !== user.id) playSound('chatMessage');
@@ -485,21 +488,51 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
       setChatBubbles(prev => {
         const next = new Map(prev);
         const existing = next.get(identity) || [];
-        next.set(identity, [{ id: msgId, text, imageUrl, ts: Date.now() }, ...existing].slice(0, 3));
+        const newest = existing[0];
+
+        // Merge into newest bubble if within 3 seconds
+        if (newest && now - newest.ts < 3_000) {
+          const merged = { ...newest, lines: [...newest.lines, newLine], ts: now };
+          // Reset dismiss timer for merged bubble
+          const oldTimer = chatTimersRef.current.get(newest.id);
+          if (oldTimer) clearTimeout(oldTimer);
+          const timer = setTimeout(() => {
+            chatTimersRef.current.delete(merged.id);
+            setChatBubbles(p => {
+              const n = new Map(p);
+              const msgs = n.get(identity);
+              if (msgs) {
+                const filtered = msgs.filter(m => m.id !== merged.id);
+                if (filtered.length === 0) n.delete(identity);
+                else n.set(identity, filtered);
+              }
+              return n;
+            });
+          }, 15_000);
+          chatTimersRef.current.set(merged.id, timer);
+          next.set(identity, [merged, ...existing.slice(1)].slice(0, 3));
+        } else {
+          // New bubble
+          const msgId = ++chatIdRef.current;
+          const bubble: ChatMsg = { id: msgId, lines: [newLine], ts: now };
+          const timer = setTimeout(() => {
+            chatTimersRef.current.delete(msgId);
+            setChatBubbles(p => {
+              const n = new Map(p);
+              const msgs = n.get(identity);
+              if (msgs) {
+                const filtered = msgs.filter(m => m.id !== msgId);
+                if (filtered.length === 0) n.delete(identity);
+                else n.set(identity, filtered);
+              }
+              return n;
+            });
+          }, 15_000);
+          chatTimersRef.current.set(msgId, timer);
+          next.set(identity, [bubble, ...existing].slice(0, 3));
+        }
         return next;
       });
-      setTimeout(() => {
-        setChatBubbles(prev => {
-          const next = new Map(prev);
-          const msgs = next.get(identity);
-          if (msgs) {
-            const filtered = msgs.filter(m => m.id !== msgId);
-            if (filtered.length === 0) next.delete(identity);
-            else next.set(identity, filtered);
-          }
-          return next;
-        });
-      }, 15_000);
     },
   }, onReconnect: handleSSEReconnect });
 
@@ -1241,15 +1274,22 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                 return (
                   <div className="relative">
                     {/* Speech bubbles — overlaid on card, centered, above username */}
-                    {(chatBubbles.get(localParticipant.identity) || []).map((msg, i) => (
-                      <div key={msg.id} className="absolute left-1/2 -translate-x-1/2 z-40 animate-[fadeSlideIn_0.2s_ease-out]"
-                        style={{ bottom: `calc(2.5rem + ${i * 3}rem)` }}>
-                        <div className="max-w-[220px] px-3 py-1.5 rounded-xl bg-blue-500 text-white text-xs shadow-lg break-all select-text cursor-text">
-                          {msg.imageUrl && <a href={msg.imageUrl} target="_blank" rel="noopener noreferrer"><img src={msg.imageUrl} className="max-w-full max-h-32 rounded mb-1 cursor-pointer" alt="" /></a>}
-                          {msg.text}
-                        </div>
+                    {(chatBubbles.get(localParticipant.identity) || []).length > 0 && (
+                      <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-40 flex flex-col-reverse items-center gap-1.5 pointer-events-auto">
+                        {(chatBubbles.get(localParticipant.identity) || []).map((msg) => (
+                          <div key={msg.id} className="animate-[fadeSlideIn_0.2s_ease-out]">
+                            <div className="max-w-[220px] px-3 py-1.5 rounded-xl bg-blue-500 text-white text-xs shadow-lg break-all select-text cursor-text">
+                              {msg.lines.map((line, li) => (
+                                <div key={li} className={li > 0 ? 'mt-1 pt-1 border-t border-blue-400/30' : ''}>
+                                  {line.imageUrl && <a href={line.imageUrl} target="_blank" rel="noopener noreferrer"><img src={line.imageUrl} className="max-w-full max-h-32 rounded mb-1 cursor-pointer" alt="" /></a>}
+                                  {line.text}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    )}
                   <div className={`bg-white dark:bg-zinc-800 rounded-xl p-4 border border-zinc-200 dark:border-zinc-700 ring-2 transition-shadow ${
                     localSpeaking ? 'ring-blue-400 shadow-[0_0_12px_rgba(96,165,250,0.5)]' : 'ring-indigo-500/30'
                   }`}>
@@ -1319,15 +1359,22 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                 return (
                   <div key={p.identity} className="relative">
                     {/* Speech bubbles — overlaid on card, centered, above username */}
-                    {(chatBubbles.get(p.identity) || []).map((msg, i) => (
-                      <div key={msg.id} className="absolute left-1/2 -translate-x-1/2 z-40 animate-[fadeSlideIn_0.2s_ease-out]"
-                        style={{ bottom: `calc(2.5rem + ${i * 3}rem)` }}>
-                        <div className="max-w-[220px] px-3 py-1.5 rounded-xl bg-green-600 text-white text-xs shadow-lg break-all select-text cursor-text">
-                          {msg.imageUrl && <a href={msg.imageUrl} target="_blank" rel="noopener noreferrer"><img src={msg.imageUrl} className="max-w-full max-h-32 rounded mb-1 cursor-pointer" alt="" /></a>}
-                          {msg.text}
-                        </div>
+                    {(chatBubbles.get(p.identity) || []).length > 0 && (
+                      <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-40 flex flex-col-reverse items-center gap-1.5 pointer-events-auto">
+                        {(chatBubbles.get(p.identity) || []).map((msg) => (
+                          <div key={msg.id} className="animate-[fadeSlideIn_0.2s_ease-out]">
+                            <div className="max-w-[220px] px-3 py-1.5 rounded-xl bg-green-600 text-white text-xs shadow-lg break-all select-text cursor-text">
+                              {msg.lines.map((line, li) => (
+                                <div key={li} className={li > 0 ? 'mt-1 pt-1 border-t border-green-500/30' : ''}>
+                                  {line.imageUrl && <a href={line.imageUrl} target="_blank" rel="noopener noreferrer"><img src={line.imageUrl} className="max-w-full max-h-32 rounded mb-1 cursor-pointer" alt="" /></a>}
+                                  {line.text}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    )}
                   <div
                     className={`group bg-white dark:bg-zinc-800 rounded-xl p-4 border border-zinc-200 dark:border-zinc-700 ring-2 transition-all ${
                       (speaking || playingSB) && !userMuted && !whisperDimmed ? 'ring-blue-400 shadow-[0_0_12px_rgba(96,165,250,0.5)]'
