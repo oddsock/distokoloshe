@@ -164,9 +164,10 @@ export function useHotkeys({ onToggleMute, onToggleDeafen, enabled }: UseHotkeys
 
         const shortcut = toTauriShortcut(binding);
         try {
-          await register(shortcut, () => {
-            // Only fire when app is NOT focused — browser handler covers focused case
-            if (!document.hasFocus()) callback();
+          await register(shortcut, (event) => {
+            // Tauri fires on both keydown ("Pressed") and keyup ("Released")
+            if (event.state !== 'Pressed') return;
+            callback();
           });
           registeredRef.current.push(shortcut);
         } catch (err) {

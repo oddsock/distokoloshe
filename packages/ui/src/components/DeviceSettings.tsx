@@ -16,7 +16,7 @@ interface DeviceSettingsProps {
 
 export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile }: DeviceSettingsProps) {
   const { audioInputs, audioOutputs, videoInputs } = useDevices();
-  const { status: updateStatus, updateInfo, error: updateError, autoUpdate, setAutoUpdate, checkNow, installUpdate, appVersion, isTauri } = useAutoUpdate();
+  const { status: updateStatus, updateInfo, error: updateError, autoUpdate, setAutoUpdate, checkNow, installUpdate, appVersion, restartCountdown, isTauri } = useAutoUpdate();
   const [micLevel, setMicLevel] = useState(0);
   const [rebinding, setRebinding] = useState<keyof HotkeyBindings | null>(null);
   const [playingTone, setPlayingTone] = useState(false);
@@ -441,9 +441,9 @@ export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile 
             <div className="flex items-center gap-2">
               <button
                 onClick={checkNow}
-                disabled={updateStatus === 'checking' || updateStatus === 'downloading'}
+                disabled={updateStatus === 'checking' || updateStatus === 'downloading' || updateStatus === 'restarting'}
                 className={`flex-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
-                  updateStatus === 'checking' || updateStatus === 'downloading'
+                  updateStatus === 'checking' || updateStatus === 'downloading' || updateStatus === 'restarting'
                     ? 'bg-zinc-300 dark:bg-zinc-600 text-zinc-500 cursor-not-allowed'
                     : 'bg-indigo-600 text-white hover:bg-indigo-500'
                 }`}
@@ -461,6 +461,11 @@ export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile 
                 </button>
               )}
             </div>
+            {updateStatus === 'restarting' && updateInfo && (
+              <p className="mt-1.5 text-[10px] text-amber-400 font-medium">
+                Updating to v{updateInfo.version} — restarting in {restartCountdown}s...
+              </p>
+            )}
             {updateStatus === 'downloading' && (
               <p className="mt-1.5 text-[10px] text-indigo-400">Downloading and installing update...</p>
             )}

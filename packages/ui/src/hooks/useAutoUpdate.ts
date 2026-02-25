@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { getBaseUrl } from '../lib/api';
 
 const AUTO_UPDATE_KEY = 'distokoloshe_auto_update';
+const RESTART_COUNTDOWN_SECS = 3;
 const isTauri = () => '__TAURI_INTERNALS__' in window;
 
 interface UpdateInfo {
@@ -9,7 +10,7 @@ interface UpdateInfo {
   body: string | null;
 }
 
-type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'error';
+type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'restarting' | 'error';
 
 export function getAutoUpdateEnabled(): boolean {
   return localStorage.getItem(AUTO_UPDATE_KEY) !== 'false'; // default on
@@ -25,6 +26,7 @@ export function useAutoUpdate() {
   const [error, setError] = useState<string | null>(null);
   const [autoUpdate, setAutoUpdateState] = useState(getAutoUpdateEnabled);
   const [appVersion, setAppVersion] = useState<string | null>(null);
+  const [restartCountdown, setRestartCountdown] = useState(0);
   const checkedRef = useRef(false);
 
   // Fetch app version from Tauri on mount
@@ -41,6 +43,22 @@ export function useAutoUpdate() {
   const setAutoUpdate = useCallback((enabled: boolean) => {
     setAutoUpdateState(enabled);
     setAutoUpdateEnabled(enabled);
+  }, []);
+
+  const installUpdate = useCallback(async () => {
+    if (!isTauri()) return;
+
+    setStatus('downloading');
+    setError(null);
+
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('install_update');
+      // App will restart — this line won't be reached
+    } catch (err) {
+      setError(String(err));
+      setStatus('error');
+    }
   }, []);
 
   const checkNow = useCallback(async () => {
@@ -71,22 +89,6 @@ export function useAutoUpdate() {
     }
   }, []);
 
-  const installUpdate = useCallback(async () => {
-    if (!isTauri()) return;
-
-    setStatus('downloading');
-    setError(null);
-
-    try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('install_update');
-      // App will restart — this line won't be reached
-    } catch (err) {
-      setError(String(err));
-      setStatus('error');
-    }
-  }, []);
-
   // Auto-check on mount if enabled
   useEffect(() => {
     if (!isTauri() || !autoUpdate || checkedRef.current) return;
@@ -95,6 +97,27 @@ export function useAutoUpdate() {
     const timer = setTimeout(() => checkNow(), 3000);
     return () => clearTimeout(timer);
   }, [autoUpdate, checkNow]);
+
+  // Auto-install: when update is available and auto-update is on, start countdown then install
+  useEffect(() => {
+    if (status !== 'available' || !autoUpdate) return;
+
+    setStatus('restarting');
+    setRestartCountdown(RESTART_COUNTDOWN_SECS);
+
+    const interval = setInterval(() => {
+      setRestartCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          installUpdate();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [status, autoUpdate, installUpdate]);
 
   return {
     status,
@@ -105,6 +128,7 @@ export function useAutoUpdate() {
     checkNow,
     installUpdate,
     appVersion,
+    restartCountdown,
     isTauri: isTauri(),
   };
 }

@@ -1524,7 +1524,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
 
         {/* Floating control bar */}
         {connectionState === ConnectionState.Connected && room && (
-          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 w-[calc(100%-2rem)] max-w-2xl bg-white/80 dark:bg-zinc-800/80 backdrop-blur-xl rounded-2xl px-4 py-2.5 shadow-lg border border-zinc-200/50 dark:border-zinc-700/50 flex flex-col gap-2">
+          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 w-[calc(100%-2rem)] md:w-3/5 min-w-[14rem] max-w-2xl bg-white/80 dark:bg-zinc-800/80 backdrop-blur-xl rounded-2xl px-4 py-2.5 shadow-lg border border-zinc-200/50 dark:border-zinc-700/50 flex flex-col gap-2">
             {/* Chat input */}
             <form onSubmit={handleChatSend} className="w-full flex gap-2 items-center">
               {chatImagePreview && (
