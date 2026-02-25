@@ -1,7 +1,7 @@
 {
   "productName": "disTokoloshe",
   "version": "1.0.1",
-  "identifier": "com.distokoloshe.app",
+  "identifier": "com.distokoloshe.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",

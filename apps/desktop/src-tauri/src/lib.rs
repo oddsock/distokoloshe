@@ -2,6 +2,7 @@ use serde::Serialize;
 use std::sync::Mutex;
 use tauri::Manager;
 use tauri_plugin_updater::UpdaterExt;
+use url::Url;
 
 // ── Update state ─────────────────────────────────────────
 struct PendingUpdate(Mutex<Option<tauri_plugin_updater::Update>>);
@@ -21,15 +22,17 @@ async fn check_for_update(
     let base = server_url.trim_end_matches('/');
     let endpoint =
         [base, "/api/updates/{{target}}/{{arch}}/{{current_version}}"].concat();
+    let endpoint_url = Url::parse(&endpoint).map_err(|e| e.to_string())?;
 
     let update = app
         .updater_builder()
-        .endpoints(vec![endpoint])
+        .endpoints(vec![endpoint_url])
+        .map_err(|e: tauri_plugin_updater::Error| e.to_string())?
         .build()
-        .map_err(|e| e.to_string())?
+        .map_err(|e: tauri_plugin_updater::Error| e.to_string())?
         .check()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e: tauri_plugin_updater::Error| e.to_string())?;
 
     match update {
         Some(u) => {
@@ -92,18 +95,20 @@ pub fn run() {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 // Fire the leave beacon before the webview is destroyed.
                 // This tells the server to skip the 15s grace period.
-                let _ = window.eval(
-                    "try { \
-                        const token = localStorage.getItem('distokoloshe_token'); \
-                        const server = localStorage.getItem('distokoloshe_server_url') || ''; \
-                        if (token && server) { \
-                            navigator.sendBeacon( \
-                                server + '/api/events/leave', \
-                                new Blob([JSON.stringify({ token })], { type: 'application/json' }) \
-                            ); \
-                        } \
-                    } catch(e) {}"
-                );
+                if let Some(ww) = window.app_handle().get_webview_window("main") {
+                    let _ = ww.eval(
+                        "try { \
+                            const token = localStorage.getItem('distokoloshe_token'); \
+                            const server = localStorage.getItem('distokoloshe_server_url') || ''; \
+                            if (token && server) { \
+                                navigator.sendBeacon( \
+                                    server + '/api/events/leave', \
+                                    new Blob([JSON.stringify({ token })], { type: 'application/json' }) \
+                                ); \
+                            } \
+                        } catch(e) {}"
+                    );
+                }
                 // Brief pause to let the beacon fire
                 std::thread::sleep(std::time::Duration::from_millis(100));
             }
