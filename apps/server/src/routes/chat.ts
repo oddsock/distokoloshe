@@ -30,7 +30,7 @@ const imageStore = new Map<string, { data: Buffer; mime: string }>();
 
 const imageUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 500 * 1024 }, // 500KB
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
   fileFilter: (_req, file, cb) => {
     cb(null, file.mimetype.startsWith('image/'));
   },

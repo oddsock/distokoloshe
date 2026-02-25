@@ -19,7 +19,6 @@ import { useMutedMicDetector } from '../hooks/useMutedMicDetector';
 import { getRoomInitials, toggleTheme, getTheme } from '../lib/utils';
 import * as api from '../lib/api';
 import { playSound } from '../lib/sounds';
-import { resizeImage } from '../lib/imageResize';
 import { Mic, MicOff, Camera, CameraOff, Ear, EarOff, Monitor, MonitorOff, Volume2, VolumeX, Settings, Sun, Moon, LogOut, AudioLines, X, MessageCircle } from 'lucide-react';
 
 interface RoomPageProps {
@@ -153,10 +152,8 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     const file = Array.from(e.clipboardData?.files || []).find(f => f.type.startsWith('image/'));
     if (file) {
       e.preventDefault();
-      resizeImage(file).then(blob => {
-        setChatPendingImage(blob);
-        setChatImagePreview(URL.createObjectURL(blob));
-      });
+      setChatPendingImage(file);
+      setChatImagePreview(URL.createObjectURL(file));
     }
   }, []);
 
@@ -1248,7 +1245,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                       <div key={msg.id} className="absolute left-1/2 -translate-x-1/2 z-40 animate-[fadeSlideIn_0.2s_ease-out]"
                         style={{ bottom: `calc(2.5rem + ${i * 3}rem)` }}>
                         <div className="max-w-[220px] px-3 py-1.5 rounded-xl bg-blue-500 text-white text-xs shadow-lg break-all select-text cursor-text">
-                          {msg.imageUrl && <img src={msg.imageUrl} className="max-w-full max-h-32 rounded mb-1" alt="" />}
+                          {msg.imageUrl && <a href={msg.imageUrl} target="_blank" rel="noopener noreferrer"><img src={msg.imageUrl} className="max-w-full max-h-32 rounded mb-1 cursor-pointer" alt="" /></a>}
                           {msg.text}
                         </div>
                       </div>
@@ -1326,7 +1323,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                       <div key={msg.id} className="absolute left-1/2 -translate-x-1/2 z-40 animate-[fadeSlideIn_0.2s_ease-out]"
                         style={{ bottom: `calc(2.5rem + ${i * 3}rem)` }}>
                         <div className="max-w-[220px] px-3 py-1.5 rounded-xl bg-green-600 text-white text-xs shadow-lg break-all select-text cursor-text">
-                          {msg.imageUrl && <img src={msg.imageUrl} className="max-w-full max-h-32 rounded mb-1" alt="" />}
+                          {msg.imageUrl && <a href={msg.imageUrl} target="_blank" rel="noopener noreferrer"><img src={msg.imageUrl} className="max-w-full max-h-32 rounded mb-1 cursor-pointer" alt="" /></a>}
                           {msg.text}
                         </div>
                       </div>
