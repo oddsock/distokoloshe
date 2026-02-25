@@ -1245,15 +1245,20 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                   <div className="relative">
                     {/* Speech bubbles — overlaid on card, centered, above username */}
                     {(chatBubbles.get(localParticipant.identity) || []).map((msg, i) => (
-                      <div key={msg.id} className="absolute left-1/2 -translate-x-1/2 z-40 pointer-events-none animate-[fadeSlideIn_0.2s_ease-out]"
+                      <div key={msg.id} className="absolute left-1/2 -translate-x-1/2 z-40 animate-[fadeSlideIn_0.2s_ease-out]"
                         style={{ bottom: `calc(2.5rem + ${i * 3}rem)` }}>
-                        <div className="max-w-[220px] px-3 py-1.5 rounded-xl bg-blue-500 text-white text-xs shadow-lg relative break-all">
+                        <div className="max-w-[220px] px-3 py-1.5 rounded-xl bg-blue-500 text-white text-xs shadow-lg break-all select-text cursor-text">
                           {msg.imageUrl && <img src={msg.imageUrl} className="max-w-full max-h-32 rounded mb-1" alt="" />}
                           {msg.text}
                         </div>
-                        <div className="absolute -bottom-1.5 left-4 w-3 h-3 bg-blue-500 rotate-45" />
                       </div>
                     ))}
+                    {/* Tail — fixed to bottom-left above username */}
+                    {(chatBubbles.get(localParticipant.identity) || []).length > 0 && (
+                      <div className="absolute left-7 z-40" style={{ bottom: 'calc(2.5rem - 0.375rem)' }}>
+                        <div className="w-3 h-3 bg-blue-500 rotate-45" />
+                      </div>
+                    )}
                   <div className={`bg-white dark:bg-zinc-800 rounded-xl p-4 border border-zinc-200 dark:border-zinc-700 ring-2 transition-shadow ${
                     localSpeaking ? 'ring-blue-400 shadow-[0_0_12px_rgba(96,165,250,0.5)]' : 'ring-indigo-500/30'
                   }`}>
@@ -1324,15 +1329,20 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                   <div key={p.identity} className="relative">
                     {/* Speech bubbles — overlaid on card, centered, above username */}
                     {(chatBubbles.get(p.identity) || []).map((msg, i) => (
-                      <div key={msg.id} className="absolute left-1/2 -translate-x-1/2 z-40 pointer-events-none animate-[fadeSlideIn_0.2s_ease-out]"
+                      <div key={msg.id} className="absolute left-1/2 -translate-x-1/2 z-40 animate-[fadeSlideIn_0.2s_ease-out]"
                         style={{ bottom: `calc(2.5rem + ${i * 3}rem)` }}>
-                        <div className="max-w-[220px] px-3 py-1.5 rounded-xl bg-green-600 text-white text-xs shadow-lg relative break-all">
+                        <div className="max-w-[220px] px-3 py-1.5 rounded-xl bg-green-600 text-white text-xs shadow-lg break-all select-text cursor-text">
                           {msg.imageUrl && <img src={msg.imageUrl} className="max-w-full max-h-32 rounded mb-1" alt="" />}
                           {msg.text}
                         </div>
-                        <div className="absolute -bottom-1.5 left-4 w-3 h-3 bg-green-600 rotate-45" />
                       </div>
                     ))}
+                    {/* Tail — fixed to bottom-left above username */}
+                    {(chatBubbles.get(p.identity) || []).length > 0 && (
+                      <div className="absolute left-7 z-40" style={{ bottom: 'calc(2.5rem - 0.375rem)' }}>
+                        <div className="w-3 h-3 bg-green-600 rotate-45" />
+                      </div>
+                    )}
                   <div
                     className={`group bg-white dark:bg-zinc-800 rounded-xl p-4 border border-zinc-200 dark:border-zinc-700 ring-2 transition-all ${
                       (speaking || playingSB) && !userMuted && !whisperDimmed ? 'ring-blue-400 shadow-[0_0_12px_rgba(96,165,250,0.5)]'

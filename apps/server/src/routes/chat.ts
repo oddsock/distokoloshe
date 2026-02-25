@@ -64,8 +64,8 @@ router.post('/image', requireAuth, (req: Request, res: Response) => {
   });
 });
 
-// GET /api/chat/image/:id — serve ephemeral image
-router.get('/image/:id', requireAuth, (req: Request, res: Response) => {
+// GET /api/chat/image/:id — serve ephemeral image (no auth — <img> tags can't send JWT)
+router.get('/image/:id', (req: Request, res: Response) => {
   const entry = imageStore.get(req.params.id);
   if (!entry) {
     res.status(404).json({ error: 'Image not found or expired' });
