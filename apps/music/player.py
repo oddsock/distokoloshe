@@ -337,14 +337,29 @@ class Player:
             return False
         return True
 
-    def _ytdlp_base_args(self) -> list[str]:
-        """Common yt-dlp args with PO token server for YouTube bot bypass."""
-        return [
-            "yt-dlp",
-            "-v",
-            "--extractor-args",
-            "youtubepot-bgutilhttp:base_url=http://127.0.0.1:4416",
-        ]
+    async def _get_po_token(self, video_id: str) -> Optional[tuple[str, str]]:
+        """Get a PO token + visitor_data from the bgutil HTTP server."""
+        import aiohttp as _aiohttp
+        try:
+            async with _aiohttp.ClientSession() as session:
+                async with session.post(
+                    "http://127.0.0.1:4416/get_pot",
+                    json={"client": "web", "visitor_data": "", "video_id": video_id},
+                    timeout=_aiohttp.ClientTimeout(total=30),
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        po_token = data.get("po_token", "")
+                        visitor_data = data.get("visitor_data", "")
+                        if po_token:
+                            print(f"[player] Got PO token from bgutil server")
+                            return po_token, visitor_data
+                    else:
+                        body = await resp.text()
+                        print(f"[player] bgutil server error {resp.status}: {body[:200]}")
+        except Exception as e:
+            print(f"[player] bgutil server unreachable: {e}")
+        return None
 
     async def _resolve_url(self, url: str) -> Optional[str]:
         """Use yt-dlp to extract a direct audio stream URL.
@@ -352,10 +367,28 @@ class Player:
         if not self._needs_ytdlp(url):
             return url
 
+        # Extract video ID for PO token generation
+        from urllib.parse import parse_qs
+        parsed = urlparse(url)
+        qs = parse_qs(parsed.query)
+        video_id = qs.get("v", [""])[0]
+
+        # Build yt-dlp args
+        args = ["yt-dlp"]
+
+        # Try to get a PO token from bgutil server
+        if video_id:
+            pot = await self._get_po_token(video_id)
+            if pot:
+                po_token, visitor_data = pot
+                ext_args = f"youtube:po_token=web+{po_token}"
+                if visitor_data:
+                    ext_args += f";visitor_data={visitor_data}"
+                args.extend(["--extractor-args", ext_args])
+
         try:
-            base = self._ytdlp_base_args()
             proc = await asyncio.create_subprocess_exec(
-                *base,
+                *args,
                 "--no-playlist",
                 "-f", "bestaudio/best",
                 "--get-url",
@@ -372,10 +405,7 @@ class Player:
             err = stderr.decode().strip()
             if "Unsupported URL" in err:
                 return url
-            # Log first 3000 chars to see plugin loading, then last 1000 for error
-            print(f"[player] yt-dlp verbose (start): {err[:3000]}")
-            if len(err) > 3000:
-                print(f"[player] yt-dlp verbose (end): {err[-1000:]}")
+            print(f"[player] yt-dlp error: {err[:1000]}")
             return None
         except asyncio.TimeoutError:
             print("[player] yt-dlp timed out")
@@ -389,9 +419,8 @@ class Player:
             return []
 
         try:
-            base = self._ytdlp_base_args()
             proc = await asyncio.create_subprocess_exec(
-                *base,
+                "yt-dlp",
                 "--flat-playlist",
                 "--print", "%(url)s\t%(title)s",
                 url,
