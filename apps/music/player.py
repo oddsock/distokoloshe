@@ -354,7 +354,7 @@ class Player:
             proc = await asyncio.create_subprocess_exec(
                 "yt-dlp",
                 "--no-playlist",
-                "--js-runtimes", "nodejs",
+                "--js-runtimes", "node",
                 "-f", "bestaudio/best",
                 "--get-url",
                 url,
@@ -387,7 +387,7 @@ class Player:
             proc = await asyncio.create_subprocess_exec(
                 "yt-dlp",
                 "--flat-playlist",
-                "--js-runtimes", "nodejs",
+                "--js-runtimes", "node",
                 "--print", "%(url)s\t%(title)s",
                 url,
                 stdout=asyncio.subprocess.PIPE,
