@@ -226,6 +226,16 @@ class MusicBot:
             print(f"[bot] Extracting audio URL via browser: {yt_url}")
             await page.goto(yt_url, wait_until="domcontentloaded", timeout=30000)
 
+            # Log what YouTube shows us
+            title = await page.title()
+            print(f"[bot] YouTube page title: {title}")
+            # Save screenshot for debugging
+            await page.screenshot(path="/tmp/youtube_debug.png")
+            print("[bot] Screenshot saved to /tmp/youtube_debug.png")
+            # Log page content snippet
+            body_text = await page.evaluate("() => document.body?.innerText?.substring(0, 500) || 'empty'")
+            print(f"[bot] Page text: {body_text[:300]}")
+
             # Click play if there's a play button (autoplay might be blocked)
             try:
                 play_btn = page.locator("button.ytp-large-play-button")
