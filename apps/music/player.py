@@ -352,13 +352,13 @@ class Player:
                     if resp.status == 200:
                         import json as _json
                         data = _json.loads(body)
-                        po_token = data.get("po_token", "")
-                        visitor_data = data.get("visitor_data", "")
+                        po_token = data.get("poToken", "") or data.get("po_token", "")
+                        visitor_data = data.get("visitorData", "") or data.get("visitor_data", "")
                         if po_token:
                             print(f"[player] Got PO token ({len(po_token)} chars)")
                             return po_token, visitor_data
                         else:
-                            print(f"[player] bgutil returned no po_token: {list(data.keys())}")
+                            print(f"[player] bgutil returned no poToken: {list(data.keys())}")
         except Exception as e:
             print(f"[player] bgutil server unreachable: {e}")
         return None
