@@ -361,7 +361,13 @@ class Player:
         video_id = self._extract_video_id(url)
         print(f"[player] Resolving URL, video_id={video_id!r}")
 
-        # Try yt-dlp first (via Tor proxy)
+        # Try ytdl-core first (fastest, different extraction logic)
+        if video_id:
+            stream = await self._resolve_via_ytdl_core(url)
+            if stream:
+                return stream
+
+        # Try yt-dlp (via Tor proxy)
         stream = await self._resolve_via_ytdlp(url)
         if stream:
             return stream
@@ -380,6 +386,30 @@ class Player:
 
         print(f"[player] All resolvers failed for: {url}")
         return None
+
+    async def _resolve_via_ytdl_core(self, url: str) -> Optional[str]:
+        """Try @distube/ytdl-core to extract a direct audio stream URL."""
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "node", "/app/ytdl-resolve.js", url,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
+            if proc.returncode == 0:
+                stream_url = stdout.decode().strip()
+                if stream_url:
+                    print(f"[player] Resolved URL via ytdl-core")
+                    return stream_url
+            err = stderr.decode().strip()
+            print(f"[player] ytdl-core failed: {err[:500]}")
+            return None
+        except asyncio.TimeoutError:
+            print("[player] ytdl-core timed out")
+            return None
+        except FileNotFoundError:
+            print("[player] ytdl-core not installed")
+            return None
 
     async def _resolve_via_ytdlp(self, url: str) -> Optional[str]:
         """Try yt-dlp to extract a direct audio stream URL.

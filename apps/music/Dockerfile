@@ -25,6 +25,9 @@ RUN playwright install chromium --with-deps
 COPY browser/package.json browser/
 RUN cd browser && npm install --omit=dev
 
+# Install @distube/ytdl-core for YouTube audio extraction
+RUN npm install --prefix /app @distube/ytdl-core
+
 # Copy application code
 COPY . .
 
