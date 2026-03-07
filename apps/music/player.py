@@ -386,7 +386,8 @@ class Player:
             pot = await self._get_po_token(video_id)
             if pot:
                 po_token, visitor_data = pot
-                ext_args = f"youtube:po_token=web+{po_token}"
+                # Format: CLIENT.TYPE+TOKEN (web.gvs for Google Video Server)
+                ext_args = f"youtube:po_token=web.gvs+{po_token}"
                 if visitor_data:
                     ext_args += f";visitor_data={visitor_data}"
                 print(f"[player] extractor-args: {ext_args[:200]}...")
