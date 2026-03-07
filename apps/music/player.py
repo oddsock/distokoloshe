@@ -341,6 +341,7 @@ class Player:
         """Common yt-dlp args with PO token server for YouTube bot bypass."""
         return [
             "yt-dlp",
+            "-v",
             "--extractor-args",
             "youtubepot-bgutilhttp:base_url=http://127.0.0.1:4416",
         ]
@@ -371,7 +372,8 @@ class Player:
             err = stderr.decode().strip()
             if "Unsupported URL" in err:
                 return url
-            print(f"[player] yt-dlp error: {err[:1000]}")
+            # Log last 2000 chars of verbose output for debugging
+            print(f"[player] yt-dlp error: {err[-2000:]}")
             return None
         except asyncio.TimeoutError:
             print("[player] yt-dlp timed out")
