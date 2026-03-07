@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<head><title>DJ Tokoloshe Bot</title></head>
+<body>
+<script type="importmap">
+{
+  "imports": {
+    "livekit-client": "/node_modules/livekit-client/dist/livekit-client.esm.mjs"
+  }
+}
+</script>
+<script type="module">
+import {
+  Room,
+  RoomEvent,
+  LocalAudioTrack,
+  Track,
+  ExternalE2EEKeyProvider,
+} from 'livekit-client';
+
+const SAMPLE_RATE = 48000;
+const CHANNELS = 2;
+const FRAME_SAMPLES = 960; // 20ms at 48kHz
+
+let room = null;
+let pcmQueue = [];
+let connected = false;
+
+const params = new URLSearchParams(window.location.search);
+const wsUrl = params.get('ws_url');
+const token = params.get('token');
+const e2eeKey = params.get('e2ee_key') || '';
+const bridgePort = params.get('bridge_port') || '9222';
+
+async function start() {
+  console.log('[bot-browser] Starting...');
+  console.log('[bot-browser] LiveKit URL:', wsUrl);
+  console.log('[bot-browser] E2EE:', e2eeKey ? 'enabled' : 'disabled');
+
+  connectBridge(bridgePort);
+
+  const audioCtx = new AudioContext({ sampleRate: SAMPLE_RATE });
+
+  const processorNode = audioCtx.createScriptProcessor(FRAME_SAMPLES, 0, CHANNELS);
+  processorNode.onaudioprocess = (e) => {
+    const outL = e.outputBuffer.getChannelData(0);
+    const outR = e.outputBuffer.getChannelData(1);
+
+    if (pcmQueue.length === 0) {
+      outL.fill(0);
+      outR.fill(0);
+      return;
+    }
+
+    const frame = pcmQueue.shift();
+    for (let i = 0; i < FRAME_SAMPLES; i++) {
+      outL[i] = (frame[i * 2] || 0) / 32768;
+      outR[i] = (frame[i * 2 + 1] || 0) / 32768;
+    }
+  };
+
+  const dest = audioCtx.createMediaStreamDestination();
+  processorNode.connect(dest);
+  const mediaTrack = dest.stream.getAudioTracks()[0];
+
+  // Set up E2EE if key provided
+  let keyProvider = null;
+  let e2eeWorker = null;
+
+  if (e2eeKey) {
+    try {
+      keyProvider = new ExternalE2EEKeyProvider();
+      e2eeWorker = new Worker(
+        '/node_modules/livekit-client/dist/livekit-client.e2ee.worker.mjs',
+        { type: 'module' },
+      );
+      console.log('[bot-browser] E2EE worker loaded');
+    } catch (err) {
+      console.warn('[bot-browser] E2EE worker failed:', err.message);
+      keyProvider = null;
+      e2eeWorker = null;
+    }
+  }
+
+  room = new Room({
+    adaptiveStream: false,
+    dynacast: false,
+    ...(e2eeWorker && keyProvider
+      ? { e2ee: { keyProvider, worker: e2eeWorker } }
+      : {}),
+  });
+
+  room.on(RoomEvent.Disconnected, (reason) => {
+    console.warn('[bot-browser] Disconnected:', reason);
+    connected = false;
+    setTimeout(() => reconnect(), 5000);
+  });
+  room.on(RoomEvent.Reconnecting, () => console.log('[bot-browser] Reconnecting...'));
+  room.on(RoomEvent.Reconnected, () => {
+    console.log('[bot-browser] Reconnected');
+    connected = true;
+  });
+
+  console.log('[bot-browser] Connecting to LiveKit...');
+  await room.connect(wsUrl, token, { autoSubscribe: false });
+  console.log('[bot-browser] Connected to LiveKit room');
+
+  // Enable E2EE after connection
+  if (e2eeWorker && keyProvider) {
+    try {
+      await keyProvider.setKey(e2eeKey);
+      room.setE2EEEnabled(true);
+      console.log('[bot-browser] E2EE enabled');
+    } catch (err) {
+      console.warn('[bot-browser] E2EE setup failed:', err.message);
+    }
+  }
+
+  // Publish audio track
+  const localTrack = new LocalAudioTrack(mediaTrack, undefined, false);
+  await room.localParticipant.publishTrack(localTrack, {
+    source: Track.Source.Microphone,
+  });
+  console.log('[bot-browser] Audio track published');
+
+  connected = true;
+  window.__BOT_READY = true;
+}
+
+function connectBridge(port) {
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/pcm`);
+  ws.binaryType = 'arraybuffer';
+
+  ws.onopen = () => console.log('[bot-browser] Bridge WebSocket connected');
+
+  ws.onmessage = (event) => {
+    pcmQueue.push(new Int16Array(event.data));
+    while (pcmQueue.length > 10) pcmQueue.shift();
+  };
+
+  ws.onclose = () => {
+    console.warn('[bot-browser] Bridge closed, reconnecting...');
+    setTimeout(() => connectBridge(port), 2000);
+  };
+
+  ws.onerror = () => console.error('[bot-browser] Bridge error');
+}
+
+async function reconnect() {
+  try {
+    console.log('[bot-browser] Reconnecting...');
+    await room.connect(wsUrl, token, { autoSubscribe: false });
+    connected = true;
+    console.log('[bot-browser] Reconnected');
+  } catch (err) {
+    console.error('[bot-browser] Reconnect failed:', err.message);
+    setTimeout(() => reconnect(), 5000);
+  }
+}
+
+start().catch(err => console.error('[bot-browser] Fatal:', err));
+</script>
+</body>
+</html>

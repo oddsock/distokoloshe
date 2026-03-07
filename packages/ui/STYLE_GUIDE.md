@@ -2,6 +2,8 @@
 
 Reference for maintaining consistent styling across all components. When adding new buttons, menus, or features, follow the patterns documented here.
 
+**Source of truth:** `DeviceSettings.tsx` — when in doubt, match its conventions.
+
 ---
 
 ## Color Palette
@@ -61,7 +63,7 @@ For toggle/status backgrounds, use `/10`, `/20`, `/30` opacity steps:
 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-lg transition-colors
 ```
 
-Sizes: `px-3 py-2 text-sm` (standard) | `py-2 px-4 text-base` (form submit)
+Sizes: `px-3 py-2 text-sm` (standard) | `py-2 px-4 text-base` (form submit) | `px-2.5 py-1 text-xs` (compact/popover)
 
 ### Secondary (Neutral)
 
@@ -186,6 +188,7 @@ absolute bottom-full mb-2 left-1/2 -translate-x-1/2
 w-full px-2 py-1.5 rounded-lg
 bg-zinc-100 dark:bg-zinc-700 text-zinc-900 dark:text-white
 border border-zinc-300 dark:border-zinc-600 text-xs
+focus:border-indigo-500 outline-none
 ```
 
 ### Text Input
@@ -196,6 +199,8 @@ bg-zinc-100 dark:bg-zinc-700 text-zinc-900 dark:text-white
 border border-zinc-300 dark:border-zinc-600
 focus:outline-none focus:ring-2 focus:ring-indigo-500
 ```
+
+Compact (popover): `px-2 py-1.5 text-xs focus:border-indigo-500 outline-none`
 
 ### Range Slider
 
@@ -261,6 +266,8 @@ All banners follow: `mb-4 p-3 bg-{color} border border-{color} rounded-lg text-s
 | Tiny text | `text-[10px]` |
 | Monospace (keys) | `font-mono text-xs` |
 | Button label | `text-sm font-medium` |
+| Section label (popover) | `text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1` |
+| Small metadata | `text-[10px] text-zinc-500 dark:text-zinc-400` |
 
 ---
 
@@ -433,6 +440,26 @@ fixed inset-0 bg-black/50 z-30 md:hidden
 ```
 
 Used for: sidebar overlays. Always include `onClick={onClose}`.
+
+---
+
+## Fullscreen / Safe-Area Positioning
+
+- Never use fixed pixel offsets for fullscreen controls — they break across resolutions and bezels
+- Use `env(safe-area-inset-bottom)` combined with viewport-relative units:
+  ```
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 3vh)
+  ```
+- `viewport-fit=cover` must be set on the viewport meta tag for `env()` to report values
+- Non-fullscreen overlays can use fixed offsets (e.g. `0.5rem`)
+
+---
+
+## Spacing
+
+- Between sections: `space-y-4`
+- Label to control: `mb-1` or `mb-1.5`
+- Within groups: `gap-1.5`
 
 ---
 

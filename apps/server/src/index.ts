@@ -24,6 +24,7 @@ import punishmentRoutes from './routes/punishments.js';
 import soundboardRoutes from './routes/soundboard.js';
 import chatRoutes from './routes/chat.js';
 import updateRoutes from './routes/updates.js';
+import musicRoutes from './routes/music.js';
 import { startUpdateSync } from './updater.js';
 
 const app = express();
@@ -57,6 +58,7 @@ app.use('/api/punishments', punishmentRoutes);
 app.use('/api/soundboard', soundboardRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/updates', updateRoutes);
+app.use('/api/music', musicRoutes);
 
 // Restore active vote/punishment timers from DB (handles API restarts)
 restoreTimers();

@@ -12,6 +12,7 @@ import { VideoTrackView } from '../components/VideoTrackView';
 import { UserList } from '../components/UserList';
 import { SignalStrength } from '../components/SignalStrength';
 import { Soundboard } from '../components/Soundboard';
+import { MusicControls } from '../components/MusicControls';
 import { useSoundboard } from '../hooks/useSoundboard';
 import { useConnectionStats } from '../hooks/useConnectionStats';
 import { useHotkeys } from '../hooks/useHotkeys';
@@ -19,7 +20,7 @@ import { useMutedMicDetector } from '../hooks/useMutedMicDetector';
 import { getRoomInitials, toggleTheme, getTheme } from '../lib/utils';
 import * as api from '../lib/api';
 import { playSound } from '../lib/sounds';
-import { Mic, MicOff, Camera, CameraOff, Ear, EarOff, Monitor, MonitorOff, Volume2, VolumeX, Settings, Sun, Moon, LogOut, AudioLines, X, MessageCircle } from 'lucide-react';
+import { Mic, MicOff, Camera, CameraOff, Ear, EarOff, Monitor, MonitorOff, Volume2, VolumeX, Settings, Sun, Moon, LogOut, AudioLines, Music, X, MessageCircle } from 'lucide-react';
 
 interface RoomPageProps {
   user: api.User;
@@ -49,6 +50,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
   const [showSettings, setShowSettings] = useState(false);
   const [showVolumes, setShowVolumes] = useState(false);
   const [showSoundboard, setShowSoundboard] = useState(false);
+  const [showMusic, setShowMusic] = useState(false);
   const [theme, setThemeState] = useState<'dark' | 'light'>(getTheme);
 
   // Vote state
@@ -590,6 +592,17 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
       document.removeEventListener('click', close);
     };
   }, [showSoundboard]);
+
+  // Close music popover on outside click
+  useEffect(() => {
+    if (!showMusic) return;
+    const close = () => setShowMusic(false);
+    const id = setTimeout(() => document.addEventListener('click', close), 0);
+    return () => {
+      clearTimeout(id);
+      document.removeEventListener('click', close);
+    };
+  }, [showMusic]);
 
   // Close duration picker on outside click
   useEffect(() => {
@@ -1671,6 +1684,17 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                 </div>
               )}
             </div>}
+
+            <div className="relative">
+              <button
+                onClick={() => setShowMusic(!showMusic)}
+                className="p-2.5 rounded-lg bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors"
+                data-tooltip="Music"
+              >
+                <Music size={18} />
+              </button>
+              {showMusic && <MusicControls isMobile={isMobile} />}
+            </div>
 
             <div className="relative">
               <button
