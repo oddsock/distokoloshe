@@ -372,8 +372,10 @@ class Player:
             err = stderr.decode().strip()
             if "Unsupported URL" in err:
                 return url
-            # Log last 2000 chars of verbose output for debugging
-            print(f"[player] yt-dlp error: {err[-2000:]}")
+            # Log first 3000 chars to see plugin loading, then last 1000 for error
+            print(f"[player] yt-dlp verbose (start): {err[:3000]}")
+            if len(err) > 3000:
+                print(f"[player] yt-dlp verbose (end): {err[-1000:]}")
             return None
         except asyncio.TimeoutError:
             print("[player] yt-dlp timed out")

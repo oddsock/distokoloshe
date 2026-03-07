@@ -17,6 +17,31 @@ async def check_ytdlp():
         stdout, _ = await proc.communicate()
         print(f"[startup] yt-dlp version: {stdout.decode().strip()}")
 
+        # Check bgutil pip plugin
+        proc = await asyncio.create_subprocess_exec(
+            "pip", "show", "bgutil-ytdlp-pot-provider",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await proc.communicate()
+        if proc.returncode == 0:
+            version_line = [l for l in stdout.decode().split('\n') if l.startswith('Version:')]
+            print(f"[startup] bgutil plugin: installed ({version_line[0] if version_line else 'unknown'})")
+        else:
+            print("[startup] bgutil plugin: NOT installed")
+
+        # Check yt-dlp plugin detection
+        proc = await asyncio.create_subprocess_exec(
+            "python", "-c",
+            "from yt_dlp.plugins import PACKAGE_NAME, directories; print('Plugin dirs:', directories()); "
+            "import importlib, sys; "
+            "[print(f'  found: {k}') for k in sys.modules if 'bgutil' in k.lower() or 'pot' in k.lower()]",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        print(f"[startup] plugin check: {stdout.decode().strip()}")
+        if stderr.decode().strip():
+            print(f"[startup] plugin check err: {stderr.decode().strip()[:300]}")
+
         # Check bgutil PO token server
         import aiohttp
         try:
