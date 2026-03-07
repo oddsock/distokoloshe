@@ -91,9 +91,9 @@ services:
       - E2EE_SECRET=${E2EE_SECRET:-}
       - LIVEKIT_URL=ws://127.0.0.1:${LK_PORT:-7881}
       - MUSIC_ROOM_NAME=${MUSIC_ROOM_NAME:-Music}
-      - YTDLP_CACHE_DIR=/data/ytdlp-cache
+      - YTDLP_COOKIES=/data/cookies.txt
     volumes:
-      - music-ytdlp-cache:/data/ytdlp-cache
+      - ./data/ytdlp-cookies.txt:/data/cookies.txt:ro
 
   # ── LiveKit SFU (WebRTC media relay + built-in TURN) ───
   # Uses host networking so WebRTC ICE candidates work correctly.
@@ -125,6 +125,3 @@ services:
       - production
     networks:
       - app_net
-
-volumes:
-  music-ytdlp-cache:

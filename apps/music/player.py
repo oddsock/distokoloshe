@@ -338,21 +338,11 @@ class Player:
         return True
 
     def _ytdlp_base_args(self) -> list[str]:
-        """Common yt-dlp args including auth if available."""
+        """Common yt-dlp args including cookies if available."""
         args = ["yt-dlp", "--js-runtimes", "node"]
-        # OAuth2 token cache (preferred, auto-refreshes)
-        cache_dir = os.environ.get("YTDLP_CACHE_DIR", "/data/ytdlp-cache")
-        if os.path.isdir(cache_dir):
-            args.extend([
-                "--username", "oauth2",
-                "--password", "",
-                "--cache-dir", cache_dir,
-            ])
-        else:
-            # Fallback: cookies file
-            cookies_path = os.path.join(os.path.dirname(__file__), "cookies.txt")
-            if os.path.exists(cookies_path):
-                args.extend(["--cookies", cookies_path])
+        cookies_path = os.environ.get("YTDLP_COOKIES", "/data/cookies.txt")
+        if os.path.exists(cookies_path):
+            args.extend(["--cookies", cookies_path])
         return args
 
     async def _resolve_url(self, url: str) -> Optional[str]:
