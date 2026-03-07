@@ -339,7 +339,7 @@ class Player:
 
     def _ytdlp_base_args(self) -> list[str]:
         """Common yt-dlp args including cookies if available."""
-        args = ["yt-dlp", "--js-runtimes", "node"]
+        args = ["yt-dlp"]
         cookies_path = os.environ.get("YTDLP_COOKIES", "/data/cookies.txt")
         if os.path.exists(cookies_path):
             args.extend(["--cookies", cookies_path])
@@ -371,7 +371,7 @@ class Player:
             err = stderr.decode().strip()
             if "Unsupported URL" in err:
                 return url
-            print(f"[player] yt-dlp error: {err[:500]}")
+            print(f"[player] yt-dlp error: {err[:1000]}")
             return None
         except asyncio.TimeoutError:
             print("[player] yt-dlp timed out")
