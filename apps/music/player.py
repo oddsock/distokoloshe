@@ -207,6 +207,14 @@ class Player:
         import time as _time
         frame_duration = FRAME_MS / 1000  # 0.02s
 
+        # Debug stats
+        if not hasattr(self, '_dbg_frame_count'):
+            self._dbg_frame_count = 0
+            self._dbg_last_log = _time.monotonic()
+            self._dbg_min = 0
+            self._dbg_max = 0
+            self._dbg_behind_count = 0
+
         # Initialise wall-clock target on first call per stream
         if not hasattr(self, '_next_frame_time') or self._next_frame_time is None:
             self._next_frame_time = _time.monotonic()
@@ -227,11 +235,33 @@ class Player:
             if self._on_frame:
                 await self._on_frame(frame_bytes)
 
+            # Debug: track PCM sample stats
+            self._dbg_frame_count += 1
+            samples = struct.unpack(f"<{SAMPLES_PER_FRAME * CHANNELS}h", frame_bytes)
+            s_min, s_max = min(samples), max(samples)
+            if s_min < self._dbg_min: self._dbg_min = s_min
+            if s_max > self._dbg_max: self._dbg_max = s_max
+
             self._next_frame_time += frame_duration
 
             # If we've fallen behind by >200ms, reset clock (prevents burst catch-up)
             if _time.monotonic() - self._next_frame_time > 0.2:
+                self._dbg_behind_count += 1
                 self._next_frame_time = _time.monotonic()
+
+            # Log stats every 5s
+            now = _time.monotonic()
+            if now - self._dbg_last_log >= 5.0:
+                buf_ms = len(self._pcm_buffer) * 1000 // (SAMPLE_RATE * CHANNELS * 2)
+                print(f"[player] frames: {self._dbg_frame_count} | "
+                      f"buf: {buf_ms}ms | "
+                      f"pcm: [{self._dbg_min}, {self._dbg_max}] | "
+                      f"behind-resets: {self._dbg_behind_count}")
+                self._dbg_frame_count = 0
+                self._dbg_min = 0
+                self._dbg_max = 0
+                self._dbg_behind_count = 0
+                self._dbg_last_log = now
 
     def _apply_volume(self, frame_bytes: bytes) -> bytes:
         gain = self._volume / 100.0

@@ -47,22 +47,39 @@ async function start() {
   connectBridge(bridgePort);
 
   const audioCtx = new AudioContext({ sampleRate: SAMPLE_RATE });
+  console.log('[bot-browser] AudioContext sampleRate:', audioCtx.sampleRate);
+
+  // Debug stats
+  let dbgFrames = 0, dbgUnderruns = 0, dbgDrops = 0;
+  let dbgMinSample = 0, dbgMaxSample = 0;
+  setInterval(() => {
+    const fillMs = ((ringCount / CHANNELS) / SAMPLE_RATE * 1000).toFixed(0);
+    console.log(`[bot-browser] ring: ${fillMs}ms | frames: ${dbgFrames} | underruns: ${dbgUnderruns} | drops: ${dbgDrops} | range: [${dbgMinSample.toFixed(3)}, ${dbgMaxSample.toFixed(3)}]`);
+    dbgFrames = 0; dbgUnderruns = 0; dbgDrops = 0;
+    dbgMinSample = 0; dbgMaxSample = 0;
+  }, 5000);
 
   const processorNode = audioCtx.createScriptProcessor(BUFFER_SIZE, 0, CHANNELS);
   processorNode.onaudioprocess = (e) => {
     const outL = e.outputBuffer.getChannelData(0);
     const outR = e.outputBuffer.getChannelData(1);
+    dbgFrames++;
 
     for (let i = 0; i < BUFFER_SIZE; i++) {
       if (ringCount >= 2) {
-        outL[i] = ring[ringRead];
+        const l = ring[ringRead];
         ringRead = (ringRead + 1) % RING_CAPACITY;
-        outR[i] = ring[ringRead];
+        const r = ring[ringRead];
         ringRead = (ringRead + 1) % RING_CAPACITY;
         ringCount -= 2;
+        outL[i] = l;
+        outR[i] = r;
+        if (l < dbgMinSample) dbgMinSample = l;
+        if (l > dbgMaxSample) dbgMaxSample = l;
       } else {
         outL[i] = 0;
         outR[i] = 0;
+        dbgUnderruns++;
       }
     }
   };
@@ -70,6 +87,14 @@ async function start() {
   const dest = audioCtx.createMediaStreamDestination();
   processorNode.connect(dest);
   const mediaTrack = dest.stream.getAudioTracks()[0];
+
+  // Disable WebRTC audio processing (AGC, noise suppression, echo cancellation)
+  await mediaTrack.applyConstraints({
+    echoCancellation: false,
+    noiseSuppression: false,
+    autoGainControl: false,
+  });
+  console.log('[bot-browser] Audio processing disabled on track');
 
   // Set up E2EE if key provided
   let keyProvider = null;
@@ -124,10 +149,12 @@ async function start() {
     }
   }
 
-  // Publish audio track
+  // Publish audio track with processing disabled
   const localTrack = new LocalAudioTrack(mediaTrack, undefined, false);
   await room.localParticipant.publishTrack(localTrack, {
     source: Track.Source.Microphone,
+    dtx: false,
+    red: false,
   });
   console.log('[bot-browser] Audio track published');
 
@@ -147,7 +174,7 @@ function connectBridge(port) {
     const count = int16.length;
 
     // Drop frame if ring buffer >90% full (prevent stale buildup)
-    if (ringCount + count > RING_CAPACITY * 0.9) return;
+    if (ringCount + count > RING_CAPACITY * 0.9) { dbgDrops++; return; }
 
     for (let i = 0; i < count; i++) {
       ring[ringWrite] = int16[i] / 32768;

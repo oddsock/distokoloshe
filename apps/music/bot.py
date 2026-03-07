@@ -119,6 +119,9 @@ class MusicBot:
                 "--autoplay-policy=no-user-gesture-required",
                 "--no-sandbox",
                 "--disable-gpu",
+                # Disable WebRTC audio processing that distorts music
+                "--disable-features=WebRtcAGC2,AudioServiceAudioProcessing",
+                "--disable-audio-output-resampler",
             ],
         )
 
