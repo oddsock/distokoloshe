@@ -353,7 +353,9 @@ class Player:
                         import json as _json
                         data = _json.loads(body)
                         po_token = data.get("poToken", "") or data.get("po_token", "")
-                        visitor_data = data.get("visitorData", "") or data.get("visitor_data", "")
+                        visitor_data = (data.get("visitorData", "")
+                                        or data.get("visitor_data", "")
+                                        or data.get("contentBinding", ""))
                         if po_token:
                             print(f"[player] Got PO token ({len(po_token)} chars)")
                             return po_token, visitor_data
@@ -387,7 +389,8 @@ class Player:
                 ext_args = f"youtube:po_token=web+{po_token}"
                 if visitor_data:
                     ext_args += f";visitor_data={visitor_data}"
-                args.extend(["--extractor-args", ext_args])
+                print(f"[player] extractor-args: {ext_args[:200]}...")
+                args.extend(["-v", "--extractor-args", ext_args])
 
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -408,7 +411,10 @@ class Player:
             err = stderr.decode().strip()
             if "Unsupported URL" in err:
                 return url
-            print(f"[player] yt-dlp error: {err[:1000]}")
+            # Log verbose output: first 3000 chars + last 1000 for error
+            print(f"[player] yt-dlp verbose (start): {err[:3000]}")
+            if len(err) > 3000:
+                print(f"[player] yt-dlp verbose (end): {err[-1000:]}")
             return None
         except asyncio.TimeoutError:
             print("[player] yt-dlp timed out")
