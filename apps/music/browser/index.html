@@ -23,8 +23,8 @@ const CHANNELS = 2;
 const BUFFER_SIZE = 4096; // Power of 2 for createScriptProcessor
 
 // Ring buffer for interleaved float samples (L, R, L, R, ...)
-// 0.5s capacity at 48kHz stereo = 48000 samples/frame pair
-const RING_CAPACITY = SAMPLE_RATE * CHANNELS; // 0.5s
+// 2s capacity at 48kHz stereo
+const RING_CAPACITY = SAMPLE_RATE * CHANNELS * 2; // 2s
 const ring = new Float32Array(RING_CAPACITY);
 let ringWrite = 0;
 let ringRead = 0;
@@ -146,8 +146,8 @@ function connectBridge(port) {
     const int16 = new Int16Array(event.data);
     const count = int16.length;
 
-    // Drop frame if ring buffer is nearly full (prevent stale buildup)
-    if (ringCount + count > RING_CAPACITY - count) return;
+    // Drop frame if ring buffer >90% full (prevent stale buildup)
+    if (ringCount + count > RING_CAPACITY * 0.9) return;
 
     for (let i = 0; i < count; i++) {
       ring[ringWrite] = int16[i] / 32768;
