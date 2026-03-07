@@ -404,13 +404,19 @@ class Player:
 
     PIPED_INSTANCES = [
         "https://pipedapi.kavin.rocks",
+        "https://pipedapi.leptons.xyz",
+        "https://pipedapi-libre.kavin.rocks",
+        "https://piped-api.privacy.com.de",
+        "https://api.piped.yt",
+        "https://pipedapi.drgns.space",
         "https://pipedapi.adminforge.de",
-        "https://pipedapi.in.projectsegfau.lt",
+        "https://pipedapi.reallyaweso.me",
     ]
 
     async def _resolve_via_piped(self, video_id: str) -> Optional[str]:
         """Use Piped API to get a direct audio stream URL."""
         import aiohttp as _aiohttp
+        import json as _json
         for instance in self.PIPED_INSTANCES:
             try:
                 async with _aiohttp.ClientSession() as session:
@@ -423,10 +429,18 @@ class Player:
                         if resp.status != 200:
                             print(f"[player] Piped {instance} returned {resp.status}")
                             continue
-                        data = await resp.json()
+                        body = await resp.text()
+                        try:
+                            data = _json.loads(body)
+                        except _json.JSONDecodeError:
+                            print(f"[player] Piped {instance} invalid JSON")
+                            continue
+                        if data.get("error"):
+                            print(f"[player] Piped {instance} error: {data['error']}")
+                            continue
                         audio_streams = data.get("audioStreams", [])
                         if not audio_streams:
-                            print(f"[player] Piped returned no audio streams")
+                            print(f"[player] Piped {instance} no audio streams")
                             continue
                         # Pick highest quality audio stream
                         best = max(audio_streams, key=lambda s: s.get("bitrate", 0))
