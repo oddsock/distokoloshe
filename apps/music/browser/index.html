@@ -20,10 +20,10 @@ import {
 
 const SAMPLE_RATE = 48000;
 const CHANNELS = 2;
-const FRAME_SAMPLES = 960; // 20ms at 48kHz
+const BUFFER_SIZE = 1024; // Must be power of 2 for createScriptProcessor
 
 let room = null;
-let pcmQueue = [];
+let sampleBuffer = []; // Flat float samples from PCM frames
 let connected = false;
 
 const params = new URLSearchParams(window.location.search);
@@ -41,21 +41,19 @@ async function start() {
 
   const audioCtx = new AudioContext({ sampleRate: SAMPLE_RATE });
 
-  const processorNode = audioCtx.createScriptProcessor(FRAME_SAMPLES, 0, CHANNELS);
+  const processorNode = audioCtx.createScriptProcessor(BUFFER_SIZE, 0, CHANNELS);
   processorNode.onaudioprocess = (e) => {
     const outL = e.outputBuffer.getChannelData(0);
     const outR = e.outputBuffer.getChannelData(1);
 
-    if (pcmQueue.length === 0) {
-      outL.fill(0);
-      outR.fill(0);
-      return;
-    }
-
-    const frame = pcmQueue.shift();
-    for (let i = 0; i < FRAME_SAMPLES; i++) {
-      outL[i] = (frame[i * 2] || 0) / 32768;
-      outR[i] = (frame[i * 2 + 1] || 0) / 32768;
+    for (let i = 0; i < BUFFER_SIZE; i++) {
+      if (sampleBuffer.length >= 2) {
+        outL[i] = sampleBuffer.shift();
+        outR[i] = sampleBuffer.shift();
+      } else {
+        outL[i] = 0;
+        outR[i] = 0;
+      }
     }
   };
 
@@ -134,8 +132,14 @@ function connectBridge(port) {
   ws.onopen = () => console.log('[bot-browser] Bridge WebSocket connected');
 
   ws.onmessage = (event) => {
-    pcmQueue.push(new Int16Array(event.data));
-    while (pcmQueue.length > 10) pcmQueue.shift();
+    // Convert Int16 interleaved PCM to float pairs [L, R, L, R, ...]
+    const int16 = new Int16Array(event.data);
+    for (let i = 0; i < int16.length; i++) {
+      sampleBuffer.push(int16[i] / 32768);
+    }
+    // Cap buffer to ~200ms worth of samples (48000 * 2ch * 0.2s)
+    const maxSamples = SAMPLE_RATE * CHANNELS * 0.2;
+    while (sampleBuffer.length > maxSamples) sampleBuffer.shift();
   };
 
   ws.onclose = () => {
