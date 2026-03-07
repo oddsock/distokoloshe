@@ -377,21 +377,13 @@ class Player:
         qs = parse_qs(parsed.query)
         video_id = qs.get("v", [""])[0]
 
-        # Build yt-dlp args
-        args = ["yt-dlp"]
-
-        # Try to get a PO token from bgutil server
+        # Build yt-dlp args — let bgutil plugin handle PO tokens automatically
         print(f"[player] Resolving URL, video_id={video_id!r}")
-        if video_id:
-            pot = await self._get_po_token(video_id)
-            if pot:
-                po_token, visitor_data = pot
-                # Format: CLIENT.TYPE+TOKEN (web.gvs for Google Video Server)
-                ext_args = f"youtube:po_token=web.gvs+{po_token}"
-                if visitor_data:
-                    ext_args += f";visitor_data={visitor_data}"
-                print(f"[player] extractor-args: {ext_args[:200]}...")
-                args.extend(["-v", "--extractor-args", ext_args])
+        args = [
+            "yt-dlp", "-v",
+            "--extractor-args",
+            "youtubepot-bgutilhttp:base_url=http://127.0.0.1:4416",
+        ]
 
         try:
             proc = await asyncio.create_subprocess_exec(
