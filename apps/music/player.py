@@ -337,13 +337,12 @@ class Player:
             return False
         return True
 
-    def _ytdlp_base_args(self, use_cookies: bool = True) -> list[str]:
+    def _ytdlp_base_args(self) -> list[str]:
         """Common yt-dlp args including cookies if available."""
         args = ["yt-dlp"]
-        if use_cookies:
-            cookies_path = os.environ.get("YTDLP_COOKIES", "/data/cookies.txt")
-            if os.path.exists(cookies_path):
-                args.extend(["--cookies", cookies_path])
+        cookies_path = os.environ.get("YTDLP_COOKIES", "/data/cookies.txt")
+        if os.path.exists(cookies_path):
+            args.extend(["--cookies", cookies_path])
         return args
 
     async def _resolve_url(self, url: str) -> Optional[str]:
@@ -352,50 +351,30 @@ class Player:
         if not self._needs_ytdlp(url):
             return url
 
-        # Try strategies in order: no cookies first, then with cookies
-        strategies = [
-            {"label": "no-cookies", "use_cookies": False, "extra": []},
-            {"label": "web_creator client", "use_cookies": False,
-             "extra": ["--extractor-args", "youtube:player_client=web_creator"]},
-        ]
-        # Add cookie-based strategy only if cookies file exists
-        cookies_path = os.environ.get("YTDLP_COOKIES", "/data/cookies.txt")
-        if os.path.exists(cookies_path):
-            strategies.append({"label": "with-cookies", "use_cookies": True, "extra": []})
-
-        for strat in strategies:
-            result = await self._try_ytdlp_resolve(url, strat)
-            if result is not None:
-                return result
-
-        print(f"[player] All yt-dlp strategies failed for: {url}")
-        return None
-
-    async def _try_ytdlp_resolve(self, url: str, strat: dict) -> Optional[str]:
-        """Try a single yt-dlp resolution strategy. Returns URL or None."""
-        label = strat["label"]
         try:
-            base = self._ytdlp_base_args(use_cookies=strat["use_cookies"])
-            cmd = [*base, *strat["extra"],
-                   "--no-playlist", "-f", "bestaudio/best", "--get-url", url]
+            base = self._ytdlp_base_args()
             proc = await asyncio.create_subprocess_exec(
-                *cmd,
+                *base,
+                "--no-playlist",
+                "-f", "bestaudio/best",
+                "--get-url",
+                url,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
             if proc.returncode == 0:
                 stream_url = stdout.decode().strip().split('\n')[0]
                 if stream_url:
-                    print(f"[player] Resolved URL via yt-dlp ({label})")
+                    print(f"[player] Resolved URL via yt-dlp")
                     return stream_url
             err = stderr.decode().strip()
             if "Unsupported URL" in err:
                 return url
-            print(f"[player] yt-dlp ({label}): {err[:500]}")
+            print(f"[player] yt-dlp error: {err[:1000]}")
             return None
         except asyncio.TimeoutError:
-            print(f"[player] yt-dlp ({label}) timed out")
+            print("[player] yt-dlp timed out")
             return None
         except FileNotFoundError:
             return url
