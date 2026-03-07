@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     unzip \
     nodejs \
     npm \
+    tor \
     && curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh \
     && rm -rf /var/lib/apt/lists/*
 

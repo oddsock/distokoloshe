@@ -62,6 +62,27 @@ async def main():
 
     await check_ytdlp()
 
+    # Start Tor SOCKS proxy for yt-dlp (bypass YouTube IP bans)
+    tor_proc = await asyncio.create_subprocess_exec(
+        "tor", "--SocksPort", "9050", "--Log", "notice stderr",
+        stderr=asyncio.subprocess.PIPE,
+    )
+    # Wait for Tor to bootstrap (up to 30s)
+    import time
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        try:
+            _, writer = await asyncio.wait_for(
+                asyncio.open_connection("127.0.0.1", 9050), timeout=2)
+            writer.close()
+            await writer.wait_closed()
+            print("[startup] Tor SOCKS proxy ready on :9050")
+            break
+        except (ConnectionRefusedError, asyncio.TimeoutError, OSError):
+            await asyncio.sleep(1)
+    else:
+        print("[startup] WARNING: Tor failed to start (yt-dlp will use direct connection)")
+
     player = Player()
     bot = MusicBot()
 

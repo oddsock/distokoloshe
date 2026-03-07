@@ -372,10 +372,12 @@ class Player:
         return None
 
     async def _resolve_via_ytdlp(self, url: str) -> Optional[str]:
-        """Try yt-dlp to extract a direct audio stream URL."""
+        """Try yt-dlp to extract a direct audio stream URL.
+        Uses Tor SOCKS proxy to bypass YouTube IP bans."""
         try:
             proc = await asyncio.create_subprocess_exec(
                 "yt-dlp",
+                "--proxy", "socks5://127.0.0.1:9050",
                 "--extractor-args",
                 "youtubepot-bgutilhttp:base_url=http://127.0.0.1:4416",
                 "--no-playlist",
@@ -385,11 +387,11 @@ class Player:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=90)
             if proc.returncode == 0:
                 stream_url = stdout.decode().strip().split('\n')[0]
                 if stream_url:
-                    print(f"[player] Resolved URL via yt-dlp")
+                    print(f"[player] Resolved URL via yt-dlp+Tor")
                     return stream_url
             err = stderr.decode().strip()
             if "Unsupported URL" in err:
