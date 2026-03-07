@@ -133,12 +133,20 @@ class Player:
         self._pcm_buffer = bytearray()
         self._next_frame_time = None  # Reset wall-clock pacing
 
+        # Resolve YouTube / yt-dlp-supported URLs to direct stream URLs
+        stream_url = await self._resolve_url(url)
+        if stream_url is None:
+            print(f"[player] Failed to resolve URL: {url}")
+            if self._mode == "queue":
+                await self._play_next_from_queue()
+            return
+
         proc = await asyncio.create_subprocess_exec(
             "ffmpeg",
             "-reconnect", "1",
             "-reconnect_streamed", "1",
             "-reconnect_delay_max", "5",
-            "-i", url,
+            "-i", stream_url,
             "-f", "s16le",
             "-ar", str(SAMPLE_RATE),
             "-ac", str(CHANNELS),
@@ -280,6 +288,49 @@ class Player:
                 await proc.wait()
         except Exception:
             pass
+
+    async def _resolve_url(self, url: str) -> Optional[str]:
+        """Use yt-dlp to extract a direct audio stream URL for supported sites.
+        Returns the original URL if yt-dlp doesn't recognize it."""
+        # Skip yt-dlp for direct audio streams (radio, .mp3, .ogg, etc.)
+        parsed = urlparse(url)
+        path_lower = parsed.path.lower()
+        if any(path_lower.endswith(ext) for ext in (
+            '.mp3', '.ogg', '.opus', '.aac', '.flac', '.wav', '.m4a',
+        )):
+            return url
+        # Skip for known radio/streaming domains
+        if any(d in parsed.hostname for d in ('somafm.com', 'icecast', 'shoutcast')):
+            return url
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "yt-dlp",
+                "--no-playlist",
+                "-f", "bestaudio/best",
+                "--get-url",
+                url,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
+            if proc.returncode == 0:
+                stream_url = stdout.decode().strip().split('\n')[0]
+                if stream_url:
+                    print(f"[player] Resolved URL via yt-dlp")
+                    return stream_url
+            # yt-dlp didn't recognize it — try the original URL directly
+            err = stderr.decode().strip()
+            if "Unsupported URL" in err:
+                return url
+            print(f"[player] yt-dlp error: {err[:200]}")
+            return None
+        except asyncio.TimeoutError:
+            print("[player] yt-dlp timed out")
+            return None
+        except FileNotFoundError:
+            # yt-dlp not installed, use URL directly
+            return url
 
     def _title_from_url(self, url: str) -> str:
         try:
