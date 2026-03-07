@@ -7,11 +7,43 @@ from bot import MusicBot
 from api import create_routes
 
 
+async def check_ytdlp():
+    """Log yt-dlp version and plugin status on startup."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "yt-dlp", "--version",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await proc.communicate()
+        print(f"[startup] yt-dlp version: {stdout.decode().strip()}")
+
+        # Check for PO token plugins
+        proc = await asyncio.create_subprocess_exec(
+            "yt-dlp", "--list-po-token-providers",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        out = stdout.decode().strip() or stderr.decode().strip()
+        print(f"[startup] PO token providers: {out[:500]}")
+
+        # Check deno
+        proc = await asyncio.create_subprocess_exec(
+            "deno", "--version",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await proc.communicate()
+        print(f"[startup] deno: {stdout.decode().strip().split(chr(10))[0]}")
+    except Exception as e:
+        print(f"[startup] diagnostic error: {e}")
+
+
 async def main():
     for key in ["LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"]:
         if not os.environ.get(key):
             print(f"Missing required env var: {key}")
             sys.exit(1)
+
+    await check_ytdlp()
 
     player = Player()
     bot = MusicBot()

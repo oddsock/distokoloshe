@@ -1,4 +1,4 @@
 aiohttp>=3.9.0
 playwright>=1.40.0
-yt-dlp[default]>=2025.1.0
+yt-dlp[default]>=2025.5.22
 bgutil-ytdlp-pot-provider
