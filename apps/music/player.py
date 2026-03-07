@@ -347,16 +347,18 @@ class Player:
                     json={"client": "web", "visitor_data": "", "video_id": video_id},
                     timeout=_aiohttp.ClientTimeout(total=30),
                 ) as resp:
+                    body = await resp.text()
+                    print(f"[player] bgutil response ({resp.status}): {body[:500]}")
                     if resp.status == 200:
-                        data = await resp.json()
+                        import json as _json
+                        data = _json.loads(body)
                         po_token = data.get("po_token", "")
                         visitor_data = data.get("visitor_data", "")
                         if po_token:
-                            print(f"[player] Got PO token from bgutil server")
+                            print(f"[player] Got PO token ({len(po_token)} chars)")
                             return po_token, visitor_data
-                    else:
-                        body = await resp.text()
-                        print(f"[player] bgutil server error {resp.status}: {body[:200]}")
+                        else:
+                            print(f"[player] bgutil returned no po_token: {list(data.keys())}")
         except Exception as e:
             print(f"[player] bgutil server unreachable: {e}")
         return None
@@ -377,6 +379,7 @@ class Player:
         args = ["yt-dlp"]
 
         # Try to get a PO token from bgutil server
+        print(f"[player] Resolving URL, video_id={video_id!r}")
         if video_id:
             pot = await self._get_po_token(video_id)
             if pot:
