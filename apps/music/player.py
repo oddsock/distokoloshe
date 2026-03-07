@@ -338,12 +338,12 @@ class Player:
         return True
 
     def _ytdlp_base_args(self) -> list[str]:
-        """Common yt-dlp args including cookies if available."""
-        args = ["yt-dlp"]
-        cookies_path = os.environ.get("YTDLP_COOKIES", "/data/cookies.txt")
-        if os.path.exists(cookies_path):
-            args.extend(["--cookies", cookies_path])
-        return args
+        """Common yt-dlp args with PO token server for YouTube bot bypass."""
+        return [
+            "yt-dlp",
+            "--extractor-args",
+            "youtubepot-bgutilhttp:base_url=http://127.0.0.1:4416",
+        ]
 
     async def _resolve_url(self, url: str) -> Optional[str]:
         """Use yt-dlp to extract a direct audio stream URL.

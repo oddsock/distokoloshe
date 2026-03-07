@@ -8,7 +8,7 @@ from api import create_routes
 
 
 async def check_ytdlp():
-    """Log yt-dlp version and plugin status on startup."""
+    """Log yt-dlp version and PO token server status on startup."""
     try:
         proc = await asyncio.create_subprocess_exec(
             "yt-dlp", "--version",
@@ -17,22 +17,14 @@ async def check_ytdlp():
         stdout, _ = await proc.communicate()
         print(f"[startup] yt-dlp version: {stdout.decode().strip()}")
 
-        # Check for PO token plugins
-        proc = await asyncio.create_subprocess_exec(
-            "yt-dlp", "--list-po-token-providers",
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await proc.communicate()
-        out = stdout.decode().strip() or stderr.decode().strip()
-        print(f"[startup] PO token providers: {out[:500]}")
-
-        # Check deno
-        proc = await asyncio.create_subprocess_exec(
-            "deno", "--version",
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, _ = await proc.communicate()
-        print(f"[startup] deno: {stdout.decode().strip().split(chr(10))[0]}")
+        # Check bgutil PO token server
+        import aiohttp
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get("http://127.0.0.1:4416/", timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                    print(f"[startup] PO token server: reachable (status {resp.status})")
+        except Exception as e:
+            print(f"[startup] PO token server: NOT reachable ({e})")
     except Exception as e:
         print(f"[startup] diagnostic error: {e}")
 
