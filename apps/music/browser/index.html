@@ -88,14 +88,6 @@ async function start() {
   processorNode.connect(dest);
   const mediaTrack = dest.stream.getAudioTracks()[0];
 
-  // Disable WebRTC audio processing (AGC, noise suppression, echo cancellation)
-  await mediaTrack.applyConstraints({
-    echoCancellation: false,
-    noiseSuppression: false,
-    autoGainControl: false,
-  });
-  console.log('[bot-browser] Audio processing disabled on track');
-
   // Set up E2EE if key provided
   let keyProvider = null;
   let e2eeWorker = null;
