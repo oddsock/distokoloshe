@@ -337,57 +337,47 @@ class Player:
             return False
         return True
 
-    async def _get_po_token(self, video_id: str) -> Optional[tuple[str, str]]:
-        """Get a PO token + visitor_data from the bgutil HTTP server."""
-        import aiohttp as _aiohttp
-        try:
-            async with _aiohttp.ClientSession() as session:
-                async with session.post(
-                    "http://127.0.0.1:4416/get_pot",
-                    json={"client": "web", "visitor_data": "", "video_id": video_id},
-                    timeout=_aiohttp.ClientTimeout(total=30),
-                ) as resp:
-                    body = await resp.text()
-                    print(f"[player] bgutil response ({resp.status}): {body[:500]}")
-                    if resp.status == 200:
-                        import json as _json
-                        data = _json.loads(body)
-                        po_token = data.get("poToken", "") or data.get("po_token", "")
-                        visitor_data = (data.get("visitorData", "")
-                                        or data.get("visitor_data", "")
-                                        or data.get("contentBinding", ""))
-                        if po_token:
-                            print(f"[player] Got PO token ({len(po_token)} chars)")
-                            return po_token, visitor_data
-                        else:
-                            print(f"[player] bgutil returned no poToken: {list(data.keys())}")
-        except Exception as e:
-            print(f"[player] bgutil server unreachable: {e}")
-        return None
 
-    async def _resolve_url(self, url: str) -> Optional[str]:
-        """Use yt-dlp to extract a direct audio stream URL.
-        Returns the original URL if yt-dlp doesn't recognize it."""
-        if not self._needs_ytdlp(url):
-            return url
-
-        # Extract video ID for PO token generation
+    def _extract_video_id(self, url: str) -> str:
+        """Extract YouTube video ID from URL."""
         from urllib.parse import parse_qs
         parsed = urlparse(url)
         qs = parse_qs(parsed.query)
-        video_id = qs.get("v", [""])[0]
+        vid = qs.get("v", [""])[0]
+        if not vid and "youtu.be" in (parsed.hostname or ""):
+            vid = parsed.path.lstrip("/").split("/")[0]
+        return vid
 
-        # Build yt-dlp args — let bgutil plugin handle PO tokens automatically
+    async def _resolve_url(self, url: str) -> Optional[str]:
+        """Resolve a URL to a direct audio stream.
+        Tries yt-dlp first, then Piped API as fallback."""
+        if not self._needs_ytdlp(url):
+            return url
+
+        video_id = self._extract_video_id(url)
         print(f"[player] Resolving URL, video_id={video_id!r}")
-        args = [
-            "yt-dlp", "-v",
-            "--extractor-args",
-            "youtubepot-bgutilhttp:base_url=http://127.0.0.1:4416",
-        ]
 
+        # Try yt-dlp first
+        stream = await self._resolve_via_ytdlp(url)
+        if stream:
+            return stream
+
+        # Fall back to Piped API for YouTube videos
+        if video_id:
+            stream = await self._resolve_via_piped(video_id)
+            if stream:
+                return stream
+
+        print(f"[player] All resolvers failed for: {url}")
+        return None
+
+    async def _resolve_via_ytdlp(self, url: str) -> Optional[str]:
+        """Try yt-dlp to extract a direct audio stream URL."""
         try:
             proc = await asyncio.create_subprocess_exec(
-                *args,
+                "yt-dlp",
+                "--extractor-args",
+                "youtubepot-bgutilhttp:base_url=http://127.0.0.1:4416",
                 "--no-playlist",
                 "-f", "bestaudio/best",
                 "--get-url",
@@ -404,16 +394,51 @@ class Player:
             err = stderr.decode().strip()
             if "Unsupported URL" in err:
                 return url
-            # Log verbose output: first 3000 chars + last 1000 for error
-            print(f"[player] yt-dlp verbose (start): {err[:3000]}")
-            if len(err) > 3000:
-                print(f"[player] yt-dlp verbose (end): {err[-1000:]}")
+            print(f"[player] yt-dlp failed: {err[-500:]}")
             return None
         except asyncio.TimeoutError:
             print("[player] yt-dlp timed out")
             return None
         except FileNotFoundError:
             return url
+
+    PIPED_INSTANCES = [
+        "https://pipedapi.kavin.rocks",
+        "https://pipedapi.adminforge.de",
+        "https://pipedapi.in.projectsegfau.lt",
+    ]
+
+    async def _resolve_via_piped(self, video_id: str) -> Optional[str]:
+        """Use Piped API to get a direct audio stream URL."""
+        import aiohttp as _aiohttp
+        for instance in self.PIPED_INSTANCES:
+            try:
+                async with _aiohttp.ClientSession() as session:
+                    api_url = f"{instance}/streams/{video_id}"
+                    print(f"[player] Trying Piped: {api_url}")
+                    async with session.get(
+                        api_url,
+                        timeout=_aiohttp.ClientTimeout(total=15),
+                    ) as resp:
+                        if resp.status != 200:
+                            print(f"[player] Piped {instance} returned {resp.status}")
+                            continue
+                        data = await resp.json()
+                        audio_streams = data.get("audioStreams", [])
+                        if not audio_streams:
+                            print(f"[player] Piped returned no audio streams")
+                            continue
+                        # Pick highest quality audio stream
+                        best = max(audio_streams, key=lambda s: s.get("bitrate", 0))
+                        stream_url = best.get("url", "")
+                        if stream_url:
+                            quality = best.get("quality", "?")
+                            print(f"[player] Resolved via Piped ({quality})")
+                            return stream_url
+            except Exception as e:
+                print(f"[player] Piped {instance} error: {e}")
+                continue
+        return None
 
     async def _expand_playlist(self, url: str, added_by: str) -> list[dict]:
         """Use yt-dlp to expand a playlist URL into individual entries."""
