@@ -1,4 +1,5 @@
 import asyncio
+import os
 import signal
 import struct
 import re
@@ -206,18 +207,19 @@ class Player:
     async def _drain_frames(self):
         import time as _time
         frame_duration = FRAME_MS / 1000  # 0.02s
+        prefill_frames = 15  # Send first 15 frames (300ms) without pacing
 
         # Debug stats
         if not hasattr(self, '_dbg_frame_count'):
             self._dbg_frame_count = 0
             self._dbg_last_log = _time.monotonic()
-            self._dbg_min = 0
-            self._dbg_max = 0
             self._dbg_behind_count = 0
 
         # Initialise wall-clock target on first call per stream
+        # Offset 300ms into the past to pre-fill the browser ring buffer
         if not hasattr(self, '_next_frame_time') or self._next_frame_time is None:
-            self._next_frame_time = _time.monotonic()
+            self._next_frame_time = _time.monotonic() - (prefill_frames * frame_duration)
+            self._prefill_sent = 0
 
         while len(self._pcm_buffer) >= BYTES_PER_FRAME:
             # Sleep until the absolute target time for this frame
@@ -235,13 +237,7 @@ class Player:
             if self._on_frame:
                 await self._on_frame(frame_bytes)
 
-            # Debug: track PCM sample stats
             self._dbg_frame_count += 1
-            samples = struct.unpack(f"<{SAMPLES_PER_FRAME * CHANNELS}h", frame_bytes)
-            s_min, s_max = min(samples), max(samples)
-            if s_min < self._dbg_min: self._dbg_min = s_min
-            if s_max > self._dbg_max: self._dbg_max = s_max
-
             self._next_frame_time += frame_duration
 
             # If we've fallen behind by >200ms, reset clock (prevents burst catch-up)
@@ -255,11 +251,8 @@ class Player:
                 buf_ms = len(self._pcm_buffer) * 1000 // (SAMPLE_RATE * CHANNELS * 2)
                 print(f"[player] frames: {self._dbg_frame_count} | "
                       f"buf: {buf_ms}ms | "
-                      f"pcm: [{self._dbg_min}, {self._dbg_max}] | "
                       f"behind-resets: {self._dbg_behind_count}")
                 self._dbg_frame_count = 0
-                self._dbg_min = 0
-                self._dbg_max = 0
                 self._dbg_behind_count = 0
                 self._dbg_last_log = now
 
@@ -344,6 +337,14 @@ class Player:
             return False
         return True
 
+    def _ytdlp_base_args(self) -> list[str]:
+        """Common yt-dlp args including cookies if available."""
+        args = ["yt-dlp", "--js-runtimes", "node"]
+        cookies_path = os.path.join(os.path.dirname(__file__), "cookies.txt")
+        if os.path.exists(cookies_path):
+            args.extend(["--cookies", cookies_path])
+        return args
+
     async def _resolve_url(self, url: str) -> Optional[str]:
         """Use yt-dlp to extract a direct audio stream URL.
         Returns the original URL if yt-dlp doesn't recognize it."""
@@ -351,10 +352,10 @@ class Player:
             return url
 
         try:
+            base = self._ytdlp_base_args()
             proc = await asyncio.create_subprocess_exec(
-                "yt-dlp",
+                *base,
                 "--no-playlist",
-                "--js-runtimes", "node",
                 "-f", "bestaudio/best",
                 "--get-url",
                 url,
@@ -384,10 +385,10 @@ class Player:
             return []
 
         try:
+            base = self._ytdlp_base_args()
             proc = await asyncio.create_subprocess_exec(
-                "yt-dlp",
+                *base,
                 "--flat-playlist",
-                "--js-runtimes", "node",
                 "--print", "%(url)s\t%(title)s",
                 url,
                 stdout=asyncio.subprocess.PIPE,
