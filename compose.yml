@@ -92,8 +92,6 @@ services:
       - LIVEKIT_URL=ws://127.0.0.1:${LK_PORT:-7881}
       - MUSIC_ROOM_NAME=${MUSIC_ROOM_NAME:-Music}
       - YTDLP_COOKIES=/data/cookies.txt
-    volumes:
-      - ./data/ytdlp-cookies.txt:/data/cookies.txt:ro
 
   # ── LiveKit SFU (WebRTC media relay + built-in TURN) ───
   # Uses host networking so WebRTC ICE candidates work correctly.
