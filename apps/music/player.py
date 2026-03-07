@@ -55,6 +55,18 @@ class Player:
     # ── Controls ─────────────────────────────────────────
 
     async def enqueue(self, url: str, title: str, added_by: str) -> dict:
+        # Check if URL is a playlist (contains list= param)
+        if 'list=' in url:
+            entries = await self._expand_playlist(url, added_by)
+            if entries:
+                self._queue.extend(entries)
+                print(f"[player] Expanded playlist: {len(entries)} tracks")
+                if self._mode == "radio":
+                    await self._stop_ffmpeg()
+                    self._stop_metadata_poller()
+                    await self._play_next_from_queue()
+                return entries[0]
+
         self._id_counter += 1
         entry = {
             "id": str(self._id_counter),
@@ -289,24 +301,30 @@ class Player:
         except Exception:
             pass
 
-    async def _resolve_url(self, url: str) -> Optional[str]:
-        """Use yt-dlp to extract a direct audio stream URL for supported sites.
-        Returns the original URL if yt-dlp doesn't recognize it."""
-        # Skip yt-dlp for direct audio streams (radio, .mp3, .ogg, etc.)
+    def _needs_ytdlp(self, url: str) -> bool:
+        """Check if a URL needs yt-dlp resolution."""
         parsed = urlparse(url)
         path_lower = parsed.path.lower()
         if any(path_lower.endswith(ext) for ext in (
             '.mp3', '.ogg', '.opus', '.aac', '.flac', '.wav', '.m4a',
         )):
-            return url
-        # Skip for known radio/streaming domains
-        if any(d in parsed.hostname for d in ('somafm.com', 'icecast', 'shoutcast')):
+            return False
+        hostname = parsed.hostname or ''
+        if any(d in hostname for d in ('somafm.com', 'icecast', 'shoutcast')):
+            return False
+        return True
+
+    async def _resolve_url(self, url: str) -> Optional[str]:
+        """Use yt-dlp to extract a direct audio stream URL.
+        Returns the original URL if yt-dlp doesn't recognize it."""
+        if not self._needs_ytdlp(url):
             return url
 
         try:
             proc = await asyncio.create_subprocess_exec(
                 "yt-dlp",
                 "--no-playlist",
+                "--js-runtimes", "nodejs",
                 "-f", "bestaudio/best",
                 "--get-url",
                 url,
@@ -319,7 +337,6 @@ class Player:
                 if stream_url:
                     print(f"[player] Resolved URL via yt-dlp")
                     return stream_url
-            # yt-dlp didn't recognize it — try the original URL directly
             err = stderr.decode().strip()
             if "Unsupported URL" in err:
                 return url
@@ -329,8 +346,49 @@ class Player:
             print("[player] yt-dlp timed out")
             return None
         except FileNotFoundError:
-            # yt-dlp not installed, use URL directly
             return url
+
+    async def _expand_playlist(self, url: str, added_by: str) -> list[dict]:
+        """Use yt-dlp to expand a playlist URL into individual entries."""
+        if not self._needs_ytdlp(url):
+            return []
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "yt-dlp",
+                "--flat-playlist",
+                "--js-runtimes", "nodejs",
+                "--print", "%(url)s\t%(title)s",
+                url,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
+            if proc.returncode != 0:
+                return []
+
+            entries = []
+            for line in stdout.decode().strip().split('\n'):
+                if not line.strip():
+                    continue
+                parts = line.split('\t', 1)
+                entry_url = parts[0].strip()
+                entry_title = parts[1].strip() if len(parts) > 1 else ""
+                if not entry_url:
+                    continue
+                # Ensure full YouTube URL if yt-dlp returns just an ID
+                if not entry_url.startswith('http'):
+                    entry_url = f"https://www.youtube.com/watch?v={entry_url}"
+                self._id_counter += 1
+                entries.append({
+                    "id": str(self._id_counter),
+                    "url": entry_url,
+                    "title": entry_title or self._title_from_url(entry_url),
+                    "addedBy": added_by,
+                })
+            return entries
+        except (asyncio.TimeoutError, FileNotFoundError):
+            return []
 
     def _title_from_url(self, url: str) -> str:
         try:
