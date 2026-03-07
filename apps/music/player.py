@@ -339,7 +339,11 @@ class Player:
 
     def _ytdlp_base_args(self) -> list[str]:
         """Common yt-dlp args including cookies if available."""
-        args = ["yt-dlp", "--js-runtimes", "node"]
+        args = [
+            "yt-dlp",
+            "--js-runtimes", "node",
+            "--remote-components", "ejs:github",
+        ]
         cookies_path = os.environ.get("YTDLP_COOKIES", "/data/cookies.txt")
         if os.path.exists(cookies_path):
             args.extend(["--cookies", cookies_path])
