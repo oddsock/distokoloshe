@@ -32,6 +32,10 @@ class Player:
         self._pcm_buffer = bytearray()
         self._on_frame: Optional[FrameCallback] = None
         self._read_task: Optional[asyncio.Task] = None
+        self._bot = None  # Set via set_bot() for browser-based URL extraction
+
+    def set_bot(self, bot):
+        self._bot = bot
 
     def set_frame_callback(self, cb: FrameCallback):
         self._on_frame = cb
@@ -357,12 +361,18 @@ class Player:
         video_id = self._extract_video_id(url)
         print(f"[player] Resolving URL, video_id={video_id!r}")
 
-        # Try yt-dlp first
+        # Try yt-dlp first (via Tor proxy)
         stream = await self._resolve_via_ytdlp(url)
         if stream:
             return stream
 
-        # Fall back to Piped API for YouTube videos
+        # Fall back to headless browser extraction for YouTube
+        if video_id and self._bot:
+            stream = await self._bot.extract_youtube_audio_url(video_id)
+            if stream:
+                return stream
+
+        # Last resort: Piped API instances
         if video_id:
             stream = await self._resolve_via_piped(video_id)
             if stream:

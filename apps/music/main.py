@@ -86,8 +86,9 @@ async def main():
     player = Player()
     bot = MusicBot()
 
-    # Wire player frames to bot (async callback)
+    # Wire player frames to bot (async callback) + bot ref for browser extraction
     player.set_frame_callback(bot.handle_frame)
+    player.set_bot(bot)
 
     # Start player (radio by default)
     asyncio.create_task(player.start())

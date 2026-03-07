@@ -195,6 +195,65 @@ class MusicBot:
         ).rstrip(b"=")
         return (signing_input + b"." + signature).decode()
 
+    # ── YouTube URL Extraction ──────────────────────────
+
+    async def extract_youtube_audio_url(self, video_id: str) -> Optional[str]:
+        """Use the headless browser to extract a YouTube audio stream URL.
+        Navigates to YouTube, intercepts googlevideo.com audio requests."""
+        if not self._browser:
+            print("[bot] Browser not available for YouTube extraction")
+            return None
+
+        audio_url = None
+        context = None
+
+        try:
+            context = await self._browser.new_context()
+            page = await context.new_page()
+
+            async def on_response(response):
+                nonlocal audio_url
+                if audio_url:
+                    return
+                url = response.url
+                if "googlevideo.com" in url and ("mime=audio" in url or "mime%3Daudio" in url):
+                    audio_url = url
+                    print(f"[bot] Captured YouTube audio stream URL")
+
+            page.on("response", on_response)
+
+            yt_url = f"https://www.youtube.com/watch?v={video_id}"
+            print(f"[bot] Extracting audio URL via browser: {yt_url}")
+            await page.goto(yt_url, wait_until="domcontentloaded", timeout=30000)
+
+            # Click play if there's a play button (autoplay might be blocked)
+            try:
+                play_btn = page.locator("button.ytp-large-play-button")
+                if await play_btn.is_visible(timeout=3000):
+                    await play_btn.click()
+            except Exception:
+                pass
+
+            # Wait for audio stream to appear (up to 20s)
+            for _ in range(40):
+                if audio_url:
+                    break
+                await asyncio.sleep(0.5)
+
+            if not audio_url:
+                print("[bot] No audio stream captured from YouTube")
+
+        except Exception as e:
+            print(f"[bot] YouTube extraction error: {e}")
+        finally:
+            if context:
+                try:
+                    await context.close()
+                except Exception:
+                    pass
+
+        return audio_url
+
     def _derive_e2ee_key(self) -> str:
         secret = self._e2ee_secret or os.environ.get("JWT_SECRET", "")
         h = hmac.new(secret.encode(), self._room_name.encode(), hashlib.sha256)
