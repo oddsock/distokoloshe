@@ -254,6 +254,24 @@ class MusicBot:
             }""")
             print(f"[bot] Playback trigger: {started}")
 
+            # Check video element state
+            video_state = await page.evaluate("""() => {
+                const v = document.querySelector('video');
+                if (!v) return 'no-video-element';
+                const err = v.error ? `error(${v.error.code}: ${v.error.message})` : 'no-error';
+                const state = `ready=${v.readyState} paused=${v.paused} src=${v.src?.substring(0,100) || 'none'} ${err}`;
+                // Check for YouTube error overlays
+                const errWrap = document.querySelector('.ytp-error-content-wrap-reason');
+                const errText = errWrap ? errWrap.innerText : '';
+                const loginMsg = document.querySelector('#reason');
+                const loginText = loginMsg ? loginMsg.innerText : '';
+                return `${state} | ytErr="${errText}" | reason="${loginText}"`;
+            }""")
+            print(f"[bot] Video state: {video_state}")
+
+            # Save screenshot right after play attempt
+            await page.screenshot(path="/tmp/youtube_debug.png")
+
             # Wait for audio stream to appear (up to 30s)
             for i in range(60):
                 if audio_url:
@@ -266,9 +284,8 @@ class MusicBot:
             if audio_url:
                 print(f"[bot] Got YouTube audio URL ({len(audio_url)} chars)")
             else:
-                # Save debug screenshot
-                await page.screenshot(path="/tmp/youtube_debug.png")
-                print("[bot] No audio stream captured (screenshot saved to /tmp/youtube_debug.png)")
+                await page.screenshot(path="/tmp/youtube_debug2.png")
+                print("[bot] No audio stream captured (screenshots saved to /tmp/youtube_debug*.png)")
 
         except Exception as e:
             print(f"[bot] YouTube extraction error: {e}")
