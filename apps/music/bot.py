@@ -224,34 +224,51 @@ class MusicBot:
 
             yt_url = f"https://www.youtube.com/watch?v={video_id}"
             print(f"[bot] Extracting audio URL via browser: {yt_url}")
-            await page.goto(yt_url, wait_until="domcontentloaded", timeout=30000)
+            await page.goto(yt_url, wait_until="load", timeout=30000)
+            await asyncio.sleep(2)  # Let YouTube JS initialize
 
-            # Log what YouTube shows us
             title = await page.title()
             print(f"[bot] YouTube page title: {title}")
-            # Save screenshot for debugging
-            await page.screenshot(path="/tmp/youtube_debug.png")
-            print("[bot] Screenshot saved to /tmp/youtube_debug.png")
-            # Log page content snippet
-            body_text = await page.evaluate("() => document.body?.innerText?.substring(0, 500) || 'empty'")
-            print(f"[bot] Page text: {body_text[:300]}")
 
-            # Click play if there's a play button (autoplay might be blocked)
-            try:
-                play_btn = page.locator("button.ytp-large-play-button")
-                if await play_btn.is_visible(timeout=3000):
-                    await play_btn.click()
-            except Exception:
-                pass
+            # Try multiple methods to start playback
+            started = await page.evaluate("""() => {
+                // Method 1: Click the video element directly
+                const video = document.querySelector('video');
+                if (video) {
+                    video.play().catch(() => {});
+                    return 'video.play()';
+                }
+                // Method 2: Click the large play button
+                const playBtn = document.querySelector('.ytp-large-play-button');
+                if (playBtn) {
+                    playBtn.click();
+                    return 'play-button-click';
+                }
+                // Method 3: Click the video player area
+                const player = document.querySelector('#movie_player');
+                if (player) {
+                    player.click();
+                    return 'player-click';
+                }
+                return 'no-player-found';
+            }""")
+            print(f"[bot] Playback trigger: {started}")
 
-            # Wait for audio stream to appear (up to 20s)
-            for _ in range(40):
+            # Wait for audio stream to appear (up to 30s)
+            for i in range(60):
                 if audio_url:
                     break
                 await asyncio.sleep(0.5)
+                # Re-trigger play at 5s and 10s if still no audio
+                if i in (10, 20):
+                    await page.evaluate("() => { const v = document.querySelector('video'); if (v) v.play().catch(() => {}); }")
 
-            if not audio_url:
-                print("[bot] No audio stream captured from YouTube")
+            if audio_url:
+                print(f"[bot] Got YouTube audio URL ({len(audio_url)} chars)")
+            else:
+                # Save debug screenshot
+                await page.screenshot(path="/tmp/youtube_debug.png")
+                print("[bot] No audio stream captured (screenshot saved to /tmp/youtube_debug.png)")
 
         except Exception as e:
             print(f"[bot] YouTube extraction error: {e}")
