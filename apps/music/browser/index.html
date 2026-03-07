@@ -20,10 +20,17 @@ import {
 
 const SAMPLE_RATE = 48000;
 const CHANNELS = 2;
-const BUFFER_SIZE = 1024; // Must be power of 2 for createScriptProcessor
+const BUFFER_SIZE = 4096; // Power of 2 for createScriptProcessor
+
+// Ring buffer for interleaved float samples (L, R, L, R, ...)
+// 0.5s capacity at 48kHz stereo = 48000 samples/frame pair
+const RING_CAPACITY = SAMPLE_RATE * CHANNELS; // 0.5s
+const ring = new Float32Array(RING_CAPACITY);
+let ringWrite = 0;
+let ringRead = 0;
+let ringCount = 0; // number of samples available
 
 let room = null;
-let sampleBuffer = []; // Flat float samples from PCM frames
 let connected = false;
 
 const params = new URLSearchParams(window.location.search);
@@ -47,9 +54,12 @@ async function start() {
     const outR = e.outputBuffer.getChannelData(1);
 
     for (let i = 0; i < BUFFER_SIZE; i++) {
-      if (sampleBuffer.length >= 2) {
-        outL[i] = sampleBuffer.shift();
-        outR[i] = sampleBuffer.shift();
+      if (ringCount >= 2) {
+        outL[i] = ring[ringRead];
+        ringRead = (ringRead + 1) % RING_CAPACITY;
+        outR[i] = ring[ringRead];
+        ringRead = (ringRead + 1) % RING_CAPACITY;
+        ringCount -= 2;
       } else {
         outL[i] = 0;
         outR[i] = 0;
@@ -132,14 +142,18 @@ function connectBridge(port) {
   ws.onopen = () => console.log('[bot-browser] Bridge WebSocket connected');
 
   ws.onmessage = (event) => {
-    // Convert Int16 interleaved PCM to float pairs [L, R, L, R, ...]
+    // Each message: interleaved Int16 PCM [L, R, L, R, ...]
     const int16 = new Int16Array(event.data);
-    for (let i = 0; i < int16.length; i++) {
-      sampleBuffer.push(int16[i] / 32768);
+    const count = int16.length;
+
+    // Drop frame if ring buffer is nearly full (prevent stale buildup)
+    if (ringCount + count > RING_CAPACITY - count) return;
+
+    for (let i = 0; i < count; i++) {
+      ring[ringWrite] = int16[i] / 32768;
+      ringWrite = (ringWrite + 1) % RING_CAPACITY;
     }
-    // Cap buffer to ~200ms worth of samples (48000 * 2ch * 0.2s)
-    const maxSamples = SAMPLE_RATE * CHANNELS * 0.2;
-    while (sampleBuffer.length > maxSamples) sampleBuffer.shift();
+    ringCount += count;
   };
 
   ws.onclose = () => {

@@ -183,7 +183,10 @@ class Player:
             print(f"[player] read_loop error: {e}")
 
     async def _drain_frames(self):
+        import time as _time
         while len(self._pcm_buffer) >= BYTES_PER_FRAME:
+            frame_start = _time.monotonic()
+
             frame_bytes = bytes(self._pcm_buffer[:BYTES_PER_FRAME])
             del self._pcm_buffer[:BYTES_PER_FRAME]
 
@@ -192,6 +195,12 @@ class Player:
 
             if self._on_frame:
                 await self._on_frame(frame_bytes)
+
+            # Pace output to real-time (20ms per frame) to prevent bursts
+            elapsed = _time.monotonic() - frame_start
+            sleep_time = (FRAME_MS / 1000) - elapsed
+            if sleep_time > 0.001:
+                await asyncio.sleep(sleep_time)
 
     def _apply_volume(self, frame_bytes: bytes) -> bytes:
         gain = self._volume / 100.0
