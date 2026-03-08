@@ -1,5 +1,7 @@
+import asyncio
+import struct
 from aiohttp import web
-from player import Player
+from player import Player, SAMPLE_RATE, CHANNELS
 from stations import get_station
 
 
@@ -58,5 +60,39 @@ def create_routes(player: Player) -> web.RouteTableDef:
     async def pause(request):
         paused = await player.toggle_pause()
         return web.json_response({"paused": paused})
+
+    @routes.get("/stream")
+    async def stream(request):
+        """Debug endpoint: raw PCM from FFmpeg as WAV stream (bypasses LiveKit/Opus)."""
+        resp = web.StreamResponse()
+        resp.content_type = "audio/wav"
+        resp.headers["Cache-Control"] = "no-cache"
+
+        # Write a WAV header with max size (streaming)
+        bits = 16
+        byte_rate = SAMPLE_RATE * CHANNELS * (bits // 8)
+        block_align = CHANNELS * (bits // 8)
+        header = struct.pack(
+            "<4sI4s4sIHHIIHH4sI",
+            b"RIFF", 0xFFFFFFFF - 8, b"WAVE",
+            b"fmt ", 16, 1, CHANNELS, SAMPLE_RATE,
+            byte_rate, block_align, bits,
+            b"data", 0xFFFFFFFF - 44,
+        )
+
+        await resp.prepare(request)
+        await resp.write(header)
+
+        q: asyncio.Queue = asyncio.Queue(maxsize=500)  # ~10s buffer
+        player._stream_listeners.append(q)
+        try:
+            while True:
+                frame = await q.get()
+                await resp.write(frame)
+        except (ConnectionResetError, asyncio.CancelledError):
+            pass
+        finally:
+            player._stream_listeners.remove(q)
+        return resp
 
     return routes
