@@ -1,6 +1,8 @@
 import asyncio
 import signal
 import re
+import struct
+import math
 import time as _time
 from urllib.parse import urlparse, unquote
 from typing import Callable, Awaitable, Optional
@@ -195,10 +197,20 @@ class Player:
 
                     dbg_frames += 1
 
-                # Log every 5s
+                # Log every 5s with PCM diagnostics
                 now = _time.monotonic()
                 if now - dbg_last_log >= 5.0:
-                    print(f"[player] frames: {dbg_frames}")
+                    # Compute RMS of last frame for diagnostics
+                    rms_db = "?"
+                    try:
+                        samples = struct.unpack(f"<{len(frame)//2}h", frame)
+                        rms = math.sqrt(sum(s * s for s in samples) / len(samples))
+                        rms_db = f"{20 * math.log10(max(rms, 1) / 32768):.1f}"
+                    except Exception:
+                        pass
+                    elapsed = now - dbg_last_log
+                    fps = dbg_frames / elapsed if elapsed > 0 else 0
+                    print(f"[player] frames: {dbg_frames} ({fps:.1f}/s) rms: {rms_db} dBFS")
                     dbg_frames = 0
                     dbg_last_log = now
 

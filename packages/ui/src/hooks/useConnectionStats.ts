@@ -6,6 +6,20 @@ export interface ConnectionStats {
   jitterMs: number | null;
 }
 
+/** Audio diagnostics — logs detailed inbound-rtp stats to console for debugging */
+interface AudioDiag {
+  packetsLost: number;
+  packetsReceived: number;
+  concealmentEvents: number;
+  concealedSamples: number;
+  insertedSamplesForDeceleration: number;
+  removedSamplesForAcceleration: number;
+  jitterBufferDelayMs: number;
+  totalSamplesReceived: number;
+}
+
+let prevDiag: AudioDiag | null = null;
+
 const POLL_INTERVAL = 2000;
 const EMA_ALPHA = 0.3;
 
@@ -60,6 +74,34 @@ export function useConnectionStats(room: Room | null): ConnectionStats {
             }
             if (entry.type === 'inbound-rtp' && entry.kind === 'audio' && entry.jitter != null) {
               jitterSec = entry.jitter;
+
+              // ── Audio diagnostics (console only) ──
+              const cur: AudioDiag = {
+                packetsLost: entry.packetsLost ?? 0,
+                packetsReceived: entry.packetsReceived ?? 0,
+                concealmentEvents: entry.concealmentEvents ?? 0,
+                concealedSamples: entry.concealedSamples ?? 0,
+                insertedSamplesForDeceleration: entry.insertedSamplesForDeceleration ?? 0,
+                removedSamplesForAcceleration: entry.removedSamplesForAcceleration ?? 0,
+                jitterBufferDelayMs: Math.round(((entry.jitterBufferDelay ?? 0) / Math.max(entry.jitterBufferEmittedCount ?? 1, 1)) * 1000),
+                totalSamplesReceived: entry.totalSamplesReceived ?? 0,
+              };
+              if (prevDiag) {
+                const dPkts = cur.packetsReceived - prevDiag.packetsReceived;
+                const dLost = cur.packetsLost - prevDiag.packetsLost;
+                const dConceal = cur.concealmentEvents - prevDiag.concealmentEvents;
+                const dConcealSamples = cur.concealedSamples - prevDiag.concealedSamples;
+                const dInserted = cur.insertedSamplesForDeceleration - prevDiag.insertedSamplesForDeceleration;
+                const dRemoved = cur.removedSamplesForAcceleration - prevDiag.removedSamplesForAcceleration;
+                // Only log if something interesting happened
+                if (dLost > 0 || dConceal > 0 || dInserted > 0 || dRemoved > 0) {
+                  console.warn(
+                    `[audio-diag] pkts:+${dPkts} lost:+${dLost} conceal:+${dConceal}(${dConcealSamples}smp) ` +
+                    `inserted:+${dInserted} removed:+${dRemoved} jitBuf:${cur.jitterBufferDelayMs}ms`
+                  );
+                }
+              }
+              prevDiag = cur;
             }
           });
 

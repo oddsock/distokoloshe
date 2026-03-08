@@ -147,18 +147,27 @@ export function useLiveKitRoom() {
         wsUrl = `${wsProtocol}//${window.location.host}${connection.wsUrl}`;
       }
 
-      // Connect to room
-      await room.connect(wsUrl, connection.token);
-
-      // Enable E2EE after connection is established
+      // Set E2EE key BEFORE connecting so it's ready when the first
+      // encrypted frame arrives (avoids "missing key" race condition)
       let e2eeActive = false;
       if (e2eeWorker && keyProvider) {
         try {
           await keyProvider.setKey(connection.e2eeKey);
+        } catch (err) {
+          console.warn('E2EE key setup failed:', err);
+        }
+      }
+
+      // Connect to room
+      await room.connect(wsUrl, connection.token);
+
+      // Enable E2EE after connection is established
+      if (e2eeWorker && keyProvider) {
+        try {
           room.setE2EEEnabled(true);
           e2eeActive = true;
         } catch (err) {
-          console.warn('E2EE setup failed, continuing with transport encryption:', err);
+          console.warn('E2EE enable failed, continuing with transport encryption:', err);
         }
       }
 

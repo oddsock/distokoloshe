@@ -108,12 +108,13 @@ class MusicBot:
         await self._room.connect(self._livekit_url, token, room_options)
         print(f"[bot] Connected to room: {self._room_name}")
 
-        # Create and publish audio track
+        # Create and publish audio track with high-quality music encoding
         track = rtc.LocalAudioTrack.create_audio_track("music", self._audio_source)
         options = rtc.TrackPublishOptions()
         options.source = rtc.TrackSource.SOURCE_MICROPHONE
         options.dtx = False
         options.red = False
+        options.audio_encoding = rtc.AudioEncoding(max_bitrate=256_000)
         await self._room.local_participant.publish_track(track, options)
         print("[bot] Audio track published")
 

@@ -155,6 +155,14 @@ export function useAudioMixer() {
     setDeafenedState(deaf);
     for (const node of nodesRef.current.values()) {
       node.element.volume = deaf ? 0 : (node.muted ? 0 : node.volume);
+      // Disable/enable the underlying media stream tracks to prevent
+      // buffer accumulation while deafened (avoids speed-up on undeafen)
+      const stream = node.element.srcObject;
+      if (stream instanceof MediaStream) {
+        for (const track of stream.getAudioTracks()) {
+          track.enabled = !deaf;
+        }
+      }
     }
   }, []);
 
