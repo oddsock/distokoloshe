@@ -1,6 +1,8 @@
 import asyncio
+import collections
 import signal
 import re
+import time as _time
 from urllib.parse import urlparse, unquote
 from typing import Callable, Awaitable, Optional
 from stations import STATIONS, DEFAULT_STATION_ID, get_station
@@ -10,6 +12,8 @@ CHANNELS = 2
 FRAME_MS = 20
 SAMPLES_PER_FRAME = SAMPLE_RATE * FRAME_MS // 1000  # 960
 BYTES_PER_FRAME = SAMPLES_PER_FRAME * CHANNELS * 4  # 7680 (float32 = 4 bytes/sample)
+# Max frames buffered between reader and pacer (50 frames = 1s)
+MAX_QUEUED_FRAMES = 50
 
 FrameCallback = Callable[[bytes], Awaitable[None]]
 
@@ -26,9 +30,12 @@ class Player:
         self._paused = False
         self._mode = "radio"
         self._id_counter = 0
-        self._pcm_buffer = bytearray()
         self._on_frame: Optional[FrameCallback] = None
         self._read_task: Optional[asyncio.Task] = None
+        self._pace_task: Optional[asyncio.Task] = None
+        # Lock-free frame queue between reader and pacer
+        self._frame_queue: collections.deque[bytes] = collections.deque(maxlen=MAX_QUEUED_FRAMES)
+        self._frame_event = asyncio.Event()
 
     def set_frame_callback(self, cb: FrameCallback):
         self._on_frame = cb
@@ -136,8 +143,7 @@ class Player:
     async def _spawn_ffmpeg(self, url: str):
         await self._stop_ffmpeg()
         gen = self._ffmpeg_generation
-        self._pcm_buffer = bytearray()
-        self._next_frame_time = None  # Reset wall-clock pacing
+        self._frame_queue.clear()
 
         # Resolve YouTube / yt-dlp-supported URLs to direct stream URLs
         stream_url = await self._resolve_url(url)
@@ -165,27 +171,44 @@ class Player:
         )
         self._ffmpeg = proc
 
+        print(f"[player] Stream started: {stream_url[:120]}")
+
+        # Two independent tasks: reader fills queue, pacer drains it at wall-clock rate
         self._read_task = asyncio.create_task(self._read_loop(proc, gen))
+        self._pace_task = asyncio.create_task(self._pace_loop(gen))
 
     async def _read_loop(self, proc: asyncio.subprocess.Process, gen: int):
+        """Reads PCM from FFmpeg as fast as possible, slices into frames, pushes to queue."""
+        buf = bytearray()
         try:
-            while True:
-                if gen != self._ffmpeg_generation:
-                    return
+            while gen == self._ffmpeg_generation:
                 assert proc.stdout is not None
-                chunk = await proc.stdout.read(BYTES_PER_FRAME * 4)
+                chunk = await proc.stdout.read(BYTES_PER_FRAME * 8)
                 if not chunk:
                     break
                 if gen != self._ffmpeg_generation:
                     return
-                self._pcm_buffer.extend(chunk)
-                await self._drain_frames()
+                buf.extend(chunk)
+
+                # Slice into frames and enqueue
+                while len(buf) >= BYTES_PER_FRAME:
+                    frame = bytes(buf[:BYTES_PER_FRAME])
+                    del buf[:BYTES_PER_FRAME]
+                    self._frame_queue.append(frame)  # deque maxlen auto-drops oldest
+                    self._frame_event.set()
 
             if gen != self._ffmpeg_generation:
                 return
 
             returncode = await proc.wait()
             print(f"ffmpeg exited with code {returncode}")
+
+            # Wait for pacer to drain remaining frames
+            while self._frame_queue and gen == self._ffmpeg_generation:
+                await asyncio.sleep(0.05)
+
+            if gen != self._ffmpeg_generation:
+                return
 
             if self._mode == "queue":
                 await self._play_next_from_queue()
@@ -198,64 +221,80 @@ class Player:
         except Exception as e:
             print(f"[player] read_loop error: {e}")
 
-    async def _drain_frames(self):
-        import time as _time
+    async def _pace_loop(self, gen: int):
+        """Sends frames to the WebSocket at a steady wall-clock rate, independent of reader."""
         frame_duration = FRAME_MS / 1000  # 0.02s
-        prefill_frames = 15  # Send first 15 frames (300ms) without pacing
+        prefill = 15  # burst first 15 frames (300ms) to fill browser ring buffer
 
-        # Debug stats
-        if not hasattr(self, '_dbg_frame_count'):
-            self._dbg_frame_count = 0
-            self._dbg_last_log = _time.monotonic()
-            self._dbg_behind_count = 0
+        dbg_frames = 0
+        dbg_drops = 0
+        dbg_starves = 0
+        dbg_last_log = _time.monotonic()
 
-        # Initialise wall-clock target on first call per stream
-        # Offset 300ms into the past to pre-fill the browser ring buffer
-        if not hasattr(self, '_next_frame_time') or self._next_frame_time is None:
-            self._next_frame_time = _time.monotonic() - (prefill_frames * frame_duration)
-            self._prefill_sent = 0
+        # Start clock offset into the past for pre-fill burst
+        next_time = _time.monotonic() - (prefill * frame_duration)
 
-        while len(self._pcm_buffer) >= BYTES_PER_FRAME:
-            # Sleep until the absolute target time for this frame
-            now = _time.monotonic()
-            sleep_time = self._next_frame_time - now
-            if sleep_time > 0.001:
-                await asyncio.sleep(sleep_time)
+        try:
+            while gen == self._ffmpeg_generation:
+                # Wait for data if queue is empty
+                if not self._frame_queue:
+                    self._frame_event.clear()
+                    try:
+                        await asyncio.wait_for(self._frame_event.wait(), timeout=1.0)
+                    except asyncio.TimeoutError:
+                        pass
+                    if not self._frame_queue:
+                        dbg_starves += 1
+                        continue
 
-            frame_bytes = bytes(self._pcm_buffer[:BYTES_PER_FRAME])
-            del self._pcm_buffer[:BYTES_PER_FRAME]
+                # Sleep until wall-clock target
+                now = _time.monotonic()
+                sleep_time = next_time - now
+                if sleep_time > 0.001:
+                    await asyncio.sleep(sleep_time)
 
-            if self._on_frame:
-                await self._on_frame(frame_bytes)
+                # Send one frame
+                try:
+                    frame = self._frame_queue.popleft()
+                except IndexError:
+                    continue
 
-            self._dbg_frame_count += 1
-            self._next_frame_time += frame_duration
+                if self._on_frame:
+                    await self._on_frame(frame)
 
-            # If we've fallen behind by >200ms, reset clock (prevents burst catch-up)
-            if _time.monotonic() - self._next_frame_time > 0.2:
-                self._dbg_behind_count += 1
-                self._next_frame_time = _time.monotonic()
+                dbg_frames += 1
+                next_time += frame_duration
 
-            # Log stats every 5s
-            now = _time.monotonic()
-            if now - self._dbg_last_log >= 5.0:
-                buf_ms = len(self._pcm_buffer) * 1000 // (SAMPLE_RATE * CHANNELS * 4)
-                print(f"[player] frames: {self._dbg_frame_count} | "
-                      f"buf: {buf_ms}ms | "
-                      f"behind-resets: {self._dbg_behind_count}")
-                self._dbg_frame_count = 0
-                self._dbg_behind_count = 0
-                self._dbg_last_log = now
+                # If fallen behind >100ms, reset clock (prevent burst catch-up)
+                if _time.monotonic() - next_time > 0.1:
+                    dbg_drops += 1
+                    next_time = _time.monotonic()
+
+                # Log every 5s
+                now = _time.monotonic()
+                if now - dbg_last_log >= 5.0:
+                    qlen = len(self._frame_queue)
+                    print(f"[player] frames: {dbg_frames} | "
+                          f"queued: {qlen}/{MAX_QUEUED_FRAMES} | "
+                          f"resets: {dbg_drops} | starves: {dbg_starves}")
+                    dbg_frames = 0
+                    dbg_drops = 0
+                    dbg_starves = 0
+                    dbg_last_log = now
+        except asyncio.CancelledError:
+            pass
 
     async def _stop_ffmpeg(self):
         self._ffmpeg_generation += 1
-        if self._read_task and not self._read_task.done():
-            self._read_task.cancel()
-            try:
-                await self._read_task
-            except asyncio.CancelledError:
-                pass
-            self._read_task = None
+        for task in (self._read_task, self._pace_task):
+            if task and not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+        self._read_task = None
+        self._pace_task = None
         if self._ffmpeg and self._ffmpeg.returncode is None:
             try:
                 self._ffmpeg.terminate()
@@ -266,7 +305,7 @@ class Player:
                 except ProcessLookupError:
                     pass
         self._ffmpeg = None
-        self._pcm_buffer = bytearray()
+        self._frame_queue.clear()
 
     # ── ICY Metadata ─────────────────────────────────────
 
