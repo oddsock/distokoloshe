@@ -93,6 +93,12 @@ async function start() {
   room = new Room({
     adaptiveStream: false,
     dynacast: false,
+    publishDefaults: {
+      dtx: false,
+      red: false,
+      audioBitrate: 128_000,
+      audioPreset: { maxBitrate: 128_000 },
+    },
     ...(e2eeWorker && keyProvider
       ? { e2ee: { keyProvider, worker: e2eeWorker } }
       : {}),
