@@ -113,8 +113,9 @@ class MusicBot:
         # Create and publish audio track with high-quality music encoding
         track = rtc.LocalAudioTrack.create_audio_track("music", self._audio_source)
         options = rtc.TrackPublishOptions()
-        # SOURCE_SCREENSHARE_AUDIO tells the Opus encoder to use AUDIO mode
-        # (music-optimized) instead of VOIP mode (speech-optimized with filtering)
+        # Stereo (NUM_CHANNELS=2) is what triggers OPUS_APPLICATION_AUDIO in libwebrtc
+        # (mono would use VOIP mode with speech filtering). SOURCE_SCREENSHARE_AUDIO
+        # is metadata that tells the SFU/clients this is a music track, not a mic.
         options.source = rtc.TrackSource.SOURCE_SCREENSHARE_AUDIO
         options.dtx = False
         options.red = False

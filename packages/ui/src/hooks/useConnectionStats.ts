@@ -21,6 +21,7 @@ interface AudioDiag {
 }
 
 let prevDiag: AudioDiag | null = null;
+let codecLogged = false;
 
 const POLL_INTERVAL = 2000;
 const EMA_ALPHA = 0.3;
@@ -38,6 +39,7 @@ export function useConnectionStats(room: Room | null): ConnectionStats {
     if (!room) {
       smoothedRef.current = { rtt: null, jitter: null };
       setStats({ rttMs: null, jitterMs: null });
+      codecLogged = false;
       return;
     }
 
@@ -59,6 +61,20 @@ export function useConnectionStats(room: Room | null): ConnectionStats {
           let totalRtt = 0;
           let responseCount = 0;
           let remoteInboundRtt: number | null = null;
+
+          // Log codec info once to verify stereo negotiation
+          if (!codecLogged) {
+            const codecs: string[] = [];
+            report.forEach((e: Record<string, any>) => {
+              if (e.type === 'codec' && e.mimeType?.includes('opus')) {
+                codecs.push(`${e.mimeType} ch:${e.channels ?? '?'} fmtp:[${e.sdpFmtpLine ?? 'none'}]`);
+              }
+            });
+            if (codecs.length > 0) {
+              console.log(`[audio-diag] codec: ${codecs.join(' | ')}`);
+              codecLogged = true;
+            }
+          }
 
           report.forEach((entry: Record<string, any>) => {
             if (entry.type === 'candidate-pair' && entry.state === 'succeeded') {
