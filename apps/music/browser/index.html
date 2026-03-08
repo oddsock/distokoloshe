@@ -55,13 +55,18 @@ async function start() {
   const dest = audioCtx.createMediaStreamDestination();
   workletNode.connect(dest);
 
-  // Apply constraints to disable any browser audio processing
   const mediaTrack = dest.stream.getAudioTracks()[0];
-  await mediaTrack.applyConstraints({
-    autoGainControl: false,
-    echoCancellation: false,
-    noiseSuppression: false,
-  });
+  // Try to disable browser audio processing (may not be supported on all tracks)
+  try {
+    await mediaTrack.applyConstraints({
+      autoGainControl: false,
+      echoCancellation: false,
+      noiseSuppression: false,
+    });
+    console.log('[bot-browser] Audio processing disabled on track');
+  } catch (e) {
+    console.warn('[bot-browser] Could not apply audio constraints:', e.message);
+  }
 
   // Connect WebSocket bridge (sends PCM to worklet)
   connectBridge(bridgePort, workletNode);
