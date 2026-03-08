@@ -25,6 +25,39 @@ let room = null;
 let connected = false;
 let workletNode = null;
 
+// Monkey-patch RTCPeerConnection to force stereo Opus with music-quality parameters.
+// Without this, WebRTC defaults to mono voice-optimized Opus which sounds bad for music.
+const origSetLocal = RTCPeerConnection.prototype.setLocalDescription;
+RTCPeerConnection.prototype.setLocalDescription = function(desc, ...args) {
+  if (desc && desc.sdp) {
+    desc.sdp = forceOpusStereo(desc.sdp);
+  }
+  return origSetLocal.call(this, desc, ...args);
+};
+const origSetRemote = RTCPeerConnection.prototype.setRemoteDescription;
+RTCPeerConnection.prototype.setRemoteDescription = function(desc, ...args) {
+  if (desc && desc.sdp) {
+    desc.sdp = forceOpusStereo(desc.sdp);
+  }
+  return origSetRemote.call(this, desc, ...args);
+};
+
+function forceOpusStereo(sdp) {
+  // Find the Opus fmtp line and inject stereo parameters
+  return sdp.replace(
+    /a=fmtp:111 (.+)/g,
+    (match, params) => {
+      let p = params;
+      if (!p.includes('stereo=')) p += ';stereo=1';
+      if (!p.includes('sprop-stereo=')) p += ';sprop-stereo=1';
+      if (!p.includes('maxaveragebitrate=')) p += ';maxaveragebitrate=256000';
+      if (!p.includes('cbr=')) p += ';cbr=0';  // VBR for better quality
+      if (!p.includes('usedtx=')) p += ';usedtx=0';
+      return `a=fmtp:111 ${p}`;
+    }
+  );
+}
+
 const params = new URLSearchParams(window.location.search);
 const wsUrl = params.get('ws_url');
 const token = params.get('token');
@@ -37,7 +70,11 @@ async function start() {
   console.log('[bot-browser] E2EE:', e2eeKey ? 'enabled' : 'disabled');
 
   const audioCtx = new AudioContext({ sampleRate: SAMPLE_RATE });
-  console.log('[bot-browser] AudioContext sampleRate:', audioCtx.sampleRate);
+  // Ensure stereo output (default may be mono in headless)
+  audioCtx.destination.channelCount = CHANNELS;
+  audioCtx.destination.channelCountMode = 'explicit';
+  audioCtx.destination.channelInterpretation = 'discrete';
+  console.log('[bot-browser] AudioContext sampleRate:', audioCtx.sampleRate, 'channels:', audioCtx.destination.channelCount);
 
   // Register AudioWorklet (runs on dedicated audio thread — no main-thread jitter)
   await audioCtx.audioWorklet.addModule('/pcm-worklet.js');
@@ -53,6 +90,8 @@ async function start() {
   };
 
   const dest = audioCtx.createMediaStreamDestination();
+  dest.channelCount = CHANNELS;
+  dest.channelCountMode = 'explicit';
   workletNode.connect(dest);
 
   const mediaTrack = dest.stream.getAudioTracks()[0];
@@ -96,8 +135,8 @@ async function start() {
     publishDefaults: {
       dtx: false,
       red: false,
-      audioBitrate: 128_000,
-      audioPreset: { maxBitrate: 128_000 },
+      audioBitrate: 256_000,
+      audioPreset: { maxBitrate: 256_000 },
     },
     ...(e2eeWorker && keyProvider
       ? { e2ee: { keyProvider, worker: e2eeWorker } }
@@ -136,7 +175,7 @@ async function start() {
     source: Track.Source.Microphone,
     dtx: false,      // No discontinuous transmission
     red: false,       // No redundant encoding
-    audioBitrate: 128_000,
+    audioBitrate: 256_000,
   });
   console.log('[bot-browser] Audio track published');
 

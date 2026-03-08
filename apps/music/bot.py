@@ -122,7 +122,9 @@ class MusicBot:
                 "--disable-features=WebRtcAGC1,WebRtcAGC2,AudioServiceAudioProcessing,WebRtcHideLocalIpsWithMdns",
                 "--disable-audio-output-resampler",
                 "--disable-rtc-smoothness-algorithm",
-                "--force-fieldtrials=WebRTC-Audio-ABWENoTWCC/Enabled/WebRTC-Audio-Red-For-Opus/Disabled/",
+                "--force-fieldtrials="
+                "WebRTC-Audio-ABWENoTWCC/Enabled/"
+                "WebRTC-Audio-Red-For-Opus/Disabled/",
                 # Disable echo cancellation, noise suppression, auto gain via WebRTC internals
                 "--disable-webrtc-apm-agc",
                 "--disable-webrtc-hw-encoding",
