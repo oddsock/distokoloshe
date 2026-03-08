@@ -199,8 +199,7 @@ async function start() {
   // Publish audio track with all processing disabled
   const localTrack = new LocalAudioTrack(mediaTrack, undefined, false);
   await room.localParticipant.publishTrack(localTrack, {
-    source: Track.Source.Unknown,  // NOT Microphone — avoids voice-optimized codec paths
-    name: 'music',
+    source: Track.Source.Microphone,
     dtx: false,
     red: false,
     audioBitrate: 256_000,
