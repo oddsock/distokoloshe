@@ -6,23 +6,6 @@ export interface ConnectionStats {
   jitterMs: number | null;
 }
 
-/** Audio diagnostics — logs detailed inbound-rtp stats to console for debugging */
-interface AudioDiag {
-  packetsLost: number;
-  packetsReceived: number;
-  bytesReceived: number;
-  concealmentEvents: number;
-  concealedSamples: number;
-  insertedSamplesForDeceleration: number;
-  removedSamplesForAcceleration: number;
-  jitterBufferDelayMs: number;
-  totalSamplesReceived: number;
-  timestamp: number;
-}
-
-let prevDiag: AudioDiag | null = null;
-let codecLogged = false;
-
 const POLL_INTERVAL = 2000;
 const EMA_ALPHA = 0.3;
 
@@ -39,7 +22,6 @@ export function useConnectionStats(room: Room | null): ConnectionStats {
     if (!room) {
       smoothedRef.current = { rtt: null, jitter: null };
       setStats({ rttMs: null, jitterMs: null });
-      codecLogged = false;
       return;
     }
 
@@ -62,20 +44,6 @@ export function useConnectionStats(room: Room | null): ConnectionStats {
           let responseCount = 0;
           let remoteInboundRtt: number | null = null;
 
-          // Log codec info once to verify stereo negotiation
-          if (!codecLogged) {
-            const codecs: string[] = [];
-            report.forEach((e: Record<string, any>) => {
-              if (e.type === 'codec' && e.mimeType?.includes('opus')) {
-                codecs.push(`${e.mimeType} ch:${e.channels ?? '?'} fmtp:[${e.sdpFmtpLine ?? 'none'}]`);
-              }
-            });
-            if (codecs.length > 0) {
-              console.log(`[audio-diag] codec: ${codecs.join(' | ')}`);
-              codecLogged = true;
-            }
-          }
-
           report.forEach((entry: Record<string, any>) => {
             if (entry.type === 'candidate-pair' && entry.state === 'succeeded') {
               if (entry.currentRoundTripTime != null && entry.currentRoundTripTime > 0) {
@@ -92,41 +60,6 @@ export function useConnectionStats(room: Room | null): ConnectionStats {
             }
             if (entry.type === 'inbound-rtp' && entry.kind === 'audio' && entry.jitter != null) {
               jitterSec = entry.jitter;
-
-              // ── Audio diagnostics (console only) ──
-              const cur: AudioDiag = {
-                packetsLost: entry.packetsLost ?? 0,
-                packetsReceived: entry.packetsReceived ?? 0,
-                bytesReceived: entry.bytesReceived ?? 0,
-                concealmentEvents: entry.concealmentEvents ?? 0,
-                concealedSamples: entry.concealedSamples ?? 0,
-                insertedSamplesForDeceleration: entry.insertedSamplesForDeceleration ?? 0,
-                removedSamplesForAcceleration: entry.removedSamplesForAcceleration ?? 0,
-                jitterBufferDelayMs: Math.round(((entry.jitterBufferDelay ?? 0) / Math.max(entry.jitterBufferEmittedCount ?? 1, 1)) * 1000),
-                totalSamplesReceived: entry.totalSamplesReceived ?? 0,
-                timestamp: entry.timestamp ?? performance.now(),
-              };
-              if (prevDiag) {
-                const dPkts = cur.packetsReceived - prevDiag.packetsReceived;
-                const dLost = cur.packetsLost - prevDiag.packetsLost;
-                const dConceal = cur.concealmentEvents - prevDiag.concealmentEvents;
-                const dConcealSamples = cur.concealedSamples - prevDiag.concealedSamples;
-                const dInserted = cur.insertedSamplesForDeceleration - prevDiag.insertedSamplesForDeceleration;
-                const dRemoved = cur.removedSamplesForAcceleration - prevDiag.removedSamplesForAcceleration;
-                const dBytes = cur.bytesReceived - prevDiag.bytesReceived;
-                const dTime = (cur.timestamp - prevDiag.timestamp) / 1000; // seconds
-                const bitrateKbps = dTime > 0 ? Math.round((dBytes * 8) / dTime / 1000) : 0;
-                // Always log bitrate; warn on issues
-                if (dLost > 0 || dConceal > 0 || dInserted > 0 || dRemoved > 0) {
-                  console.warn(
-                    `[audio-diag] ${bitrateKbps}kbps pkts:+${dPkts} lost:+${dLost} conceal:+${dConceal}(${dConcealSamples}smp) ` +
-                    `inserted:+${dInserted} removed:+${dRemoved} jitBuf:${cur.jitterBufferDelayMs}ms`
-                  );
-                } else {
-                  console.log(`[audio-diag] ${bitrateKbps}kbps pkts:+${dPkts} jitBuf:${cur.jitterBufferDelayMs}ms (clean)`);
-                }
-              }
-              prevDiag = cur;
             }
           });
 
