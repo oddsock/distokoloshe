@@ -9,7 +9,7 @@ SAMPLE_RATE = 48000
 CHANNELS = 2
 FRAME_MS = 20
 SAMPLES_PER_FRAME = SAMPLE_RATE * FRAME_MS // 1000  # 960
-BYTES_PER_FRAME = SAMPLES_PER_FRAME * CHANNELS * 2  # 3840
+BYTES_PER_FRAME = SAMPLES_PER_FRAME * CHANNELS * 4  # 7680 (float32 = 4 bytes/sample)
 
 FrameCallback = Callable[[bytes], Awaitable[None]]
 
@@ -154,7 +154,7 @@ class Player:
             "-reconnect_delay_max", "5",
             "-i", stream_url,
             "-af", "volume=0.8",
-            "-f", "s16le",
+            "-f", "f32le",
             "-ar", str(SAMPLE_RATE),
             "-ac", str(CHANNELS),
             "-fflags", "+nobuffer",
@@ -239,7 +239,7 @@ class Player:
             # Log stats every 5s
             now = _time.monotonic()
             if now - self._dbg_last_log >= 5.0:
-                buf_ms = len(self._pcm_buffer) * 1000 // (SAMPLE_RATE * CHANNELS * 2)
+                buf_ms = len(self._pcm_buffer) * 1000 // (SAMPLE_RATE * CHANNELS * 4)
                 print(f"[player] frames: {self._dbg_frame_count} | "
                       f"buf: {buf_ms}ms | "
                       f"behind-resets: {self._dbg_behind_count}")

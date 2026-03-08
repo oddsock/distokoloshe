@@ -42,20 +42,28 @@ RTCPeerConnection.prototype.setRemoteDescription = function(desc, ...args) {
   return origSetRemote.call(this, desc, ...args);
 };
 
+let sdpPatchCount = 0;
 function forceOpusStereo(sdp) {
-  // Find the Opus fmtp line and inject stereo parameters
-  return sdp.replace(
-    /a=fmtp:111 (.+)/g,
+  // First find the Opus payload type from the rtpmap line (usually 111 but not guaranteed)
+  const opusMatch = sdp.match(/a=rtpmap:(\d+) opus\/48000\/2/);
+  if (!opusMatch) return sdp;
+  const pt = opusMatch[1];
+
+  const patched = sdp.replace(
+    new RegExp(`a=fmtp:${pt} (.+)`, 'g'),
     (match, params) => {
       let p = params;
       if (!p.includes('stereo=')) p += ';stereo=1';
       if (!p.includes('sprop-stereo=')) p += ';sprop-stereo=1';
       if (!p.includes('maxaveragebitrate=')) p += ';maxaveragebitrate=256000';
-      if (!p.includes('cbr=')) p += ';cbr=0';  // VBR for better quality
+      if (!p.includes('cbr=')) p += ';cbr=0';
       if (!p.includes('usedtx=')) p += ';usedtx=0';
-      return `a=fmtp:111 ${p}`;
+      sdpPatchCount++;
+      console.log(`[bot-browser] SDP patched (#${sdpPatchCount}): a=fmtp:${pt} ${p}`);
+      return `a=fmtp:${pt} ${p}`;
     }
   );
+  return patched;
 }
 
 const params = new URLSearchParams(window.location.search);
@@ -190,13 +198,9 @@ function connectBridge(port, node) {
   ws.onopen = () => console.log('[bot-browser] Bridge WebSocket connected');
 
   ws.onmessage = (event) => {
-    // Each message: interleaved Int16 PCM [L, R, L, R, ...]
-    // Convert to Float32 and send to worklet
-    const int16 = new Int16Array(event.data);
-    const float32 = new Float32Array(int16.length);
-    for (let i = 0; i < int16.length; i++) {
-      float32[i] = int16[i] / 32768;
-    }
+    // Each message: interleaved Float32 PCM [L, R, L, R, ...]
+    // FFmpeg outputs f32le directly — no conversion needed
+    const float32 = new Float32Array(event.data);
     node.port.postMessage(float32, [float32.buffer]); // Transfer ownership (zero-copy)
   };
 
