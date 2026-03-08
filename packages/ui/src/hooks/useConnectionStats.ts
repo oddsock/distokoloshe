@@ -10,12 +10,14 @@ export interface ConnectionStats {
 interface AudioDiag {
   packetsLost: number;
   packetsReceived: number;
+  bytesReceived: number;
   concealmentEvents: number;
   concealedSamples: number;
   insertedSamplesForDeceleration: number;
   removedSamplesForAcceleration: number;
   jitterBufferDelayMs: number;
   totalSamplesReceived: number;
+  timestamp: number;
 }
 
 let prevDiag: AudioDiag | null = null;
@@ -79,12 +81,14 @@ export function useConnectionStats(room: Room | null): ConnectionStats {
               const cur: AudioDiag = {
                 packetsLost: entry.packetsLost ?? 0,
                 packetsReceived: entry.packetsReceived ?? 0,
+                bytesReceived: entry.bytesReceived ?? 0,
                 concealmentEvents: entry.concealmentEvents ?? 0,
                 concealedSamples: entry.concealedSamples ?? 0,
                 insertedSamplesForDeceleration: entry.insertedSamplesForDeceleration ?? 0,
                 removedSamplesForAcceleration: entry.removedSamplesForAcceleration ?? 0,
                 jitterBufferDelayMs: Math.round(((entry.jitterBufferDelay ?? 0) / Math.max(entry.jitterBufferEmittedCount ?? 1, 1)) * 1000),
                 totalSamplesReceived: entry.totalSamplesReceived ?? 0,
+                timestamp: entry.timestamp ?? performance.now(),
               };
               if (prevDiag) {
                 const dPkts = cur.packetsReceived - prevDiag.packetsReceived;
@@ -93,12 +97,17 @@ export function useConnectionStats(room: Room | null): ConnectionStats {
                 const dConcealSamples = cur.concealedSamples - prevDiag.concealedSamples;
                 const dInserted = cur.insertedSamplesForDeceleration - prevDiag.insertedSamplesForDeceleration;
                 const dRemoved = cur.removedSamplesForAcceleration - prevDiag.removedSamplesForAcceleration;
-                // Only log if something interesting happened
+                const dBytes = cur.bytesReceived - prevDiag.bytesReceived;
+                const dTime = (cur.timestamp - prevDiag.timestamp) / 1000; // seconds
+                const bitrateKbps = dTime > 0 ? Math.round((dBytes * 8) / dTime / 1000) : 0;
+                // Always log bitrate; warn on issues
                 if (dLost > 0 || dConceal > 0 || dInserted > 0 || dRemoved > 0) {
                   console.warn(
-                    `[audio-diag] pkts:+${dPkts} lost:+${dLost} conceal:+${dConceal}(${dConcealSamples}smp) ` +
+                    `[audio-diag] ${bitrateKbps}kbps pkts:+${dPkts} lost:+${dLost} conceal:+${dConceal}(${dConcealSamples}smp) ` +
                     `inserted:+${dInserted} removed:+${dRemoved} jitBuf:${cur.jitterBufferDelayMs}ms`
                   );
+                } else {
+                  console.log(`[audio-diag] ${bitrateKbps}kbps pkts:+${dPkts} jitBuf:${cur.jitterBufferDelayMs}ms (clean)`);
                 }
               }
               prevDiag = cur;
