@@ -42,6 +42,8 @@ SDP_STEREO_PATCH = """
       pmap['sprop-stereo'] = '1';
       pmap['maxaveragebitrate'] = '256000';
       pmap['cbr'] = '1';
+      pmap['useinbandfec'] = '0';
+      pmap['usedtx'] = '0';
       var newParams = Object.keys(pmap).map(function(k) {
         return pmap[k] ? k + '=' + pmap[k] : k;
       }).join(';');
