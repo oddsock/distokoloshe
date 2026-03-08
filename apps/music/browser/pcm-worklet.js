@@ -14,6 +14,9 @@ class PCMWorkletProcessor extends AudioWorkletProcessor {
     this.ringCount = 0;
     this.underruns = 0;
     this.frames = 0;
+    this.peakL = 0;
+    this.peakR = 0;
+    this.clipCount = 0; // samples >= 0.99
 
     this.port.onmessage = (e) => {
       const samples = e.data; // Float32Array, interleaved [L, R, L, R, ...]
@@ -42,11 +45,20 @@ class PCMWorkletProcessor extends AudioWorkletProcessor {
 
     for (let i = 0; i < len; i++) {
       if (this.ringCount >= 2) {
-        outL[i] = this.ring[this.ringRead];
+        const l = this.ring[this.ringRead];
         this.ringRead = (this.ringRead + 1) % RING_CAPACITY;
-        outR[i] = this.ring[this.ringRead];
+        const r = this.ring[this.ringRead];
         this.ringRead = (this.ringRead + 1) % RING_CAPACITY;
         this.ringCount -= 2;
+        outL[i] = l;
+        outR[i] = r;
+
+        // Peak tracking
+        const absL = l < 0 ? -l : l;
+        const absR = r < 0 ? -r : r;
+        if (absL > this.peakL) this.peakL = absL;
+        if (absR > this.peakR) this.peakR = absR;
+        if (absL >= 0.99 || absR >= 0.99) this.clipCount++;
       } else {
         outL[i] = 0;
         outR[i] = 0;
@@ -57,14 +69,23 @@ class PCMWorkletProcessor extends AudioWorkletProcessor {
     // Report stats every ~5s (48000/128 = 375 calls/s → 1875 calls)
     if (this.frames % 1875 === 0) {
       const fillMs = ((this.ringCount / CHANNELS) / SAMPLE_RATE * 1000) | 0;
+      // Convert peak to dBFS
+      const peakDb = this.peakL > 0 ? (20 * Math.log10(this.peakL)).toFixed(1) : '-inf';
       this.port.postMessage({
         type: 'stats',
         fillMs,
         underruns: this.underruns,
         frames: this.frames,
+        peakL: this.peakL.toFixed(4),
+        peakR: this.peakR.toFixed(4),
+        peakDb,
+        clipCount: this.clipCount,
       });
       this.underruns = 0;
       this.frames = 0;
+      this.peakL = 0;
+      this.peakR = 0;
+      this.clipCount = 0;
     }
 
     return true;

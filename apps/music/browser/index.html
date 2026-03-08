@@ -48,7 +48,7 @@ async function start() {
   // Log stats from worklet
   workletNode.port.onmessage = (e) => {
     if (e.data.type === 'stats') {
-      console.log(`[bot-browser] ring: ${e.data.fillMs}ms | frames: ${e.data.frames} | underruns: ${e.data.underruns}`);
+      console.log(`[bot-browser] ring: ${e.data.fillMs}ms | peak: ${e.data.peakDb}dB (L:${e.data.peakL} R:${e.data.peakR}) | clips: ${e.data.clipCount} | underruns: ${e.data.underruns}`);
     }
   };
 
