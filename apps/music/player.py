@@ -11,7 +11,7 @@ SAMPLE_RATE = 48000
 CHANNELS = 2
 FRAME_MS = 20
 SAMPLES_PER_FRAME = SAMPLE_RATE * FRAME_MS // 1000  # 960
-BYTES_PER_FRAME = SAMPLES_PER_FRAME * CHANNELS * 4  # 7680 (float32 = 4 bytes/sample)
+BYTES_PER_FRAME = SAMPLES_PER_FRAME * CHANNELS * 2  # 3840 (int16 = 2 bytes/sample)
 # Max frames buffered between reader and pacer (50 frames = 1s)
 MAX_QUEUED_FRAMES = 50
 
@@ -160,7 +160,7 @@ class Player:
             "-reconnect_delay_max", "5",
             "-i", stream_url,
             "-af", "volume=0.8",
-            "-f", "f32le",
+            "-f", "s16le",
             "-ar", str(SAMPLE_RATE),
             "-ac", str(CHANNELS),
             "-fflags", "+nobuffer",

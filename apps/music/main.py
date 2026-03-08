@@ -22,7 +22,7 @@ async def main():
     # Start player (radio by default)
     asyncio.create_task(player.start())
 
-    # Launch headless browser + connect to LiveKit
+    # Connect to LiveKit and publish audio track
     asyncio.create_task(bot.start())
 
     # Start HTTP API
