@@ -8,6 +8,9 @@ import time
 from typing import Optional
 
 from livekit import rtc
+from livekit.rtc._ffi_client import FfiHandle, FfiClient
+from livekit.rtc._proto import audio_frame_pb2 as proto_audio
+from livekit.rtc._proto import ffi_pb2 as proto_ffi
 
 BOT_IDENTITY = "__music-bot__"
 BOT_NAME = "DJ Tokoloshe"
@@ -73,10 +76,31 @@ class MusicBot:
     async def _connect(self):
         token = self._generate_token()
 
-        # Create audio source — feeds PCM directly to LiveKit's Opus encoder
-        # 1000ms queue absorbs radio source hiccups without starving the encoder.
-        # Latency doesn't matter for radio broadcast.
-        self._audio_source = rtc.AudioSource(SAMPLE_RATE, NUM_CHANNELS, queue_size_ms=1000)
+        # Create audio source with audio processing DISABLED.
+        # The Python SDK doesn't expose AudioSourceOptions, so we construct the
+        # FFI request manually to disable echo cancellation, noise suppression,
+        # and AGC — these are voice-optimized DSP that destroys music quality.
+        req = proto_ffi.FfiRequest()
+        req.new_audio_source.type = proto_audio.AudioSourceType.AUDIO_SOURCE_NATIVE
+        req.new_audio_source.sample_rate = SAMPLE_RATE
+        req.new_audio_source.num_channels = NUM_CHANNELS
+        req.new_audio_source.queue_size_ms = 1000
+        req.new_audio_source.options.echo_cancellation = False
+        req.new_audio_source.options.noise_suppression = False
+        req.new_audio_source.options.auto_gain_control = False
+        resp = FfiClient.instance.request(req)
+        source = rtc.AudioSource.__new__(rtc.AudioSource)
+        source._sample_rate = SAMPLE_RATE
+        source._num_channels = NUM_CHANNELS
+        source._loop = asyncio.get_event_loop()
+        source._info = resp.new_audio_source.source
+        source._ffi_handle = FfiHandle(resp.new_audio_source.source.handle.id)
+        source._last_capture = 0.0
+        source._q_size = 0.0
+        source._join_handle = None
+        source._join_fut = None
+        self._audio_source = source
+        print("[bot] AudioSource created (echo/noise/agc disabled)")
 
         # Build room options
         # single_peer_connection=True matches the browser client behavior and
