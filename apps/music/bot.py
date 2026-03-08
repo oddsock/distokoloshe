@@ -106,7 +106,7 @@ class MusicBot:
         # single_peer_connection=True matches the browser client behavior and
         # may fix the Rust FFI not detecting the PC as connected.
         room_options = rtc.RoomOptions(single_peer_connection=True)
-        if self._e2ee_secret:
+        if self._e2ee_secret and not os.environ.get("DISABLE_E2EE"):
             e2ee_key = self._derive_e2ee_key().encode()
             room_options.e2ee = rtc.E2EEOptions(
                 key_provider_options=rtc.KeyProviderOptions(shared_key=e2ee_key),
@@ -143,7 +143,7 @@ class MusicBot:
         options.source = rtc.TrackSource.SOURCE_SCREENSHARE_AUDIO
         options.dtx = False
         options.red = False
-        options.audio_encoding.max_bitrate = 256_000
+        options.audio_encoding.max_bitrate = 510_000  # max Opus stereo bitrate
         await self._room.local_participant.publish_track(track, options)
         print("[bot] Audio track published")
 
