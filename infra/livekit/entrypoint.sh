@@ -7,12 +7,9 @@ DOMAIN="${DOMAIN:-localhost}"
 sed "s/\${DOMAIN}/${DOMAIN}/g" /etc/livekit.yaml.tmpl > /etc/livekit.yaml
 
 if [ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]; then
-  # Production mode: TURN enabled, use local IPs for ICE candidates.
-  # External browser clients connect via TURN relay.
-  # Local services (music bot SDK) can reach LiveKit directly via private IP.
-  # (use_external_ip: true breaks Rust FFI SDK — no hairpin NAT on most VPS)
-  echo "TLS certs found for ${DOMAIN} — production mode (TURN + local IPs)"
-  sed -i '/^rtc:/a\  use_external_ip: false' /etc/livekit.yaml
+  # Production mode: use external IP discovery for correct public ICE candidates
+  echo "TLS certs found for ${DOMAIN} — production mode (TURN + external IP)"
+  sed -i '/^rtc:/a\  use_external_ip: true' /etc/livekit.yaml
 else
   # Dev mode: use local interfaces so ICE works on same machine (no hairpin NAT needed)
   echo "No TLS certs for ${DOMAIN} — dev mode (no TURN, local IPs)"
