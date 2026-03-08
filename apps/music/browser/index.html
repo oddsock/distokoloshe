@@ -115,6 +115,13 @@ async function start() {
   workletNode.connect(dest);
 
   const mediaTrack = dest.stream.getAudioTracks()[0];
+
+  // CRITICAL: Tell Chromium this is music, not voice.
+  // This switches the Opus encoder from VOIP mode (voice-optimized, aggressive processing)
+  // to AUDIO mode (music-optimized, preserves fidelity). This is the W3C standard way.
+  mediaTrack.contentHint = 'music';
+  console.log('[bot-browser] contentHint set to:', mediaTrack.contentHint);
+
   // Try to disable browser audio processing (may not be supported on all tracks)
   try {
     await mediaTrack.applyConstraints({
