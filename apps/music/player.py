@@ -153,6 +153,7 @@ class Player:
             "-reconnect_streamed", "1",
             "-reconnect_delay_max", "5",
             "-i", stream_url,
+            "-af", "volume=0.8",
             "-f", "s16le",
             "-ar", str(SAMPLE_RATE),
             "-ac", str(CHANNELS),
