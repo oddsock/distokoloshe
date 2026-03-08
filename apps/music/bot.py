@@ -29,6 +29,7 @@ class MusicBot:
         self._room: Optional[rtc.Room] = None
         self._audio_source: Optional[rtc.AudioSource] = None
         self._connected = False
+        self._reconnect_task: Optional[asyncio.Task] = None
 
     async def start(self):
         await self._connect_with_retry()
@@ -71,7 +72,8 @@ class MusicBot:
 
         print("[bot] All attempts failed. Retrying in 15s...")
         await asyncio.sleep(15)
-        asyncio.create_task(self._connect_with_retry())
+        self._reconnect_task = asyncio.create_task(self._connect_with_retry())
+        self._reconnect_task.add_done_callback(self._on_task_done)
 
     async def _connect(self):
         token = self._generate_token()
@@ -84,7 +86,7 @@ class MusicBot:
         req.new_audio_source.type = proto_audio.AudioSourceType.AUDIO_SOURCE_NATIVE
         req.new_audio_source.sample_rate = SAMPLE_RATE
         req.new_audio_source.num_channels = NUM_CHANNELS
-        req.new_audio_source.queue_size_ms = 1000
+        req.new_audio_source.queue_size_ms = 300
         req.new_audio_source.options.echo_cancellation = False
         req.new_audio_source.options.noise_suppression = False
         req.new_audio_source.options.auto_gain_control = False
@@ -119,7 +121,8 @@ class MusicBot:
         def on_disconnected(reason):
             print(f"[bot] Disconnected: {reason}")
             self._connected = False
-            asyncio.create_task(self._reconnect())
+            self._reconnect_task = asyncio.create_task(self._reconnect())
+            self._reconnect_task.add_done_callback(self._on_task_done)
 
         @self._room.on("reconnecting")
         def on_reconnecting():
@@ -146,6 +149,14 @@ class MusicBot:
         options.audio_encoding.max_bitrate = 510_000  # max Opus stereo bitrate
         await self._room.local_participant.publish_track(track, options)
         print("[bot] Audio track published")
+
+    @staticmethod
+    def _on_task_done(task: asyncio.Task):
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc:
+            print(f"[bot] Background task failed: {exc}")
 
     async def _reconnect(self):
         await asyncio.sleep(5)

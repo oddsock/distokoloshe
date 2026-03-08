@@ -66,7 +66,7 @@ export function useSoundboard(room: LiveKitRoom | null) {
     gain.connect(dest);            // LiveKit stream (remote participants)
     const track = dest.stream.getAudioTracks()[0];
     await room!.localParticipant.publishTrack(track, {
-      source: Track.Source.Unknown,
+      source: Track.Source.ScreenShareAudio,
       name: 'soundboard',
     });
     pipeline.current = { ctx, dest, track, gain };

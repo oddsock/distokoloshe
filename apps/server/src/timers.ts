@@ -33,31 +33,35 @@ export function setVotePassedHandler(handler: ResolveVoteCallback): void {
 export function resolveVote(voteId: number): void {
   cancelVoteTimer(voteId);
 
-  const vote = db.prepare('SELECT * FROM votes WHERE id = ? AND resolved = 0').get(voteId) as VoteRow | undefined;
-  if (!vote) return;
+  try {
+    const vote = db.prepare('SELECT * FROM votes WHERE id = ? AND resolved = 0').get(voteId) as VoteRow | undefined;
+    if (!vote) return;
 
-  const passed = vote.yes_count > vote.eligible_count / 2;
-  db.prepare('UPDATE votes SET resolved = 1, passed = ? WHERE id = ?').run(passed ? 1 : 0, voteId);
+    const passed = vote.yes_count > vote.eligible_count / 2;
+    db.prepare('UPDATE votes SET resolved = 1, passed = ? WHERE id = ?').run(passed ? 1 : 0, voteId);
 
-  const targetUser = db.prepare('SELECT id, username, display_name FROM users WHERE id = ?').get(vote.target_user_id) as
-    { id: number; username: string; display_name: string } | undefined;
+    const targetUser = db.prepare('SELECT id, username, display_name FROM users WHERE id = ?').get(vote.target_user_id) as
+      { id: number; username: string; display_name: string } | undefined;
 
-  broadcastToRoom(vote.source_room_id, 'vote:resolved', {
-    voteId: vote.id,
-    sourceRoomId: vote.source_room_id,
-    passed,
-    yesCount: vote.yes_count,
-    noCount: vote.no_count,
-    eligibleCount: vote.eligible_count,
-    targetUserId: vote.target_user_id,
-    targetUsername: targetUser?.username,
-    targetDisplayName: targetUser?.display_name,
-  });
-
-  if (passed && onVotePassed) {
-    onVotePassed(vote).catch((err) => {
-      console.error('Vote passed handler failed:', err);
+    broadcastToRoom(vote.source_room_id, 'vote:resolved', {
+      voteId: vote.id,
+      sourceRoomId: vote.source_room_id,
+      passed,
+      yesCount: vote.yes_count,
+      noCount: vote.no_count,
+      eligibleCount: vote.eligible_count,
+      targetUserId: vote.target_user_id,
+      targetUsername: targetUser?.username,
+      targetDisplayName: targetUser?.display_name,
     });
+
+    if (passed && onVotePassed) {
+      onVotePassed(vote).catch((err) => {
+        console.error('Vote passed handler failed:', err);
+      });
+    }
+  } catch (err) {
+    console.error(`Failed to resolve vote ${voteId}:`, err);
   }
 }
 

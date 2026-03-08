@@ -9,6 +9,17 @@ const router = Router();
 // ── Rate limiting (in-memory) ────────────────────────────
 const rateBuckets = new Map<number, number[]>();
 
+// Periodically prune empty/stale rate buckets (every 60s)
+setInterval(() => {
+  const now = Date.now();
+  for (const [userId, timestamps] of rateBuckets) {
+    const recent = timestamps.filter((t) => now - t < 10_000);
+    if (recent.length === 0) {
+      rateBuckets.delete(userId);
+    }
+  }
+}, 60_000);
+
 function isRateLimited(userId: number): boolean {
   const now = Date.now();
   const timestamps = rateBuckets.get(userId) || [];
@@ -26,6 +37,7 @@ function isRateLimited(userId: number): boolean {
 }
 
 // ── Ephemeral image store (in-memory, auto-cleanup) ──────
+const MAX_IMAGE_STORE_SIZE = 200;
 const imageStore = new Map<string, { data: Buffer; mime: string }>();
 
 const imageUpload = multer({
@@ -51,6 +63,11 @@ router.post('/image', requireAuth, (req: Request, res: Response) => {
     const file = req.file;
     if (!file) {
       res.status(400).json({ error: 'No image provided' });
+      return;
+    }
+
+    if (imageStore.size >= MAX_IMAGE_STORE_SIZE) {
+      res.status(429).json({ error: 'Image store full, try again shortly' });
       return;
     }
 

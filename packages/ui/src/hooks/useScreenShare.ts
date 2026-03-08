@@ -119,7 +119,11 @@ export function useScreenShare(room: Room | null) {
 
   const stopScreenShare = useCallback(async () => {
     if (!room) return;
-    await room.localParticipant.setScreenShareEnabled(false);
+    try {
+      await room.localParticipant.setScreenShareEnabled(false);
+    } catch (err) {
+      console.warn('Error stopping screen share:', err);
+    }
     tracksRef.current = [];
     setIsSharing(false);
   }, [room]);

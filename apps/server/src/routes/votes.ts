@@ -226,7 +226,7 @@ router.post('/:id/ballot', requireAuth, (req: Request, res: Response) => {
   const totalVotes = updated.yes_count + updated.no_count;
   const majority = updated.eligible_count / 2;
 
-  if (updated.yes_count > majority || updated.no_count >= majority || totalVotes >= updated.eligible_count) {
+  if (updated.yes_count > majority || updated.no_count > majority || totalVotes >= updated.eligible_count) {
     resolveVote(voteId);
   }
 

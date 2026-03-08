@@ -207,7 +207,7 @@ class Player:
         try:
             while gen == self._ffmpeg_generation:
                 assert proc.stdout is not None
-                chunk = await proc.stdout.read(BYTES_PER_FRAME * 4)
+                chunk = await proc.stdout.read(BYTES_PER_FRAME)
                 if not chunk:
                     break
                 if gen != self._ffmpeg_generation:

@@ -31,11 +31,9 @@ export function useEvents({ handlers, onReconnect }: UseEventsOptions) {
     // Track whether this is the initial connection or a reconnect
     let hasConnectedBefore = false;
 
-    // Use a generic message handler that routes by event type.
-    // SSE `event:` field becomes MessageEvent.type when using addEventListener,
-    // but we need to know which events to listen for. Instead, use onmessage
-    // which fires for unnamed events. Since our server uses named events,
-    // we listen to all known handler keys dynamically.
+    // Use a single 'message'-style routing: register listeners once per handler key.
+    // Listeners delegate to handlersRef so they always call the latest handler without
+    // needing to be removed and re-added.
     const registeredTypes = new Set<string>();
 
     const syncListeners = () => {
@@ -79,6 +77,7 @@ export function useEvents({ handlers, onReconnect }: UseEventsOptions) {
       if (es) {
         clearInterval((es as unknown as { _syncInterval: ReturnType<typeof setInterval> })._syncInterval);
         es.close();
+        eventSourceRef.current = null;
       }
     };
   }, [connect]);

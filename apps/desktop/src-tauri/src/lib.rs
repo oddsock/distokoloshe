@@ -59,10 +59,11 @@ async fn install_update(
         .take()
         .ok_or("No pending update")?;
 
-    update
-        .download_and_install(|_, _| {}, || {})
-        .await
-        .map_err(|e| e.to_string())?;
+    if let Err(e) = update.download_and_install(|_, _| {}, || {}).await {
+        // Clear stale state so a fresh check can be performed
+        *state.0.lock().unwrap() = None;
+        return Err(e.to_string());
+    }
 
     app.restart();
 }
