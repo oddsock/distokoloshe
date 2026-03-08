@@ -3,10 +3,27 @@ import signal
 import re
 import struct
 import math
+import subprocess
 import time as _time
 from urllib.parse import urlparse, unquote
 from typing import Callable, Awaitable, Optional
 from stations import STATIONS, DEFAULT_STATION_ID, get_station
+
+
+def _detect_soxr() -> bool:
+    """Check if FFmpeg was built with libsoxr support."""
+    try:
+        result = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-filters"],
+            capture_output=True, text=True, timeout=5,
+        )
+        return "soxr" in result.stdout
+    except Exception:
+        return False
+
+
+HAS_SOXR = _detect_soxr()
+print(f"[player] Resampler: {'soxr (high quality)' if HAS_SOXR else 'swr (enhanced filter)'}")
 
 SAMPLE_RATE = 48000
 CHANNELS = 2
@@ -147,13 +164,20 @@ class Player:
                 await self._play_next_from_queue()
             return
 
+        # High-quality resampler for 44.1→48kHz conversion (MP3 sources).
+        # soxr is vastly superior to default SWR for non-integer ratio conversions.
+        if HAS_SOXR:
+            af = "aresample=resampler=soxr:precision=28:dither_method=none"
+        else:
+            af = "aresample=resampler=swr:filter_size=128:phase_shift=10:cutoff=0.95:dither_method=none"
+
         proc = await asyncio.create_subprocess_exec(
             "ffmpeg",
             "-reconnect", "1",
             "-reconnect_streamed", "1",
             "-reconnect_delay_max", "5",
             "-i", stream_url,
-            "-af", "volume=0.8",
+            "-af", af,
             "-f", "s16le",
             "-ar", str(SAMPLE_RATE),
             "-ac", str(CHANNELS),
