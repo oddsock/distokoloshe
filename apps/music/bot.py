@@ -6,7 +6,6 @@ import os
 import base64
 import time
 from pathlib import Path
-from typing import Optional
 from urllib.parse import quote
 
 from aiohttp import web
@@ -194,109 +193,6 @@ class MusicBot:
             hmac.new(self._api_secret.encode(), signing_input, hashlib.sha256).digest()
         ).rstrip(b"=")
         return (signing_input + b"." + signature).decode()
-
-    # ── YouTube URL Extraction ──────────────────────────
-
-    async def extract_youtube_audio_url(self, video_id: str) -> Optional[str]:
-        """Use the headless browser to extract a YouTube audio stream URL.
-        Navigates to YouTube, intercepts googlevideo.com audio requests."""
-        if not self._browser:
-            print("[bot] Browser not available for YouTube extraction")
-            return None
-
-        audio_url = None
-        context = None
-
-        try:
-            context = await self._browser.new_context()
-            page = await context.new_page()
-
-            async def on_response(response):
-                nonlocal audio_url
-                if audio_url:
-                    return
-                url = response.url
-                if "googlevideo.com" in url and ("mime=audio" in url or "mime%3Daudio" in url):
-                    audio_url = url
-                    print(f"[bot] Captured YouTube audio stream URL")
-
-            page.on("response", on_response)
-
-            yt_url = f"https://www.youtube.com/watch?v={video_id}"
-            print(f"[bot] Extracting audio URL via browser: {yt_url}")
-            await page.goto(yt_url, wait_until="load", timeout=30000)
-            await asyncio.sleep(2)  # Let YouTube JS initialize
-
-            title = await page.title()
-            print(f"[bot] YouTube page title: {title}")
-
-            # Try multiple methods to start playback
-            started = await page.evaluate("""() => {
-                // Method 1: Click the video element directly
-                const video = document.querySelector('video');
-                if (video) {
-                    video.play().catch(() => {});
-                    return 'video.play()';
-                }
-                // Method 2: Click the large play button
-                const playBtn = document.querySelector('.ytp-large-play-button');
-                if (playBtn) {
-                    playBtn.click();
-                    return 'play-button-click';
-                }
-                // Method 3: Click the video player area
-                const player = document.querySelector('#movie_player');
-                if (player) {
-                    player.click();
-                    return 'player-click';
-                }
-                return 'no-player-found';
-            }""")
-            print(f"[bot] Playback trigger: {started}")
-
-            # Check video element state
-            video_state = await page.evaluate("""() => {
-                const v = document.querySelector('video');
-                if (!v) return 'no-video-element';
-                const err = v.error ? `error(${v.error.code}: ${v.error.message})` : 'no-error';
-                const state = `ready=${v.readyState} paused=${v.paused} src=${v.src?.substring(0,100) || 'none'} ${err}`;
-                // Check for YouTube error overlays
-                const errWrap = document.querySelector('.ytp-error-content-wrap-reason');
-                const errText = errWrap ? errWrap.innerText : '';
-                const loginMsg = document.querySelector('#reason');
-                const loginText = loginMsg ? loginMsg.innerText : '';
-                return `${state} | ytErr="${errText}" | reason="${loginText}"`;
-            }""")
-            print(f"[bot] Video state: {video_state}")
-
-            # Save screenshot right after play attempt
-            await page.screenshot(path="/tmp/youtube_debug.png")
-
-            # Wait for audio stream to appear (up to 30s)
-            for i in range(60):
-                if audio_url:
-                    break
-                await asyncio.sleep(0.5)
-                # Re-trigger play at 5s and 10s if still no audio
-                if i in (10, 20):
-                    await page.evaluate("() => { const v = document.querySelector('video'); if (v) v.play().catch(() => {}); }")
-
-            if audio_url:
-                print(f"[bot] Got YouTube audio URL ({len(audio_url)} chars)")
-            else:
-                await page.screenshot(path="/tmp/youtube_debug2.png")
-                print("[bot] No audio stream captured (screenshots saved to /tmp/youtube_debug*.png)")
-
-        except Exception as e:
-            print(f"[bot] YouTube extraction error: {e}")
-        finally:
-            if context:
-                try:
-                    await context.close()
-                except Exception:
-                    pass
-
-        return audio_url
 
     def _derive_e2ee_key(self) -> str:
         secret = self._e2ee_secret or os.environ.get("JWT_SECRET", "")

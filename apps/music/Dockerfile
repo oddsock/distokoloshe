@@ -1,6 +1,6 @@
 FROM python:3.12-slim
 
-# Install ffmpeg, Node.js (for npm), deno (for yt-dlp), and deps for Playwright/Chromium
+# Install ffmpeg, Node.js (for browser deps), and deps for Playwright/Chromium
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     wget \
@@ -8,8 +8,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     unzip \
     nodejs \
     npm \
-    tor \
-    && curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -24,9 +22,6 @@ RUN playwright install chromium --with-deps
 # Install livekit-client for the browser page
 COPY browser/package.json browser/
 RUN cd browser && npm install --omit=dev
-
-# Install @distube/ytdl-core for YouTube audio extraction
-RUN npm install --prefix /app @distube/ytdl-core
 
 # Copy application code
 COPY . .

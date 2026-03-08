@@ -92,15 +92,6 @@ services:
       - LIVEKIT_URL=ws://127.0.0.1:${LK_PORT:-7881}
       - MUSIC_ROOM_NAME=${MUSIC_ROOM_NAME:-Music}
 
-  # ── YouTube PO Token Server (bypasses bot detection) ────
-  bgutil:
-    image: brainicism/bgutil-ytdlp-pot-provider:latest
-    container_name: distokoloshe_bgutil
-    restart: unless-stopped
-    init: true
-    ports:
-      - "127.0.0.1:4416:4416"
-
   # ── LiveKit SFU (WebRTC media relay + built-in TURN) ───
   # Uses host networking so WebRTC ICE candidates work correctly.
   # Ports bound directly: 7881 (WS), 50201-50400 (UDP), 3478 (TURN), 5349 (TURN/TLS)
