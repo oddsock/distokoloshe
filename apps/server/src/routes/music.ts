@@ -71,7 +71,6 @@ async function forward(path: string, body: unknown, res: Response): Promise<void
 
 router.post('/skip', (_req: Request, res: Response) => { forward('/skip', {}, res); });
 router.post('/station', (req: Request, res: Response) => { forward('/station', req.body, res); });
-router.post('/volume', (req: Request, res: Response) => { forward('/volume', req.body, res); });
 router.post('/pause', (_req: Request, res: Response) => { forward('/pause', {}, res); });
 
 export default router;

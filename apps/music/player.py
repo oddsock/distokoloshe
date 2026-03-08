@@ -1,6 +1,5 @@
 import asyncio
 import signal
-import struct
 import re
 from urllib.parse import urlparse, unquote
 from typing import Callable, Awaitable, Optional
@@ -24,7 +23,6 @@ class Player:
         self._queue: list[dict] = []
         self._current_track: Optional[dict] = None
         self._now_playing: Optional[str] = None
-        self._volume = 80
         self._paused = False
         self._mode = "radio"
         self._id_counter = 0
@@ -43,7 +41,6 @@ class Player:
         return {
             "mode": self._mode,
             "paused": self._paused,
-            "volume": self._volume,
             "nowPlaying": self._now_playing,
             "currentStation": station,
             "queue": list(self._queue),
@@ -103,9 +100,6 @@ class Player:
             self._stop_metadata_poller()
             await self._play_radio()
         return True
-
-    def set_volume(self, vol: int):
-        self._volume = max(0, min(100, round(vol)))
 
     async def toggle_pause(self) -> bool:
         self._paused = not self._paused
@@ -230,9 +224,6 @@ class Player:
             frame_bytes = bytes(self._pcm_buffer[:BYTES_PER_FRAME])
             del self._pcm_buffer[:BYTES_PER_FRAME]
 
-            if self._volume < 100:
-                frame_bytes = self._apply_volume(frame_bytes)
-
             if self._on_frame:
                 await self._on_frame(frame_bytes)
 
@@ -254,12 +245,6 @@ class Player:
                 self._dbg_frame_count = 0
                 self._dbg_behind_count = 0
                 self._dbg_last_log = now
-
-    def _apply_volume(self, frame_bytes: bytes) -> bytes:
-        gain = self._volume / 100.0
-        samples = struct.unpack(f"<{SAMPLES_PER_FRAME * CHANNELS}h", frame_bytes)
-        adjusted = [max(-32768, min(32767, round(s * gain))) for s in samples]
-        return struct.pack(f"<{SAMPLES_PER_FRAME * CHANNELS}h", *adjusted)
 
     async def _stop_ffmpeg(self):
         self._ffmpeg_generation += 1

@@ -6,7 +6,6 @@ import {
   removeFromMusicQueue,
   skipMusicTrack,
   setMusicStation,
-  setMusicVolume,
   toggleMusicPause,
 } from '../lib/api';
 
@@ -59,15 +58,6 @@ export function MusicControls({ isMobile }: MusicControlsProps) {
       await setMusicStation(stationId);
       refreshStatus();
     } catch { setError('Failed to switch station'); }
-    setBusy(false);
-  };
-
-  const handleVolume = async (vol: number) => {
-    setBusy(true);
-    try {
-      await setMusicVolume(vol);
-      refreshStatus();
-    } catch { setError('Failed to set volume'); }
     setBusy(false);
   };
 
@@ -141,19 +131,6 @@ export function MusicControls({ isMobile }: MusicControlsProps) {
         {status.mode === 'radio' && status.currentStation && (
           <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5">{status.currentStation.name} &middot; {status.currentStation.genre}</p>
         )}
-      </div>
-
-      {/* Volume */}
-      <div className="mb-3">
-        <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">Volume: {status.volume}%</label>
-        <input
-          type="range"
-          min={0}
-          max={100}
-          value={status.volume}
-          onChange={(e) => handleVolume(parseInt(e.target.value, 10))}
-          className="w-full h-1 accent-indigo-500 cursor-pointer"
-        />
       </div>
 
       {/* Radio Station */}

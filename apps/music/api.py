@@ -54,15 +54,6 @@ def create_routes(player: Player) -> web.RouteTableDef:
         await player.set_station(station_id)
         return web.json_response({"ok": True})
 
-    @routes.post("/volume")
-    async def volume(request):
-        body = await request.json()
-        vol = body.get("volume")
-        if not isinstance(vol, (int, float)) or vol < 0 or vol > 100:
-            return web.json_response({"error": "volume must be 0-100"}, status=400)
-        player.set_volume(int(vol))
-        return web.json_response({"ok": True})
-
     @routes.post("/pause")
     async def pause(request):
         paused = await player.toggle_pause()

@@ -351,7 +351,6 @@ export interface MusicStation {
 export interface MusicStatus {
   mode: 'radio' | 'queue';
   paused: boolean;
-  volume: number;
   nowPlaying: string | null;
   currentStation: MusicStation | null;
   queue: MusicQueueEntry[];
@@ -384,13 +383,6 @@ export function setMusicStation(stationId: string) {
   return request<{ ok: boolean }>('/music/station', {
     method: 'POST',
     body: JSON.stringify({ stationId }),
-  });
-}
-
-export function setMusicVolume(volume: number) {
-  return request<{ ok: boolean }>('/music/volume', {
-    method: 'POST',
-    body: JSON.stringify({ volume }),
   });
 }
 
