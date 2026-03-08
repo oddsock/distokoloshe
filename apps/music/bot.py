@@ -16,6 +16,83 @@ BOT_NAME = "DJ Tokoloshe"
 BRIDGE_PORT = 9222
 BROWSER_DIR = Path(__file__).parent / "browser"
 
+# Injected via Playwright addInitScript — runs before ANY page JavaScript.
+# Forces Opus stereo encoding via SDP monkey-patching.
+SDP_STEREO_PATCH = """
+(function() {
+  function patchOpusStereo(sdp) {
+    var rtpMatch = sdp.match(/a=rtpmap:(\\d+) opus\\/48000\\/2/);
+    if (!rtpMatch) return sdp;
+    var pt = rtpMatch[1];
+    var fmtpRe = new RegExp('(a=fmtp:' + pt + ' [^\\\\r\\\\n]+)');
+    return sdp.replace(fmtpRe, function(match) {
+      var parts = match.split(' ');
+      var prefix = parts[0];
+      var paramStr = parts.slice(1).join(' ');
+      var pmap = {};
+      paramStr.split(';').forEach(function(p) {
+        var eq = p.indexOf('=');
+        if (eq > 0) {
+          pmap[p.substring(0, eq).trim()] = p.substring(eq + 1).trim();
+        } else if (p.trim()) {
+          pmap[p.trim()] = '';
+        }
+      });
+      pmap['stereo'] = '1';
+      pmap['sprop-stereo'] = '1';
+      pmap['maxaveragebitrate'] = '256000';
+      pmap['cbr'] = '1';
+      var newParams = Object.keys(pmap).map(function(k) {
+        return pmap[k] ? k + '=' + pmap[k] : k;
+      }).join(';');
+      var result = prefix + ' ' + newParams;
+      console.log('[bot-browser] SDP patched:', result);
+      return result;
+    });
+  }
+
+  var origCreateOffer = RTCPeerConnection.prototype.createOffer;
+  RTCPeerConnection.prototype.createOffer = function() {
+    var self = this, args = arguments;
+    return origCreateOffer.apply(self, args).then(function(offer) {
+      if (offer && offer.sdp) offer.sdp = patchOpusStereo(offer.sdp);
+      return offer;
+    });
+  };
+
+  var origCreateAnswer = RTCPeerConnection.prototype.createAnswer;
+  RTCPeerConnection.prototype.createAnswer = function() {
+    var self = this, args = arguments;
+    return origCreateAnswer.apply(self, args).then(function(answer) {
+      if (answer && answer.sdp) answer.sdp = patchOpusStereo(answer.sdp);
+      return answer;
+    });
+  };
+
+  var origSetLD = RTCPeerConnection.prototype.setLocalDescription;
+  RTCPeerConnection.prototype.setLocalDescription = function(desc) {
+    if (desc && desc.sdp) {
+      var patched = {type: desc.type, sdp: patchOpusStereo(desc.sdp)};
+      return origSetLD.call(this, patched);
+    }
+    if (!desc || !desc.type) {
+      var self = this;
+      var isAnswer = (self.signalingState === 'have-remote-offer' ||
+                      self.signalingState === 'have-remote-pranswer');
+      var createFn = isAnswer ? origCreateAnswer : origCreateOffer;
+      return createFn.call(self).then(function(sdpObj) {
+        console.log('[bot-browser] SDP intercepted (implicit), patching...');
+        var patched = {type: sdpObj.type, sdp: patchOpusStereo(sdpObj.sdp)};
+        return origSetLD.call(self, patched);
+      });
+    }
+    return origSetLD.call(this, desc);
+  };
+
+  console.log('[bot-browser] SDP stereo patch installed via addInitScript');
+})();
+"""
+
 
 class MusicBot:
     def __init__(self):
@@ -138,6 +215,10 @@ class MusicBot:
 
         self._page.on("console", lambda msg: print(f"[browser] {msg.text}"))
         self._page.on("pageerror", lambda err: print(f"[browser-error] {err}"))
+
+        # Inject SDP patch before any page JS runs.
+        # Forces Opus stereo encoding (stereo=1, sprop-stereo=1, cbr, 256kbps).
+        await self._page.add_init_script(SDP_STEREO_PATCH)
 
         await self._page.goto(page_url)
 
