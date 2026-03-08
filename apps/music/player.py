@@ -48,7 +48,6 @@ class Player:
         self._id_counter = 0
         self._on_frame: Optional[FrameCallback] = None
         self._read_task: Optional[asyncio.Task] = None
-        self._stream_listeners: list[asyncio.Queue] = []
 
     def set_frame_callback(self, cb: FrameCallback):
         self._on_frame = cb
@@ -228,13 +227,6 @@ class Player:
 
                     if self._on_frame:
                         await self._on_frame(frame)
-
-                    # Fan out to debug stream listeners
-                    for q in self._stream_listeners:
-                        try:
-                            q.put_nowait(frame)
-                        except asyncio.QueueFull:
-                            pass
 
                     dbg_frames += 1
 
