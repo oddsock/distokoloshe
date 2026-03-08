@@ -14,10 +14,10 @@ def _detect_soxr() -> bool:
     """Check if FFmpeg was built with libsoxr support."""
     try:
         result = subprocess.run(
-            ["ffmpeg", "-hide_banner", "-filters"],
+            ["ffmpeg", "-version"],
             capture_output=True, text=True, timeout=5,
         )
-        return "soxr" in result.stdout
+        return "enable-libsoxr" in result.stdout
     except Exception:
         return False
 
