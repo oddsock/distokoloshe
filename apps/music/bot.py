@@ -77,13 +77,14 @@ class MusicBot:
         self._audio_source = rtc.AudioSource(SAMPLE_RATE, NUM_CHANNELS, queue_size_ms=200)
 
         # Build room options
+        # NOTE: E2EE temporarily disabled to isolate wait_pc_connection issue
         room_options = rtc.RoomOptions()
-        if self._e2ee_secret:
-            e2ee_key = self._derive_e2ee_key().encode()
-            room_options.e2ee = rtc.E2EEOptions(
-                key_provider_options=rtc.KeyProviderOptions(shared_key=e2ee_key),
-            )
-            print("[bot] E2EE configured")
+        # if self._e2ee_secret:
+        #     e2ee_key = self._derive_e2ee_key().encode()
+        #     room_options.e2ee = rtc.E2EEOptions(
+        #         key_provider_options=rtc.KeyProviderOptions(shared_key=e2ee_key),
+        #     )
+        #     print("[bot] E2EE configured")
 
         self._room = rtc.Room()
 
