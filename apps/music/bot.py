@@ -74,7 +74,9 @@ class MusicBot:
         token = self._generate_token()
 
         # Create audio source — feeds PCM directly to LiveKit's Opus encoder
-        self._audio_source = rtc.AudioSource(SAMPLE_RATE, NUM_CHANNELS, queue_size_ms=200)
+        # Small queue (60ms = 3 frames) keeps pacing tight and prevents
+        # drift that causes the client's jitter buffer to insert/remove samples
+        self._audio_source = rtc.AudioSource(SAMPLE_RATE, NUM_CHANNELS, queue_size_ms=60)
 
         # Build room options
         # single_peer_connection=True matches the browser client behavior and
