@@ -76,6 +76,22 @@ services:
     networks:
       - app_net
 
+  # ── Music Bot (DJ Tokoloshe — headless browser + FFmpeg) ──
+  music:
+    build:
+      context: ./apps/music
+      dockerfile: Dockerfile
+    container_name: distokoloshe_music
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
+      - E2EE_SECRET=${E2EE_SECRET:-}
+      - LIVEKIT_URL=ws://127.0.0.1:${LK_PORT:-7881}
+      - MUSIC_ROOM_NAME=${MUSIC_ROOM_NAME:-Music}
+
   # ── LiveKit SFU (WebRTC media relay + built-in TURN) ───
   # Uses host networking so WebRTC ICE candidates work correctly.
   # Ports bound directly: 7881 (WS), 50201-50400 (UDP), 3478 (TURN), 5349 (TURN/TLS)
