@@ -1,6 +1,0 @@
-{
-  "private": true,
-  "dependencies": {
-    "livekit-client": "^2.17.0"
-  }
-}
