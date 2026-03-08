@@ -201,7 +201,11 @@ class Player:
                 return
 
             returncode = await proc.wait()
-            print(f"ffmpeg exited with code {returncode}")
+            if returncode != 0:
+                stderr = ""
+                if proc.stderr:
+                    stderr = (await proc.stderr.read()).decode(errors="replace").strip()
+                print(f"[player] ffmpeg exited with code {returncode}: {stderr[-300:]}")
 
             # Wait for pacer to drain remaining frames
             while self._frame_queue and gen == self._ffmpeg_generation:
