@@ -157,7 +157,6 @@ class Player:
             "-f", "s16le",
             "-ar", str(SAMPLE_RATE),
             "-ac", str(CHANNELS),
-            "-fflags", "+nobuffer",
             "-loglevel", "error",
             "pipe:1",
             stdout=asyncio.subprocess.PIPE,
@@ -177,6 +176,10 @@ class Player:
         dbg_frames = 0
         dbg_last_log = _time.monotonic()
 
+        # Pre-buffer 2 seconds of PCM before feeding to absorb source hiccups
+        prebuf_bytes = BYTES_PER_FRAME * (2000 // FRAME_MS)  # 2s worth
+        prebuffering = True
+
         try:
             while gen == self._ffmpeg_generation:
                 assert proc.stdout is not None
@@ -186,6 +189,12 @@ class Player:
                 if gen != self._ffmpeg_generation:
                     return
                 buf.extend(chunk)
+
+                if prebuffering:
+                    if len(buf) < prebuf_bytes:
+                        continue
+                    prebuffering = False
+                    print(f"[player] Pre-buffered {len(buf) // BYTES_PER_FRAME} frames ({len(buf) / (SAMPLE_RATE * CHANNELS * 2):.1f}s)")
 
                 # Slice into frames and send directly
                 while len(buf) >= BYTES_PER_FRAME:
