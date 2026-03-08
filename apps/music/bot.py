@@ -77,13 +77,7 @@ class MusicBot:
         self._audio_source = rtc.AudioSource(SAMPLE_RATE, NUM_CHANNELS, queue_size_ms=200)
 
         # Build room options
-        # Force relay transport: the Rust FFI's ICE can't reach the server's
-        # external IP from localhost (no hairpin NAT), so relay via TURN instead.
-        room_options = rtc.RoomOptions(
-            rtc_config=rtc.RtcConfiguration(
-                ice_transport_type=rtc.IceTransportType.TRANSPORT_RELAY,
-            ),
-        )
+        room_options = rtc.RoomOptions()
         if self._e2ee_secret:
             e2ee_key = self._derive_e2ee_key().encode()
             room_options.e2ee = rtc.E2EEOptions(
