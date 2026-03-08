@@ -65,6 +65,7 @@ function forceOpusStereo(sdp) {
       map['maxaveragebitrate'] = '256000';
       map['cbr'] = '0';
       map['usedtx'] = '0';
+      map['useinbandfec'] = '0';  // Don't waste bitrate on FEC for low-loss connections
 
       const p = Object.entries(map)
         .map(([k, v]) => v !== '' ? `${k}=${v}` : k)
@@ -191,9 +192,10 @@ async function start() {
   // Publish audio track with all processing disabled
   const localTrack = new LocalAudioTrack(mediaTrack, undefined, false);
   await room.localParticipant.publishTrack(localTrack, {
-    source: Track.Source.Microphone,
-    dtx: false,      // No discontinuous transmission
-    red: false,       // No redundant encoding
+    source: Track.Source.Unknown,  // NOT Microphone — avoids voice-optimized codec paths
+    name: 'music',
+    dtx: false,
+    red: false,
     audioBitrate: 256_000,
   });
   console.log('[bot-browser] Audio track published');
