@@ -111,7 +111,9 @@ class MusicBot:
         # Create and publish audio track with high-quality music encoding
         track = rtc.LocalAudioTrack.create_audio_track("music", self._audio_source)
         options = rtc.TrackPublishOptions()
-        options.source = rtc.TrackSource.SOURCE_MICROPHONE
+        # SOURCE_SCREENSHARE_AUDIO tells the Opus encoder to use AUDIO mode
+        # (music-optimized) instead of VOIP mode (speech-optimized with filtering)
+        options.source = rtc.TrackSource.SOURCE_SCREENSHARE_AUDIO
         options.dtx = False
         options.red = False
         options.audio_encoding.max_bitrate = 256_000
