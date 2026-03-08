@@ -114,7 +114,7 @@ class MusicBot:
         options.source = rtc.TrackSource.SOURCE_MICROPHONE
         options.dtx = False
         options.red = False
-        options.audio_encoding = rtc.AudioEncoding(max_bitrate=256_000)
+        options.audio_encoding.max_bitrate = 256_000
         await self._room.local_participant.publish_track(track, options)
         print("[bot] Audio track published")
 
