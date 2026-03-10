@@ -9,6 +9,8 @@ interface ParticipantAudio {
 }
 
 const VOLUMES_KEY = 'distokoloshe_volumes';
+const MUSIC_BOT_IDENTITY = '__music-bot__';
+const MUSIC_BOT_DEFAULT_VOLUME = 0.05;
 
 function loadSavedVolumes(): Record<string, number> {
   try {
@@ -54,7 +56,8 @@ export function useAudioMixer() {
 
       // Apply saved per-user volume (0–1), respecting deafen state
       const saved = loadSavedVolumes();
-      const volume = Math.max(0, Math.min(1, saved[identity] ?? 1.0));
+      const defaultVol = identity === MUSIC_BOT_IDENTITY ? MUSIC_BOT_DEFAULT_VOLUME : 1.0;
+      const volume = Math.max(0, Math.min(1, saved[identity] ?? defaultVol));
       el.volume = deafenedRef.current ? 0 : volume;
 
       el.play().catch((err) => {
@@ -113,7 +116,8 @@ export function useAudioMixer() {
       if (key.startsWith(identity + ':')) return node.volume;
     }
     const saved = loadSavedVolumes();
-    return Math.min(1, saved[identity] ?? 1.0);
+    const defaultVol = identity === MUSIC_BOT_IDENTITY ? MUSIC_BOT_DEFAULT_VOLUME : 1.0;
+    return Math.min(1, saved[identity] ?? defaultVol);
   }, []);
 
   const setMuted = useCallback((identity: string, muted: boolean) => {
