@@ -324,24 +324,45 @@ class Player:
             pass
 
     async def _fetch_icy_metadata(self, url: str):
+        """Fetch ICY in-band metadata by connecting with Icy-MetaData: 1 header."""
+        import aiohttp
         try:
-            proc = await asyncio.create_subprocess_exec(
-                "ffprobe",
-                "-v", "quiet",
-                "-show_entries", "format_tags=StreamTitle",
-                "-of", "default=noprint_wrappers=1:nokey=1",
-                url,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            try:
-                stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
-                title = stdout.decode().strip()
-                if title:
-                    self._now_playing = title
-            except asyncio.TimeoutError:
-                proc.kill()
-                await proc.wait()
+            async with aiohttp.ClientSession() as session:
+                headers = {"Icy-MetaData": "1", "User-Agent": "distokoloshe/1.0"}
+                async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    metaint = int(resp.headers.get("icy-metaint", 0))
+                    if not metaint:
+                        return  # Server doesn't support ICY metadata
+
+                    # Read past one metaint block to reach the metadata byte
+                    data = b""
+                    async for chunk in resp.content.iter_any():
+                        data += chunk
+                        if len(data) >= metaint + 1:
+                            break
+
+                    if len(data) < metaint + 1:
+                        return
+
+                    # The byte at metaint is the metadata length * 16
+                    meta_len = data[metaint] * 16
+                    if meta_len == 0:
+                        return
+
+                    # Read more if we don't have the full metadata block yet
+                    while len(data) < metaint + 1 + meta_len:
+                        chunk = await resp.content.read(meta_len)
+                        if not chunk:
+                            return
+                        data += chunk
+
+                    meta_str = data[metaint + 1: metaint + 1 + meta_len].decode("utf-8", errors="replace").rstrip("\x00")
+                    # Parse StreamTitle='...'; format
+                    match = re.search(r"StreamTitle='(.*?)'", meta_str)
+                    if match:
+                        title = match.group(1).strip()
+                        if title:
+                            self._now_playing = title
         except Exception:
             pass
 
