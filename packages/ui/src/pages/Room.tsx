@@ -594,6 +594,12 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     };
   }, [showSoundboard]);
 
+  // Close music popover when leaving the music room
+  const hasMusicBot = remoteParticipants.some((p) => p.identity === '__music-bot__');
+  useEffect(() => {
+    if (!hasMusicBot) setShowMusic(false);
+  }, [hasMusicBot]);
+
   // Close music popover on outside click
   useEffect(() => {
     if (!showMusic) return;
@@ -1710,6 +1716,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
               )}
             </div>}
 
+            {remoteParticipants.some((p) => p.identity === '__music-bot__') && (
             <div className="relative">
               <button
                 onClick={() => setShowMusic(!showMusic)}
@@ -1720,6 +1727,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
               </button>
               {showMusic && <MusicControls isMobile={isMobile} />}
             </div>
+            )}
 
             <div className="relative">
               <button
