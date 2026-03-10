@@ -217,10 +217,19 @@ Without `GITHUB_REPO`, admins can manually place the `.exe` + `.sig` files in th
 
 The public key is baked into the app binary at build time. Only updates signed with the matching private key are accepted — even a compromised server cannot push unsigned updates.
 
+## macOS Desktop App
+
+The macOS build is currently unsigned (no Apple Developer certificate). You may encounter:
+
+- **"disTokoloshe is damaged and can't be opened"** — Run `xattr -cr /Applications/disTokoloshe.app` to remove the quarantine flag, then open normally.
+- **Keychain password prompt** ("distokoloshe wants to use your confidential information...") — This appears because the E2EE encryption keys are stored in the macOS Keychain. Click **"Always Allow"** to permanently grant access and stop the prompt from recurring.
+
+These issues will be resolved once the app is signed with an Apple Developer certificate.
+
 ## Planned Features
 
-- **Music bot** — A LiveKit participant that streams internet radio (SomaFM) into a room with queue support and station switching. Blocked by a LiveKit server-side SDK bug where `wait_pc_connection` times out before the peer connection is established — reproduced in both `@livekit/rtc-node` and the Python `livekit` SDK (same underlying `livekit-ffi` Rust FFI). Archived at `archive/music-room` tag. Will revisit when LiveKit fixes the FFI peer connection handshake.
 - **Desktop: system tray menu** — Context menu with mute/deafen/quit actions.
+- **Apple Developer signing** — Codesign + notarize the macOS build to eliminate Gatekeeper and Keychain prompts.
 
 ## Security
 
