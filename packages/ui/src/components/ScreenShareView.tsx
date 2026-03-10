@@ -25,6 +25,9 @@ export function ScreenShareView({ publication, participantName, compact, hasAudi
     const el = videoRef.current;
     track.attach(el);
 
+    // Safari may not autoplay even with muted+playsInline — explicitly trigger play
+    el.play().catch(() => {});
+
     return () => {
       // Must pass the actual element — track.detach(undefined/null) detaches ALL elements
       track.detach(el);

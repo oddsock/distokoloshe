@@ -110,6 +110,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
   const [showStopShareConfirm, setShowStopShareConfirm] = useState(false);
   const [spotlight, setSpotlight] = useState<{ identity: string; source: 'screen_share' | 'camera' } | null>(null);
   const [audioTrackVersion, setAudioTrackVersion] = useState(0);
+  const [videoTrackVersion, setVideoTrackVersion] = useState(0);
 
   // Connection stats (RTT / jitter)
   const connectionStats = useConnectionStats(room);
@@ -628,6 +629,9 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
         attachTrack(participant, publication);
         setAudioTrackVersion((v) => v + 1);
       }
+      if (publication.kind === Track.Kind.Video) {
+        setVideoTrackVersion((v) => v + 1);
+      }
       if (publication.source === Track.Source.ScreenShare && publication.kind === Track.Kind.Video) {
         playSound('screenShare');
       }
@@ -641,6 +645,9 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
       if (publication.kind === Track.Kind.Audio) {
         detachTrack(participant, publication.source ?? Track.Source.Microphone);
         setAudioTrackVersion((v) => v + 1);
+      }
+      if (publication.kind === Track.Kind.Video) {
+        setVideoTrackVersion((v) => v + 1);
       }
     };
 
@@ -1652,6 +1659,11 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                         {preset.label}
                       </button>
                     ),
+                  )}
+                  {/Safari\//.test(navigator.userAgent) && !/Chrome\//.test(navigator.userAgent) && (
+                    <p className="px-3 py-1.5 text-[10px] text-amber-500 border-t border-zinc-200 dark:border-zinc-600 mt-1">
+                      Safari does not support screen share audio
+                    </p>
                   )}
                 </div>
               )}
