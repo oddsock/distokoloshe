@@ -75,6 +75,40 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
+      - name: Codesign macOS app
+        if: env.MACOS_SIGNING_CERT != ''
+        env:
+          MACOS_SIGNING_CERT: ${{ secrets.MACOS_SIGNING_CERT }}
+          MACOS_SIGNING_CERT_PASSWORD: ${{ secrets.MACOS_SIGNING_CERT_PASSWORD }}
+        run: |
+          CERT_NAME="${MACOS_CERT_IDENTITY:-disTokoloshe Self-Signed}"
+          KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 24)
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          echo "$MACOS_SIGNING_CERT" | base64 --decode > $RUNNER_TEMP/cert.p12
+          security import $RUNNER_TEMP/cert.p12 -k "$KEYCHAIN_PATH" -P "$MACOS_SIGNING_CERT_PASSWORD" -T /usr/bin/codesign
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          APP_PATH=$(find apps/desktop/src-tauri/target/release/bundle/macos -name "*.app" -maxdepth 1 | head -1)
+          if [ -n "$APP_PATH" ]; then
+            codesign --force --deep --sign "$CERT_NAME" --entitlements apps/desktop/src-tauri/Entitlements.plist "$APP_PATH"
+            codesign --verify "$APP_PATH" && echo "Signature verified: $APP_PATH"
+
+            # Re-package signed app for updater
+            TAR_PATH=$(find apps/desktop/src-tauri/target/release/bundle/macos -name "*.app.tar.gz" | head -1)
+            if [ -n "$TAR_PATH" ]; then
+              APP_NAME=$(basename "$APP_PATH")
+              tar -czf "$TAR_PATH" -C "$(dirname "$APP_PATH")" "$APP_NAME"
+              echo "Re-packaged signed app"
+            fi
+          fi
+          rm -f $RUNNER_TEMP/cert.p12
+
       - name: Upload macOS installer
         uses: actions/upload-artifact@v4
         with:
