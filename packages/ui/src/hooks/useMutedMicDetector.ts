@@ -39,6 +39,7 @@ export function useMutedMicDetector(micMuted: boolean, connected: boolean) {
     let ctx: AudioContext;
     let stream: MediaStream;
 
+    if (!navigator.mediaDevices?.getUserMedia) return;
     navigator.mediaDevices.getUserMedia({ audio: true }).then((s) => {
       if (cancelled) { s.getTracks().forEach((t) => t.stop()); return; }
 

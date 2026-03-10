@@ -35,6 +35,13 @@
       "icons/icon.ico",
       "icons/icon.icns"
     ],
+    "macOS": {
+      "entitlements": "Entitlements.plist",
+      "infoPlist": {
+        "NSCameraUsageDescription": "disTokoloshe needs camera access for video calls",
+        "NSMicrophoneUsageDescription": "disTokoloshe needs microphone access for voice chat"
+      }
+    },
     "linux": {
       "deb": {},
       "appimage": {}
