@@ -199,10 +199,12 @@ class Player:
         buf = bytearray()
         dbg_frames = 0
         dbg_last_log = _time.monotonic()
+        frame_duration = FRAME_MS / 1000.0  # 0.02s
 
         # Pre-buffer 2 seconds of PCM before feeding to absorb source hiccups
         prebuf_bytes = BYTES_PER_FRAME * (2000 // FRAME_MS)  # 2s worth
         prebuffering = True
+        next_frame_time = 0.0  # set after prebuffering
 
         try:
             while gen == self._ffmpeg_generation:
@@ -218,12 +220,23 @@ class Player:
                     if len(buf) < prebuf_bytes:
                         continue
                     prebuffering = False
+                    next_frame_time = _time.monotonic()
                     print(f"[player] Pre-buffered {len(buf) // BYTES_PER_FRAME} frames ({len(buf) / (SAMPLE_RATE * CHANNELS * 2):.1f}s)")
 
-                # Slice into frames and send directly
+                # Slice into frames and send at steady 20ms intervals
                 while len(buf) >= BYTES_PER_FRAME:
                     frame = bytes(buf[:BYTES_PER_FRAME])
                     del buf[:BYTES_PER_FRAME]
+
+                    # Pace: sleep until this frame's scheduled time
+                    now = _time.monotonic()
+                    drift = next_frame_time - now
+                    if drift > 0:
+                        await asyncio.sleep(drift)
+                    elif drift < -0.1:
+                        # Fell behind by >100ms — reset clock to avoid burst catch-up
+                        next_frame_time = _time.monotonic()
+                    next_frame_time += frame_duration
 
                     if self._on_frame:
                         await self._on_frame(frame)
