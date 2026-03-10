@@ -22,7 +22,7 @@ STATIONS = [
     {"id": "kexp", "name": "KEXP 90.3 FM", "genre": "Eclectic/Indie", "url": "https://kexp-mp3-128.streamguys1.com/kexp128.mp3"},
     {"id": "wfmu", "name": "WFMU Freeform", "genre": "Freeform", "url": "https://stream0.wfmu.org/freeform-128k"},
     {"id": "classical", "name": "Classical KUSC", "genre": "Classical", "url": "https://kusc.streamguys1.com/kusc-128k.mp3"},
-    {"id": "bluesmix", "name": "Radio BOB! Rock", "genre": "Rock", "url": "https://streams.radiobob.de/bob-blues/mp3-192/streams.radiobob.de/"},
+    {"id": "bluesmix", "name": "Radio BOB! 2000er Rock", "genre": "Rock", "url": "https://streams.radiobob.de/bob-blues/mp3-192/streams.radiobob.de/"},
     {"id": "reggae", "name": "Reggae141", "genre": "Reggae", "url": "https://listen.181fm.com/181-reggae_128k.mp3"},
     {"id": "hiphop", "name": "HipHop Forever", "genre": "Hip-Hop", "url": "https://listen.181fm.com/181-hiphop_128k.mp3"},
 ]
