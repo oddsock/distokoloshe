@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>NSCameraUsageDescription</key>
+    <string>disTokoloshe needs camera access for video calls</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>disTokoloshe needs microphone access for voice chat</string>
+</dict>
+</plist>
