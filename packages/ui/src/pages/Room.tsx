@@ -20,7 +20,7 @@ import { useMutedMicDetector } from '../hooks/useMutedMicDetector';
 import { getRoomInitials, toggleTheme, getTheme } from '../lib/utils';
 import * as api from '../lib/api';
 import { playSound } from '../lib/sounds';
-import { Mic, MicOff, Camera, CameraOff, Ear, EarOff, Monitor, MonitorOff, Volume2, VolumeX, Settings, Sun, Moon, LogOut, AudioLines, Music, X, MessageCircle } from 'lucide-react';
+import { Mic, MicOff, Camera, CameraOff, Ear, EarOff, Monitor, MonitorOff, Volume2, VolumeX, Settings, Sun, Moon, LogOut, AudioLines, Music, X, MessageCircle, Download } from 'lucide-react';
 
 interface RoomPageProps {
   user: api.User;
@@ -1000,6 +1000,19 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
             </div>
           ))}
         </div>
+
+        {/* Desktop app download — browser only */}
+        {!('__TAURI_INTERNALS__' in window) && (
+          <a
+            href="https://github.com/oddsock/distokoloshe/releases/latest"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mx-3 mb-1 flex items-center gap-2 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors text-xs text-zinc-600 dark:text-zinc-400"
+          >
+            <Download size={14} className="shrink-0" />
+            <span className="truncate">Get the desktop app</span>
+          </a>
+        )}
 
         {/* User bar */}
         <div className="h-16 px-3 border-t border-zinc-200 dark:border-zinc-700 flex items-center justify-between shrink-0">
