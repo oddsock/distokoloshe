@@ -16,6 +16,8 @@ export default defineConfig({
       // Tauri plugins are only available in the desktop app — mark as external
       // so the web build doesn't fail on dynamic imports that never execute
       external: [
+        '@tauri-apps/plugin-dialog',
+        '@tauri-apps/plugin-fs',
         '@tauri-apps/plugin-global-shortcut',
         '@tauri-apps/plugin-updater',
         '@tauri-apps/plugin-process',
