@@ -164,6 +164,9 @@ export function useHotkeys({ onToggleMute, onToggleDeafen, enabled }: UseHotkeys
 
         const shortcut = toTauriShortcut(binding);
         try {
+          // Defensively unregister first to avoid "already registered" errors
+          // (e.g. StrictMode double-mount race)
+          try { await unregister(shortcut); } catch { /* not registered yet — fine */ }
           await register(shortcut, (event) => {
             // Tauri fires on both keydown ("Pressed") and keyup ("Released")
             if (event.state !== 'Pressed') return;

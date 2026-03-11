@@ -8,6 +8,8 @@
     "global-shortcut:allow-register",
     "global-shortcut:allow-unregister",
     "global-shortcut:allow-is-registered",
+    "dialog:allow-save",
+    "fs:allow-write-file",
     "updater:default",
     "process:default",
     {

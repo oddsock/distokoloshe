@@ -2,6 +2,8 @@ import { useRef, useCallback, useEffect } from 'react';
 import { Track } from 'livekit-client';
 import type { RemoteTrackPublication } from 'livekit-client';
 
+const isTauri = () => '__TAURI_INTERNALS__' in window;
+
 const BUFFER_SECONDS = 10;
 const PROCESSOR_BUFFER_SIZE = 4096;
 const MUSIC_BOT_IDENTITY = '__music-bot__';
@@ -127,14 +129,28 @@ export function useSoundbiteRecorder() {
 
     const sampleRate = audioCtxRef.current?.sampleRate || 48000;
     const blob = encodeWav(samples, sampleRate);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${displayName}_soundbite_${Date.now()}.wav`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const fileName = `${displayName}_soundbite_${Date.now()}.wav`;
+
+    if (isTauri()) {
+      // Tauri webview doesn't support blob URL downloads — use native save dialog
+      import('@tauri-apps/plugin-dialog').then(({ save }) =>
+        save({ defaultPath: fileName, filters: [{ name: 'WAV Audio', extensions: ['wav'] }] })
+      ).then(async (path) => {
+        if (!path) return; // user cancelled
+        const { writeFile } = await import('@tauri-apps/plugin-fs');
+        const arrayBuf = await blob.arrayBuffer();
+        await writeFile(path, new Uint8Array(arrayBuf));
+      }).catch((err) => console.error('Failed to save soundbite:', err));
+    } else {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
   }, []);
 
   // Cleanup on unmount
