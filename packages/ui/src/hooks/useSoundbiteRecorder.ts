@@ -133,11 +133,11 @@ export function useSoundbiteRecorder() {
 
     if (isTauri()) {
       // Tauri webview doesn't support blob URL downloads — use native save dialog
-      import('@tauri-apps/plugin-dialog').then(({ save }) =>
+      import(/* @vite-ignore */ '@tauri-apps/plugin-dialog').then(({ save }) =>
         save({ defaultPath: fileName, filters: [{ name: 'WAV Audio', extensions: ['wav'] }] })
       ).then(async (path) => {
         if (!path) return; // user cancelled
-        const { writeFile } = await import('@tauri-apps/plugin-fs');
+        const { writeFile } = await import(/* @vite-ignore */ '@tauri-apps/plugin-fs');
         const arrayBuf = await blob.arrayBuffer();
         await writeFile(path, new Uint8Array(arrayBuf));
       }).catch((err) => console.error('Failed to save soundbite:', err));
