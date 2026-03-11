@@ -152,6 +152,7 @@ router.post('/:id/join', requireAuth, async (req: Request, res: Response) => {
       req.user!.username,
       req.user!.display_name,
       room.name,
+      req.user!.sub,
     );
     const e2eeKey = deriveRoomE2EEKey(room.name);
 

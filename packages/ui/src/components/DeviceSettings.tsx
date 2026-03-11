@@ -6,6 +6,7 @@ import { type HotkeyBindings, formatKey } from '../hooks/useHotkeys';
 import { type SoundPack, PACK_LABELS, getStoredPack, setStoredPack, getStoredVolume, setStoredVolume, previewSound } from '../lib/sounds';
 import { Music, Download, RefreshCw } from 'lucide-react';
 import { useAutoUpdate } from '../hooks/useAutoUpdate';
+import * as api from '../lib/api';
 
 interface DeviceSettingsProps {
   room: Room;
@@ -24,11 +25,19 @@ export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile 
   const [selectedSpeakerId, setSelectedSpeakerId] = useState('');
   const [soundPack, setSoundPack] = useState<SoundPack>(getStoredPack);
   const [notifVolume, setNotifVolume] = useState(() => Math.round(getStoredVolume() * 100));
+  const [soundbiteOptOut, setSoundbiteOptOut] = useState(false);
   const analyserRef = useRef<{
     ctx: AudioContext;
     stream: MediaStream;
     raf: number;
   } | null>(null);
+
+  // Fetch soundbite opt-out setting
+  useEffect(() => {
+    api.getMySettings().then(({ settings }) => {
+      setSoundbiteOptOut(settings.soundbiteOptOut);
+    }).catch(() => {});
+  }, []);
 
   const handleDeviceChange = async (
     kind: 'audioinput' | 'audiooutput' | 'videoinput',
@@ -412,6 +421,35 @@ export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile 
               ))}
             </div>
           )}
+        </div>
+
+        {/* ── Soundbite Opt-Out ── */}
+        <div>
+          <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1.5">
+            Privacy
+          </label>
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-xs text-zinc-600 dark:text-zinc-400">Disable soundbite clips of me</span>
+              <p className="text-[10px] text-zinc-400 dark:text-zinc-500 mt-0.5">Takes effect next room join</p>
+            </div>
+            <button
+              onClick={() => {
+                const newVal = !soundbiteOptOut;
+                setSoundbiteOptOut(newVal);
+                api.updateMySettings({ soundbiteOptOut: newVal }).catch(() => {
+                  setSoundbiteOptOut(!newVal);
+                });
+              }}
+              className={`w-9 h-5 rounded-full transition-colors relative ${
+                soundbiteOptOut ? 'bg-indigo-500' : 'bg-zinc-300 dark:bg-zinc-600'
+              }`}
+            >
+              <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                soundbiteOptOut ? 'left-[18px]' : 'left-0.5'
+              }`} />
+            </button>
+          </div>
         </div>
 
         {/* ── Updates (Tauri desktop only) ── */}

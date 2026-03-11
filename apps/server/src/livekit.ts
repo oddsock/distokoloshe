@@ -1,11 +1,22 @@
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
 import { createHmac } from 'crypto';
+import db from './db.js';
 
 export async function generateRoomToken(
   identity: string,
   displayName: string,
   roomName: string,
+  userId?: number,
 ): Promise<string> {
+  // Build participant metadata
+  const metadata: Record<string, unknown> = {};
+  if (userId) {
+    const settings = db.prepare('SELECT soundbite_opt_out FROM user_settings WHERE user_id = ?').get(userId) as { soundbite_opt_out: number } | undefined;
+    if (settings?.soundbite_opt_out) {
+      metadata.soundbiteOptOut = true;
+    }
+  }
+
   const at = new AccessToken(
     process.env.LIVEKIT_API_KEY!,
     process.env.LIVEKIT_API_SECRET!,
@@ -13,6 +24,7 @@ export async function generateRoomToken(
       identity,
       name: displayName,
       ttl: '2h',
+      metadata: Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : undefined,
     },
   );
 

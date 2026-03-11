@@ -158,6 +158,7 @@ The SQLite database in `data/api/` persists across rebuilds.
 - **Real-time presence** — SSE-based online/offline status, room membership, vote/punishment/whispers events (13 event types)
 - **Connection quality** — Live signal strength indicator with RTT (round-trip time) and jitter stats, server region display
 - **Desktop client** — Tauri v2 app (Windows/Linux/macOS) sharing UI code with web via `@distokoloshe/ui`. Configurable server URL, window state persistence, global shortcuts (OS-level mute/deafen with modifier keys), and self-hosted auto-updater with ed25519 signed updates
+- **Soundbites** — Save the last 10 seconds of any participant's audio as a WAV file. Client-side ring buffer recording (~1.9 MB/participant), fully E2EE compatible. Participants can opt out via settings
 - **Light/dark theme** — Toggle with persistent preference
 - **Device selection** — Choose microphone, speaker, and camera from settings
 
