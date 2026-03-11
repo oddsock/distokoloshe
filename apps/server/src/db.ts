@@ -96,6 +96,9 @@ try { db.exec("ALTER TABLE rooms ADD COLUMN mode TEXT DEFAULT 'normal'"); } catc
 try { db.exec('ALTER TABLE rooms ADD COLUMN is_jail INTEGER NOT NULL DEFAULT 0'); } catch {}
 try { db.exec('ALTER TABLE rooms ADD COLUMN jail_source_room_id INTEGER REFERENCES rooms(id)'); } catch {}
 
+// Add soundbite opt-out to user settings
+try { db.exec('ALTER TABLE user_settings ADD COLUMN soundbite_opt_out INTEGER DEFAULT 0'); } catch {}
+
 // Soundboard clips table
 db.exec(`
   CREATE TABLE IF NOT EXISTS soundboard_clips (

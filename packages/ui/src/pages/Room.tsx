@@ -17,10 +17,11 @@ import { useSoundboard } from '../hooks/useSoundboard';
 import { useConnectionStats } from '../hooks/useConnectionStats';
 import { useHotkeys } from '../hooks/useHotkeys';
 import { useMutedMicDetector } from '../hooks/useMutedMicDetector';
+import { useSoundbiteRecorder } from '../hooks/useSoundbiteRecorder';
 import { getRoomInitials, toggleTheme, getTheme } from '../lib/utils';
 import * as api from '../lib/api';
 import { playSound } from '../lib/sounds';
-import { Mic, MicOff, Camera, CameraOff, Ear, EarOff, Monitor, MonitorOff, Volume2, VolumeX, Settings, Sun, Moon, LogOut, AudioLines, Music, X, MessageCircle, Download } from 'lucide-react';
+import { Mic, MicOff, Camera, CameraOff, Ear, EarOff, Monitor, MonitorOff, Volume2, VolumeX, Settings, Sun, Moon, LogOut, AudioLines, Music, X, MessageCircle, Download, Scissors } from 'lucide-react';
 
 interface RoomPageProps {
   user: api.User;
@@ -85,6 +86,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
   } = useLiveKitRoom();
 
   const { attachTrack, detachTrack, setVolume, getVolume, setMuted, isMuted, setTrackMuted, isTrackMuted, deafened, setDeafened } = useAudioMixer();
+  const { startRecording, stopRecording, captureSoundbite } = useSoundbiteRecorder();
   const [mutedUsers, setMutedUsers] = useState<Set<string>>(new Set());
   const [mutedStreamAudio, setMutedStreamAudio] = useState<Set<string>>(new Set());
   const {
@@ -633,6 +635,8 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     ) => {
       if (publication.kind === Track.Kind.Audio) {
         attachTrack(participant, publication);
+        const meta = participant.metadata ? JSON.parse(participant.metadata) : {};
+        if (!meta.soundbiteOptOut) startRecording(participant.identity, publication);
         setAudioTrackVersion((v) => v + 1);
       }
       if (publication.kind === Track.Kind.Video) {
@@ -650,6 +654,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     ) => {
       if (publication.kind === Track.Kind.Audio) {
         detachTrack(participant, publication.source ?? Track.Source.Microphone);
+        stopRecording(participant.identity);
         setAudioTrackVersion((v) => v + 1);
       }
       if (publication.kind === Track.Kind.Video) {
@@ -667,6 +672,8 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
       for (const pub of p.trackPublications.values()) {
         if (pub.kind === Track.Kind.Audio && pub.isSubscribed && pub.track) {
           attachTrack(p, pub as RemoteTrackPublication);
+          const meta = p.metadata ? JSON.parse(p.metadata) : {};
+          if (!meta.soundbiteOptOut) startRecording(p.identity, pub as RemoteTrackPublication);
         }
       }
     }
@@ -674,8 +681,11 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     return () => {
       room.off(RoomEvent.TrackSubscribed, handleTrackSubscribed);
       room.off(RoomEvent.TrackUnsubscribed, handleTrackUnsubscribed);
+      for (const p of room.remoteParticipants.values()) {
+        stopRecording(p.identity);
+      }
     };
-  }, [room, attachTrack, detachTrack]);
+  }, [room, attachTrack, detachTrack, startRecording, stopRecording]);
 
   // Vote countdown timer
   useEffect(() => {
@@ -1384,6 +1394,8 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                 const memberEntry = currentRoom ? roomMembers[currentRoom.id]?.find((m) => m.username === p.identity) : null;
                 const isMyWhisperSource = whisperSource?.username === p.identity;
                 const whisperDimmed = isWhispersMode && !isMyWhisperSource;
+                const participantMeta = (() => { try { return JSON.parse(p.metadata || '{}'); } catch { return {}; } })();
+                const soundbiteOptOut = !!participantMeta.soundbiteOptOut;
                 const cameraPub = Array.from(p.trackPublications.values()).find(
                   (pub) => pub.source === Track.Source.Camera && pub.isSubscribed && pub.track && !pub.isMuted,
                 );
@@ -1524,6 +1536,18 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                               </div>
                             )}
                           </div>
+                        )}
+                        {p.identity !== '__music-bot__' && !soundbiteOptOut && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              captureSoundbite(p.identity, p.name || p.identity);
+                            }}
+                            className="text-sm px-2 py-1 rounded-md transition-colors bg-zinc-100 dark:bg-zinc-700 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-600 md:opacity-0 md:group-hover:opacity-100"
+                            data-tooltip="Save soundbite"
+                          >
+                            <Scissors size={14} />
+                          </button>
                         )}
                         <button
                           onClick={() => toggleMuteUser(p.identity)}

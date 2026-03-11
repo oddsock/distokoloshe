@@ -33,4 +33,20 @@ router.get('/', requireAuth, (_req: Request, res: Response) => {
   res.json({ users });
 });
 
+// GET /api/users/me/settings — fetch current user settings
+router.get('/me/settings', requireAuth, (req: Request, res: Response) => {
+  const settings = db.prepare('SELECT soundbite_opt_out FROM user_settings WHERE user_id = ?').get(req.user!.sub) as { soundbite_opt_out: number } | undefined;
+  res.json({ settings: { soundbiteOptOut: !!(settings?.soundbite_opt_out) } });
+});
+
+// POST /api/users/me/settings — update user settings
+router.post('/me/settings', requireAuth, (req: Request, res: Response) => {
+  const { soundbiteOptOut } = req.body;
+  if (soundbiteOptOut !== undefined) {
+    db.prepare('UPDATE user_settings SET soundbite_opt_out = ? WHERE user_id = ?')
+      .run(soundbiteOptOut ? 1 : 0, req.user!.sub);
+  }
+  res.json({ ok: true });
+});
+
 export default router;

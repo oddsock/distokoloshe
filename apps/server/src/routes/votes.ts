@@ -271,7 +271,7 @@ setVotePassedHandler(async (vote) => {
   await removeParticipant(sourceRoom.name, targetUser.username);
 
   // Generate jail room token
-  const token = await generateRoomToken(targetUser.username, targetUser.display_name, jailRoom.name);
+  const token = await generateRoomToken(targetUser.username, targetUser.display_name, jailRoom.name, targetUser.id);
   const e2eeKey = deriveRoomE2EEKey(jailRoom.name);
 
   // Update room membership tracking

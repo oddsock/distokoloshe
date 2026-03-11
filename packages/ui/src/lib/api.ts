@@ -334,6 +334,18 @@ export async function fetchSoundboardAudio(id: number): Promise<ArrayBuffer> {
   return res.arrayBuffer();
 }
 
+// Settings
+export function getMySettings() {
+  return request<{ settings: { soundbiteOptOut: boolean } }>('/users/me/settings');
+}
+
+export function updateMySettings(settings: { soundbiteOptOut?: boolean }) {
+  return request<{ ok: boolean }>('/users/me/settings', {
+    method: 'POST',
+    body: JSON.stringify(settings),
+  });
+}
+
 // Music Bot
 export interface MusicQueueEntry {
   id: string;
