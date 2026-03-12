@@ -13,9 +13,14 @@ interface DeviceSettingsProps {
   hotkeyBindings: HotkeyBindings;
   onHotkeyChange: (bindings: HotkeyBindings) => void;
   isMobile?: boolean;
+  noiseCancellation?: {
+    enabled: boolean;
+    setEnabled: (v: boolean) => void;
+    supported: boolean | null;
+  };
 }
 
-export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile }: DeviceSettingsProps) {
+export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile, noiseCancellation }: DeviceSettingsProps) {
   const { audioInputs, audioOutputs, videoInputs } = useDevices();
   const { status: updateStatus, updateInfo, error: updateError, autoUpdate, setAutoUpdate, checkNow, installUpdate, appVersion, isTauri } = useAutoUpdate();
   const [micLevel, setMicLevel] = useState(0);
@@ -332,6 +337,36 @@ export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile 
             ))}
           </select>
         </div>
+
+        {/* ── Audio Processing ── */}
+        {noiseCancellation && noiseCancellation.supported !== false && (
+          <div>
+            <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1.5">
+              Audio Processing
+            </label>
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-xs text-zinc-600 dark:text-zinc-400">Noise cancellation</span>
+                <p className="text-[10px] text-zinc-400 dark:text-zinc-500 mt-0.5">AI-powered background noise removal</p>
+              </div>
+              <button
+                onClick={() => noiseCancellation.setEnabled(!noiseCancellation.enabled)}
+                disabled={noiseCancellation.supported === null}
+                className={`w-9 h-5 rounded-full transition-colors relative ${
+                  noiseCancellation.supported === null
+                    ? 'bg-zinc-300 dark:bg-zinc-600 opacity-50 cursor-not-allowed'
+                    : noiseCancellation.enabled
+                      ? 'bg-indigo-500'
+                      : 'bg-zinc-300 dark:bg-zinc-600'
+                }`}
+              >
+                <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                  noiseCancellation.enabled ? 'left-[18px]' : 'left-0.5'
+                }`} />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* ── Hotkeys ── */}
         <div>

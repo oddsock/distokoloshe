@@ -10,6 +10,7 @@
     "react-dom": "^18.3.1"
   },
   "dependencies": {
+    "@livekit/krisp-noise-filter": "^0.4.1",
     "livekit-client": "^2.17.0",
     "lucide-react": "^0.469.0"
   }

@@ -18,6 +18,7 @@ import { useConnectionStats } from '../hooks/useConnectionStats';
 import { useHotkeys } from '../hooks/useHotkeys';
 import { useMutedMicDetector } from '../hooks/useMutedMicDetector';
 import { useSoundbiteRecorder } from '../hooks/useSoundbiteRecorder';
+import { useNoiseCancellation } from '../hooks/useNoiseCancellation';
 import { getRoomInitials, toggleTheme, getTheme } from '../lib/utils';
 import * as api from '../lib/api';
 import { playSound } from '../lib/sounds';
@@ -87,6 +88,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
 
   const { attachTrack, detachTrack, setVolume, getVolume, setMuted, isMuted, setTrackMuted, isTrackMuted, deafened, setDeafened } = useAudioMixer();
   const { startRecording, stopRecording, captureSoundbite } = useSoundbiteRecorder();
+  const { enabled: ncEnabled, setEnabled: setNcEnabled, supported: ncSupported } = useNoiseCancellation(room);
   const [mutedUsers, setMutedUsers] = useState<Set<string>>(new Set());
   const [mutedStreamAudio, setMutedStreamAudio] = useState<Set<string>>(new Set());
   const {
@@ -1801,7 +1803,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                 <Settings size={18} />
               </button>
               {showSettings && room && (
-                <DeviceSettings room={room} hotkeyBindings={hotkeyBindings} onHotkeyChange={setHotkeyBindings} isMobile={isMobile} />
+                <DeviceSettings room={room} hotkeyBindings={hotkeyBindings} onHotkeyChange={setHotkeyBindings} isMobile={isMobile} noiseCancellation={{ enabled: ncEnabled, setEnabled: setNcEnabled, supported: ncSupported }} />
               )}
             </div>
             </div>
