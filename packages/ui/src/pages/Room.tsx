@@ -598,8 +598,13 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
 
   // Close music popover when leaving the music room
   const hasMusicBot = remoteParticipants.some((p) => p.identity === '__music-bot__');
+  const [musicNowPlaying, setMusicNowPlaying] = useState<string | null>(null);
   useEffect(() => {
-    if (!hasMusicBot) setShowMusic(false);
+    if (!hasMusicBot) { setShowMusic(false); setMusicNowPlaying(null); return; }
+    const fetch = () => api.getMusicStatus().then((s) => setMusicNowPlaying(s.paused ? `(Paused) ${s.nowPlaying || ''}` : s.nowPlaying)).catch(() => {});
+    fetch();
+    const id = setInterval(fetch, 5000);
+    return () => clearInterval(id);
   }, [hasMusicBot]);
 
   // Close music popover on outside click
@@ -1092,7 +1097,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                   className={`ml-auto text-xs px-2 py-1 rounded transition-colors ${
                     isWhispersMode
                       ? 'bg-purple-500/20 text-purple-400 hover:bg-purple-500/30'
-                      : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-500 hover:bg-zinc-300 dark:hover:bg-zinc-600'
+                      : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-200 hover:bg-zinc-300 dark:hover:bg-zinc-600'
                   }`}
                   title={isWhispersMode ? 'Disable Whispers' : 'Enable Whispers'}
                 >
@@ -1443,6 +1448,15 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                         <VideoTrackView publication={cameraPub} />
                       ) : screenSharePub ? (
                         <VideoTrackView publication={screenSharePub} fit="contain" />
+                      ) : p.identity === '__music-bot__' && musicNowPlaying ? (
+                        <div className="flex flex-col items-center justify-center gap-1 px-3 w-full">
+                          <Music size={20} className="text-indigo-400 shrink-0" />
+                          <div className="w-full overflow-hidden">
+                            <p className="text-xs text-zinc-600 dark:text-zinc-300 whitespace-nowrap animate-[marquee_12s_linear_infinite]">
+                              {musicNowPlaying}
+                            </p>
+                          </div>
+                        </div>
                       ) : (
                         <div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold text-white transition-shadow ${
                           isMyWhisperSource ? 'bg-purple-600' : 'bg-indigo-600'
@@ -1543,7 +1557,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                               e.stopPropagation();
                               captureSoundbite(p.identity, p.name || p.identity);
                             }}
-                            className="text-sm px-2 py-1 rounded-md transition-colors bg-zinc-100 dark:bg-zinc-700 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-600 md:opacity-0 md:group-hover:opacity-100"
+                            className="text-sm px-2 py-1 rounded-md transition-colors bg-zinc-100 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-600 md:opacity-0 md:group-hover:opacity-100"
                             data-tooltip="Save soundbite"
                           >
                             <Scissors size={14} />
@@ -1554,7 +1568,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                           className={`text-sm px-2 py-1 rounded-md transition-colors ${
                             userMuted
                               ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
-                              : 'bg-zinc-100 dark:bg-zinc-700 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-600'
+                              : 'bg-zinc-100 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-600'
                           }`}
                           data-tooltip={userMuted ? 'Unmute (local)' : 'Mute (local)'}
                         >
