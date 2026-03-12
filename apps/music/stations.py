@@ -26,6 +26,10 @@ STATIONS = [
     {"id": "reggae", "name": "Reggae141", "genre": "Reggae", "url": "https://listen.181fm.com/181-reggae_128k.mp3"},
     {"id": "hiphop", "name": "1Power", "genre": "Hip-Hop", "url": "http://live.powerhitz.com/1power"},
     {"id": "gamingrock", "name": "Radio BOB! Gaming Rock", "genre": "Gaming Rock", "url": "https://streams.radiobob.de/gamingrock/mp3-192"},
+    {"id": "housenation", "name": "House Nation UK", "genre": "House", "url": "https://streaming.radio.co/s06bd9d805/listen"},
+    {"id": "bassdrive", "name": "Bassdrive", "genre": "Drum & Bass", "url": "http://bassdrive.radioca.st:8702"},
+    {"id": "trancebase", "name": "TranceBase.FM", "genre": "Trance", "url": "http://listen.trancebase.fm/tunein-mp3"},
+    {"id": "dancemusic", "name": "DanceMusic.ro", "genre": "Dance", "url": "https://streaming-01.xtservers.com:7000/encoder.mp3"},
 ]
 
 DEFAULT_STATION_ID = "groovesalad"
