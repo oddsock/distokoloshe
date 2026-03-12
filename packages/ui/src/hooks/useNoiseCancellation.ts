@@ -5,7 +5,7 @@ import type { Room, LocalTrackPublication } from 'livekit-client';
 const STORAGE_KEY = 'distokoloshe_noise_cancellation';
 
 function getStoredPreference(): boolean {
-  return localStorage.getItem(STORAGE_KEY) !== 'false';
+  return localStorage.getItem(STORAGE_KEY) === 'true';
 }
 
 function setStoredPreference(enabled: boolean): void {
