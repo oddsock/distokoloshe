@@ -347,7 +347,6 @@ export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile,
             <div className="flex items-center justify-between">
               <div>
                 <span className="text-xs text-zinc-600 dark:text-zinc-400">Noise cancellation</span>
-                <p className="text-[10px] text-zinc-400 dark:text-zinc-500 mt-0.5">AI-powered background noise removal</p>
               </div>
               <button
                 onClick={() => noiseCancellation.setEnabled(!noiseCancellation.enabled)}
