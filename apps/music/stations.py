@@ -25,6 +25,7 @@ STATIONS = [
     {"id": "bluesmix", "name": "Radio BOB! 2000er Rock", "genre": "Rock", "url": "https://streams.radiobob.de/bob-blues/mp3-192/streams.radiobob.de/"},
     {"id": "reggae", "name": "Reggae141", "genre": "Reggae", "url": "https://listen.181fm.com/181-reggae_128k.mp3"},
     {"id": "hiphop", "name": "1Power", "genre": "Hip-Hop", "url": "http://live.powerhitz.com/1power"},
+    {"id": "gamingrock", "name": "Radio BOB! Gaming Rock", "genre": "Gaming Rock", "url": "https://streams.radiobob.de/gamingrock/mp3-192"},
 ]
 
 DEFAULT_STATION_ID = "groovesalad"
