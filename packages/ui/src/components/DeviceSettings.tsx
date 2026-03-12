@@ -7,15 +7,23 @@ import { type SoundPack, PACK_LABELS, getStoredPack, setStoredPack, getStoredVol
 import { Music, Download, RefreshCw } from 'lucide-react';
 import { useAutoUpdate } from '../hooks/useAutoUpdate';
 import * as api from '../lib/api';
+import type { NoiseEngine } from '../hooks/useNoiseCancellation';
 
 interface DeviceSettingsProps {
   room: Room;
   hotkeyBindings: HotkeyBindings;
   onHotkeyChange: (bindings: HotkeyBindings) => void;
   isMobile?: boolean;
+  noiseCancellation?: {
+    enabled: boolean;
+    setEnabled: (v: boolean) => void;
+    engine: NoiseEngine;
+    setEngine: (v: NoiseEngine) => void;
+    supported: boolean | null;
+  };
 }
 
-export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile }: DeviceSettingsProps) {
+export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile, noiseCancellation }: DeviceSettingsProps) {
   const { audioInputs, audioOutputs, videoInputs } = useDevices();
   const { status: updateStatus, updateInfo, error: updateError, autoUpdate, setAutoUpdate, checkNow, installUpdate, appVersion, isTauri } = useAutoUpdate();
   const [micLevel, setMicLevel] = useState(0);
@@ -332,6 +340,64 @@ export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile 
             ))}
           </select>
         </div>
+
+        {/* ── Audio Processing ── */}
+        {noiseCancellation && noiseCancellation.supported !== false && (
+          <div>
+            <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1.5">
+              Audio Processing
+            </label>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-zinc-600 dark:text-zinc-400">Noise cancellation</span>
+              <button
+                onClick={() => noiseCancellation.setEnabled(!noiseCancellation.enabled)}
+                disabled={noiseCancellation.supported === null}
+                className={`w-9 h-5 rounded-full transition-colors relative ${
+                  noiseCancellation.supported === null
+                    ? 'bg-zinc-300 dark:bg-zinc-600 opacity-50 cursor-not-allowed'
+                    : noiseCancellation.enabled
+                      ? 'bg-indigo-500'
+                      : 'bg-zinc-300 dark:bg-zinc-600'
+                }`}
+              >
+                <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                  noiseCancellation.enabled ? 'left-[18px]' : 'left-0.5'
+                }`} />
+              </button>
+            </div>
+            {noiseCancellation.enabled && (
+              <div className="mt-1.5 flex items-center gap-2">
+                <span className="text-[10px] text-zinc-500 dark:text-zinc-400 shrink-0">Engine</span>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => noiseCancellation.setEngine('rnnoise')}
+                    data-tooltip="ML neural network — best voice isolation, slightly more CPU"
+                    data-tooltip-pos="below"
+                    className={`px-2 py-0.5 rounded text-[10px] font-medium border transition-colors ${
+                      noiseCancellation.engine === 'rnnoise'
+                        ? 'bg-indigo-500/20 text-indigo-400 border-indigo-500/50'
+                        : 'bg-zinc-100 dark:bg-zinc-600 text-zinc-700 dark:text-zinc-300 border-zinc-300 dark:border-zinc-500 hover:border-indigo-500'
+                    }`}
+                  >
+                    RNNoise
+                  </button>
+                  <button
+                    onClick={() => noiseCancellation.setEngine('speex')}
+                    data-tooltip="Classic DSP filter — lighter on CPU, less aggressive"
+                    data-tooltip-pos="below"
+                    className={`px-2 py-0.5 rounded text-[10px] font-medium border transition-colors ${
+                      noiseCancellation.engine === 'speex'
+                        ? 'bg-indigo-500/20 text-indigo-400 border-indigo-500/50'
+                        : 'bg-zinc-100 dark:bg-zinc-600 text-zinc-700 dark:text-zinc-300 border-zinc-300 dark:border-zinc-500 hover:border-indigo-500'
+                    }`}
+                  >
+                    Speex
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ── Hotkeys ── */}
         <div>
