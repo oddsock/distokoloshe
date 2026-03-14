@@ -4,7 +4,7 @@ import { Track } from 'livekit-client';
 import type { Room } from 'livekit-client';
 import { type HotkeyBindings, formatKey } from '../hooks/useHotkeys';
 import { type SoundPack, PACK_LABELS, getStoredPack, setStoredPack, getStoredVolume, setStoredVolume, previewSound } from '../lib/sounds';
-import { Music, Download, RefreshCw } from 'lucide-react';
+import { Music } from 'lucide-react';
 import { useAutoUpdate } from '../hooks/useAutoUpdate';
 import * as api from '../lib/api';
 import type { NoiseEngine } from '../hooks/useNoiseCancellation';
@@ -25,7 +25,7 @@ interface DeviceSettingsProps {
 
 export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile, noiseCancellation }: DeviceSettingsProps) {
   const { audioInputs, audioOutputs, videoInputs } = useDevices();
-  const { status: updateStatus, updateInfo, error: updateError, autoUpdate, setAutoUpdate, checkNow, installUpdate, appVersion, isTauri } = useAutoUpdate();
+  const { status: updateStatus, updateInfo, error: updateError, appVersion, isTauri } = useAutoUpdate();
   const [micLevel, setMicLevel] = useState(0);
   const [rebinding, setRebinding] = useState<keyof HotkeyBindings | null>(null);
   const [playingTone, setPlayingTone] = useState(false);
@@ -529,55 +529,14 @@ export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile,
                 <span className="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono">v{appVersion}</span>
               )}
             </div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-zinc-600 dark:text-zinc-400">Auto-check on launch</span>
-              <button
-                onClick={() => setAutoUpdate(!autoUpdate)}
-                className={`w-9 h-5 rounded-full transition-colors relative ${
-                  autoUpdate ? 'bg-indigo-500' : 'bg-zinc-300 dark:bg-zinc-600'
-                }`}
-              >
-                <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
-                  autoUpdate ? 'left-[18px]' : 'left-0.5'
-                }`} />
-              </button>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={checkNow}
-                disabled={updateStatus === 'checking' || updateStatus === 'downloading'}
-                className={`flex-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
-                  updateStatus === 'checking' || updateStatus === 'downloading'
-                    ? 'bg-zinc-300 dark:bg-zinc-600 text-zinc-500 cursor-not-allowed'
-                    : 'bg-indigo-600 text-white hover:bg-indigo-500'
-                }`}
-              >
-                <RefreshCw size={12} className={`inline mr-1 ${updateStatus === 'checking' ? 'animate-spin' : ''}`} />
-                {updateStatus === 'checking' ? 'Checking...' : 'Check Now'}
-              </button>
-              {updateStatus === 'available' && updateInfo && (
-                <button
-                  onClick={installUpdate}
-                  className="flex-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-green-600 text-white hover:bg-green-500 transition-colors"
-                >
-                  <Download size={12} className="inline mr-1" />
-                  Install v{updateInfo.version}
-                </button>
-              )}
-            </div>
-            {updateStatus === 'downloading' && (
-              <p className="mt-1.5 text-[10px] text-indigo-400">Downloading and installing update...</p>
-            )}
-            {updateStatus === 'idle' && (
-              <p className="mt-1.5 text-[10px] text-zinc-500 dark:text-zinc-400">Up to date</p>
-            )}
-            {updateStatus === 'available' && updateInfo && (
-              <p className="mt-1.5 text-[10px] text-green-500">
-                v{updateInfo.version} available{updateInfo.body ? ` \u2014 ${updateInfo.body.slice(0, 100)}` : ''}
-              </p>
+            {updateStatus === 'downloading' && updateInfo && (
+              <p className="text-[10px] text-indigo-400">Installing v{updateInfo.version}...</p>
             )}
             {updateStatus === 'error' && updateError && (
-              <p className="mt-1.5 text-[10px] text-red-400">{updateError}</p>
+              <p className="text-[10px] text-red-400">{updateError}</p>
+            )}
+            {updateStatus === 'idle' && (
+              <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Up to date</p>
             )}
           </div>
         )}
