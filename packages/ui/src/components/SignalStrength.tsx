@@ -31,7 +31,7 @@ const SWEEP_SEQUENCE = [0, 1, 2, 3, 2, 1];
 export function SignalStrength({ stats, serverCity, connecting }: SignalStrengthProps) {
   const [hover, setHover] = useState(false);
   const [sweepIdx, setSweepIdx] = useState(0);
-  const { rttMs, jitterMs, audioCodec, videoCodec, sendBitrateKbps } = stats;
+  const { rttMs, jitterMs, audioCodec, videoCodec, sendBitrateKbps, protocol } = stats;
   const tier = getTier(rttMs, jitterMs);
 
   // Sweep animation while connecting
@@ -85,6 +85,7 @@ export function SignalStrength({ stats, serverCity, connecting }: SignalStrength
           ) : !connecting ? (
             <p className="text-zinc-500">Join a room to see stats</p>
           ) : null}
+          {protocol && <p className="text-zinc-500 mt-1">Transport: {protocol === 'h3' ? 'HTTP/3 (QUIC/UDP)' : protocol === 'h2' ? 'HTTP/2 (TCP)' : protocol}</p>}
           {serverCity && <p className="text-zinc-500 mt-1">Server: {serverCity}</p>}
           {/* Tooltip arrow */}
           <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-zinc-700" />

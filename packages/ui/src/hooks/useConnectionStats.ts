@@ -7,6 +7,12 @@ export interface ConnectionStats {
   audioCodec: string | null;
   videoCodec: string | null;
   sendBitrateKbps: number | null;
+  protocol: string | null;
+}
+
+function getPageProtocol(): string | null {
+  const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+  return nav?.nextHopProtocol ?? null;
 }
 
 const POLL_INTERVAL = 2000;
@@ -18,7 +24,8 @@ function ema(prev: number | null, next: number): number {
 }
 
 export function useConnectionStats(room: Room | null): ConnectionStats {
-  const [stats, setStats] = useState<ConnectionStats>({ rttMs: null, jitterMs: null, audioCodec: null, videoCodec: null, sendBitrateKbps: null });
+  const protocolRef = useRef<string | null>(getPageProtocol());
+  const [stats, setStats] = useState<ConnectionStats>({ rttMs: null, jitterMs: null, audioCodec: null, videoCodec: null, sendBitrateKbps: null, protocol: protocolRef.current });
   const smoothedRef = useRef<{ rtt: number | null; jitter: number | null }>({ rtt: null, jitter: null });
   const prevBytesRef = useRef<{ sent: number | null; ts: number | null }>({ sent: null, ts: null });
 
@@ -26,7 +33,7 @@ export function useConnectionStats(room: Room | null): ConnectionStats {
     if (!room) {
       smoothedRef.current = { rtt: null, jitter: null };
       prevBytesRef.current = { sent: null, ts: null };
-      setStats({ rttMs: null, jitterMs: null, audioCodec: null, videoCodec: null, sendBitrateKbps: null });
+      setStats({ rttMs: null, jitterMs: null, audioCodec: null, videoCodec: null, sendBitrateKbps: null, protocol: protocolRef.current });
       return;
     }
 
@@ -128,6 +135,7 @@ export function useConnectionStats(room: Room | null): ConnectionStats {
           audioCodec,
           videoCodec,
           sendBitrateKbps: sendBitrateKbps !== null && sendBitrateKbps >= 0 ? sendBitrateKbps : null,
+          protocol: protocolRef.current,
         });
       } catch {
         // Stats unavailable — ignore

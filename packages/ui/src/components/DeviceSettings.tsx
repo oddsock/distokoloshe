@@ -9,7 +9,6 @@ import type { useAutoUpdate } from '../hooks/useAutoUpdate';
 import * as api from '../lib/api';
 import type { NoiseEngine } from '../hooks/useNoiseCancellation';
 
-export type ConnectionPriority = 'quality' | 'balanced' | 'bandwidth_saver';
 export type ShareQualityPref = 'low' | 'medium' | 'high' | 'ultra';
 
 interface DeviceSettingsProps {
@@ -38,9 +37,6 @@ export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile,
   const [soundPack, setSoundPack] = useState<SoundPack>(getStoredPack);
   const [notifVolume, setNotifVolume] = useState(() => Math.round(getStoredVolume() * 100));
   const [soundbiteOptOut, setSoundbiteOptOut] = useState(false);
-  const [connectionPriority, setConnectionPriority] = useState<ConnectionPriority>(
-    () => (localStorage.getItem('connectionPriority') as ConnectionPriority | null) ?? 'balanced'
-  );
   const [lockStreamQuality, setLockStreamQuality] = useState(
     () => localStorage.getItem('lockStreamQuality') === '1'
   );
@@ -417,25 +413,6 @@ export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile,
             Connection
           </label>
           <div className="space-y-2">
-            <div>
-              <div className="flex items-center justify-between mb-0.5">
-                <span className="text-xs text-zinc-600 dark:text-zinc-400">Priority</span>
-                <select
-                  value={connectionPriority}
-                  onChange={(e) => { const v = e.target.value as ConnectionPriority; setConnectionPriority(v); localStorage.setItem('connectionPriority', v); }}
-                  className="px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-700 text-zinc-900 dark:text-white border border-zinc-300 dark:border-zinc-600 text-xs"
-                >
-                  <option value="quality">Quality (higher bandwidth)</option>
-                  <option value="balanced">Balanced (default)</option>
-                  <option value="bandwidth_saver">Bandwidth Saver</option>
-                </select>
-              </div>
-              <p className="text-[10px] text-zinc-400 dark:text-zinc-500 leading-snug">
-                {connectionPriority === 'quality' && 'Disables silence suppression, enables packet recovery. Best audio quality.'}
-                {connectionPriority === 'balanced' && 'Default settings — good balance of quality and bandwidth.'}
-                {connectionPriority === 'bandwidth_saver' && 'Reduces bandwidth usage. May slightly affect audio quality.'}
-              </p>
-            </div>
             <div className="flex items-center justify-between">
               <div>
                 <span className="text-xs text-zinc-600 dark:text-zinc-400">Lock incoming video quality</span>
@@ -464,7 +441,7 @@ export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile,
                 </select>
               </div>
             </div>
-            <p className="text-[10px] text-zinc-400 dark:text-zinc-500">Priority &amp; lock changes take effect on next room join.</p>
+            <p className="text-[10px] text-zinc-400 dark:text-zinc-500">Lock &amp; quality changes take effect on next room join.</p>
           </div>
         </div>
 

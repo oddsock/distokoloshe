@@ -1069,8 +1069,8 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
           <SignalStrength stats={connectionStats} serverCity={serverCity} connecting={connectionState === ConnectionState.Connecting || (connectionState === ConnectionState.Connected && connectionStats.rttMs === null)} />
           {connectionState === ConnectionState.Connected && (
             e2eeEnabled
-              ? <Lock size={13} className="text-green-400 shrink-0" data-tooltip="End-to-end encrypted" />
-              : <ShieldAlert size={13} className="text-amber-400 shrink-0" data-tooltip="Transport encryption only — E2EE not available in this browser" />
+              ? <span data-tooltip="End-to-end encrypted" className="shrink-0 flex items-center"><Lock size={13} className="text-green-400" /></span>
+              : <span data-tooltip="Transport encryption only — E2EE not available in this browser" className="shrink-0 flex items-center"><ShieldAlert size={13} className="text-amber-400" /></span>
           )}
           <button
             onClick={onLogout}
@@ -1852,7 +1852,6 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                 className="p-2.5 rounded-lg bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors focus-visible:ring-2 focus-visible:ring-indigo-500"
                 aria-label="Open settings"
                 data-tooltip="Settings"
-                data-tooltip-pos="left"
               >
                 <Settings size={18} />
               </button>
