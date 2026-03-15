@@ -558,6 +558,9 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
         return next;
       });
     },
+    'music:status': (data) => {
+      setMusicStatus(data as api.MusicStatus);
+    },
   }, onReconnect: handleSSEReconnect });
 
   // Close quality menu on outside click
@@ -615,16 +618,19 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     };
   }, [showSoundboard]);
 
-  // Close music popover when leaving the music room
+  // Music bot state — driven by SSE, no polling
   const hasMusicBot = remoteParticipants.some((p) => p.identity === '__music-bot__');
-  const [musicNowPlaying, setMusicNowPlaying] = useState<string | null>(null);
+  const [musicStatus, setMusicStatus] = useState<api.MusicStatus | null>(null);
   useEffect(() => {
-    if (!hasMusicBot) { setShowMusic(false); setMusicNowPlaying(null); return; }
-    const fetch = () => api.getMusicStatus().then((s) => setMusicNowPlaying(s.paused ? `(Paused) ${s.nowPlaying || ''}` : s.nowPlaying)).catch(() => {});
-    fetch();
-    const id = setInterval(fetch, 5000);
-    return () => clearInterval(id);
+    if (!hasMusicBot) { setShowMusic(false); setMusicStatus(null); return; }
+    api.getMusicStatus().then(setMusicStatus).catch(() => {});
   }, [hasMusicBot]);
+  const musicNowPlaying = musicStatus
+    ? (musicStatus.paused ? `(Paused) ${musicStatus.nowPlaying || ''}` : musicStatus.nowPlaying)
+    : null;
+  const refreshMusicStatus = useCallback(() => {
+    api.getMusicStatus().then(setMusicStatus).catch(() => {});
+  }, []);
 
   // Close music popover on outside click
   useEffect(() => {
@@ -1816,7 +1822,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
               >
                 <Music size={18} />
               </button>
-              {showMusic && <MusicControls isMobile={isMobile} />}
+              {showMusic && <MusicControls isMobile={isMobile} status={musicStatus} onRefresh={refreshMusicStatus} />}
             </div>
             )}
 

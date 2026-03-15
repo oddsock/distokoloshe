@@ -20,7 +20,8 @@ export type EventType =
   | 'soundboard:created'
   | 'soundboard:deleted'
   | 'soundboard:playing'
-  | 'chat:message';
+  | 'chat:message'
+  | 'music:status';
 
 interface SSEClient {
   userId: number;

@@ -47,10 +47,18 @@ class Player:
         self._mode = "radio"
         self._id_counter = 0
         self._on_frame: Optional[FrameCallback] = None
+        self._on_state_change = None
         self._read_task: Optional[asyncio.Task] = None
 
     def set_frame_callback(self, cb: FrameCallback):
         self._on_frame = cb
+
+    def set_state_change_callback(self, cb):
+        self._on_state_change = cb
+
+    def _notify_state_change(self):
+        if self._on_state_change:
+            asyncio.create_task(self._on_state_change(self.get_state()))
 
     async def start(self):
         await self._play_radio()
@@ -141,6 +149,7 @@ class Player:
         self._now_playing = station["name"]
         await self._spawn_ffmpeg(station["url"])
         self._start_metadata_poller(station["url"])
+        self._notify_state_change()
 
     async def _play_next_from_queue(self):
         if not self._queue:
@@ -151,6 +160,7 @@ class Player:
         self._current_track = entry
         self._now_playing = entry["title"]
         await self._spawn_ffmpeg(entry["url"])
+        self._notify_state_change()
 
     async def _spawn_ffmpeg(self, url: str):
         await self._stop_ffmpeg()
@@ -361,8 +371,9 @@ class Player:
                     match = re.search(r"StreamTitle='(.*?)'", meta_str)
                     if match:
                         title = match.group(1).strip()
-                        if title:
+                        if title and title != self._now_playing:
                             self._now_playing = title
+                            self._notify_state_change()
         except Exception:
             pass
 

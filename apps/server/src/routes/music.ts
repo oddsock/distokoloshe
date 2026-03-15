@@ -1,12 +1,36 @@
 import { Router, type Request, type Response } from 'express';
 import { requireAuth } from '../middleware/auth.js';
+import { broadcast } from '../events.js';
 
 const router = Router();
 
 // Music container runs on host networking, reachable via host.docker.internal
 const MUSIC_URL = 'http://host.docker.internal:3001';
 
-// All routes require auth — the music container trusts the API
+/** Fetch current status from music bot and broadcast to all SSE clients. */
+async function broadcastMusicStatus(): Promise<void> {
+  try {
+    const resp = await fetch(`${MUSIC_URL}/status`);
+    const data = await resp.json();
+    broadcast('music:status', data);
+  } catch {
+    // Music bot unavailable — skip broadcast
+  }
+}
+
+// POST /notify — internal only, called by music bot on spontaneous state changes
+// Authenticated by LIVEKIT_API_KEY header (shared secret between API and music bot)
+router.post('/notify', async (req: Request, res: Response) => {
+  const key = req.headers['x-internal-key'];
+  if (!key || key !== process.env.LIVEKIT_API_KEY) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+  broadcast('music:status', req.body);
+  res.json({ ok: true });
+});
+
+// All remaining routes require user auth
 router.use(requireAuth);
 
 // GET /api/music/status
@@ -34,6 +58,7 @@ router.post('/queue', async (req: Request, res: Response) => {
     });
     const data = await resp.json();
     res.status(resp.status).json(data);
+    if (resp.ok) broadcastMusicStatus();
   } catch {
     res.status(502).json({ error: 'Music service unavailable' });
   }
@@ -49,6 +74,7 @@ router.post('/remove', async (req: Request, res: Response) => {
     });
     const data = await resp.json();
     res.status(resp.status).json(data);
+    if (resp.ok) broadcastMusicStatus();
   } catch {
     res.status(502).json({ error: 'Music service unavailable' });
   }
@@ -64,6 +90,7 @@ async function forward(path: string, body: unknown, res: Response): Promise<void
     });
     const data = await resp.json();
     res.status(resp.status).json(data);
+    if (resp.ok) broadcastMusicStatus();
   } catch {
     res.status(502).json({ error: 'Music service unavailable' });
   }

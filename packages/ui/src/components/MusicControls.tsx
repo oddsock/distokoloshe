@@ -1,7 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import {
   type MusicStatus,
-  getMusicStatus,
   addToMusicQueue,
   removeFromMusicQueue,
   skipMusicTrack,
@@ -11,34 +10,21 @@ import {
 
 interface MusicControlsProps {
   isMobile?: boolean;
+  status: MusicStatus | null;
+  onRefresh: () => void;
 }
 
-export function MusicControls({ isMobile }: MusicControlsProps) {
-  const [status, setStatus] = useState<MusicStatus | null>(null);
+export function MusicControls({ isMobile, status, onRefresh }: MusicControlsProps) {
   const [urlInput, setUrlInput] = useState('');
   const [titleInput, setTitleInput] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  useEffect(() => {
-    const fetchStatus = () => {
-      getMusicStatus().then(setStatus).catch(() => {});
-    };
-    fetchStatus();
-    pollRef.current = setInterval(fetchStatus, 5000);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, []);
-
-  const refreshStatus = useCallback(() => {
-    getMusicStatus().then(setStatus).catch(() => {});
-  }, []);
 
   const handlePause = async () => {
     setBusy(true);
     try {
       await toggleMusicPause();
-      refreshStatus();
+      onRefresh();
     } catch { setError('Failed to toggle pause'); }
     setBusy(false);
   };
@@ -47,7 +33,7 @@ export function MusicControls({ isMobile }: MusicControlsProps) {
     setBusy(true);
     try {
       await skipMusicTrack();
-      refreshStatus();
+      onRefresh();
     } catch { setError('Failed to skip'); }
     setBusy(false);
   };
@@ -56,12 +42,12 @@ export function MusicControls({ isMobile }: MusicControlsProps) {
     setBusy(true);
     try {
       await setMusicStation(stationId);
-      refreshStatus();
+      onRefresh();
     } catch { setError('Failed to switch station'); }
     setBusy(false);
   };
 
-  const handleAddToQueue = async () => {
+  const handleAddToQueue = useCallback(async () => {
     if (!urlInput.trim()) return;
     setBusy(true);
     setError(null);
@@ -69,17 +55,17 @@ export function MusicControls({ isMobile }: MusicControlsProps) {
       await addToMusicQueue(urlInput.trim(), titleInput.trim() || undefined);
       setUrlInput('');
       setTitleInput('');
-      refreshStatus();
+      onRefresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add to queue');
     }
     setBusy(false);
-  };
+  }, [urlInput, titleInput, onRefresh]);
 
   const handleRemove = async (id: string) => {
     try {
       await removeFromMusicQueue(id);
-      refreshStatus();
+      onRefresh();
     } catch { setError('Failed to remove'); }
   };
 
