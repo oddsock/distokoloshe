@@ -37,6 +37,7 @@ export function VolumeSlider({ displayName, volume, onChange, compact }: VolumeS
         max="100"
         value={percentage}
         onChange={handleChange}
+        aria-label={`${displayName} volume`}
         className="flex-1 h-1 accent-indigo-500 cursor-pointer"
       />
       <span className="text-xs text-zinc-500 w-8 text-right">{percentage}%</span>

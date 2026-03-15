@@ -9,6 +9,9 @@ import type { useAutoUpdate } from '../hooks/useAutoUpdate';
 import * as api from '../lib/api';
 import type { NoiseEngine } from '../hooks/useNoiseCancellation';
 
+export type ConnectionPriority = 'quality' | 'balanced' | 'bandwidth_saver';
+export type ShareQualityPref = 'low' | 'medium' | 'high' | 'ultra';
+
 interface DeviceSettingsProps {
   room: Room;
   hotkeyBindings: HotkeyBindings;
@@ -35,6 +38,15 @@ export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile,
   const [soundPack, setSoundPack] = useState<SoundPack>(getStoredPack);
   const [notifVolume, setNotifVolume] = useState(() => Math.round(getStoredVolume() * 100));
   const [soundbiteOptOut, setSoundbiteOptOut] = useState(false);
+  const [connectionPriority, setConnectionPriority] = useState<ConnectionPriority>(
+    () => (localStorage.getItem('connectionPriority') as ConnectionPriority | null) ?? 'balanced'
+  );
+  const [lockStreamQuality, setLockStreamQuality] = useState(
+    () => localStorage.getItem('lockStreamQuality') === '1'
+  );
+  const [defaultShareQuality, setDefaultShareQuality] = useState<ShareQualityPref>(
+    () => (localStorage.getItem('distokoloshe_share_quality') as ShareQualityPref | null) ?? 'medium'
+  );
   const analyserRef = useRef<{
     ctx: AudioContext;
     stream: MediaStream;
@@ -315,13 +327,9 @@ export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile,
           <button
             onClick={playTestTone}
             disabled={playingTone}
-            className={`mt-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
-              playingTone
-                ? 'bg-indigo-600/50 text-white cursor-not-allowed'
-                : 'bg-indigo-600 text-white hover:bg-indigo-500'
-            }`}
+            className="mt-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
           >
-            <Music size={12} className="inline mr-1" />{playingTone ? 'Playing...' : 'Test Speaker'}
+            <Music size={12} />{playingTone ? 'Playing...' : 'Test Speaker'}
           </button>
         </div>
 
@@ -367,38 +375,98 @@ export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile,
               </button>
             </div>
             {noiseCancellation.enabled && (
-              <div className="mt-1.5 flex items-center gap-2">
-                <span className="text-[10px] text-zinc-500 dark:text-zinc-400 shrink-0">Engine</span>
-                <div className="flex gap-1">
-                  <button
-                    onClick={() => noiseCancellation.setEngine('rnnoise')}
-                    data-tooltip="ML neural network — best voice isolation, slightly more CPU"
-                    data-tooltip-pos="below"
-                    className={`px-2 py-0.5 rounded text-[10px] font-medium border transition-colors ${
-                      noiseCancellation.engine === 'rnnoise'
-                        ? 'bg-indigo-500/20 text-indigo-400 border-indigo-500/50'
-                        : 'bg-zinc-100 dark:bg-zinc-600 text-zinc-700 dark:text-zinc-300 border-zinc-300 dark:border-zinc-500 hover:border-indigo-500'
-                    }`}
-                  >
-                    RNNoise
-                  </button>
-                  <button
-                    onClick={() => noiseCancellation.setEngine('speex')}
-                    data-tooltip="Classic DSP filter — lighter on CPU, less aggressive"
-                    data-tooltip-pos="below"
-                    className={`px-2 py-0.5 rounded text-[10px] font-medium border transition-colors ${
-                      noiseCancellation.engine === 'speex'
-                        ? 'bg-indigo-500/20 text-indigo-400 border-indigo-500/50'
-                        : 'bg-zinc-100 dark:bg-zinc-600 text-zinc-700 dark:text-zinc-300 border-zinc-300 dark:border-zinc-500 hover:border-indigo-500'
-                    }`}
-                  >
-                    Speex
-                  </button>
+              <div className="mt-1.5 space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-zinc-500 dark:text-zinc-400 shrink-0">Engine</span>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => noiseCancellation.setEngine('rnnoise')}
+                      className={`px-2 py-0.5 rounded text-[10px] font-medium border transition-colors ${
+                        noiseCancellation.engine === 'rnnoise'
+                          ? 'bg-indigo-500/20 text-indigo-400 border-indigo-500/50'
+                          : 'bg-zinc-100 dark:bg-zinc-600 text-zinc-700 dark:text-zinc-300 border-zinc-300 dark:border-zinc-500 hover:border-indigo-500'
+                      }`}
+                    >
+                      RNNoise
+                    </button>
+                    <button
+                      onClick={() => noiseCancellation.setEngine('speex')}
+                      className={`px-2 py-0.5 rounded text-[10px] font-medium border transition-colors ${
+                        noiseCancellation.engine === 'speex'
+                          ? 'bg-indigo-500/20 text-indigo-400 border-indigo-500/50'
+                          : 'bg-zinc-100 dark:bg-zinc-600 text-zinc-700 dark:text-zinc-300 border-zinc-300 dark:border-zinc-500 hover:border-indigo-500'
+                      }`}
+                    >
+                      Speex
+                    </button>
+                  </div>
                 </div>
+                <p className="text-[10px] text-zinc-400 dark:text-zinc-500 leading-snug">
+                  {noiseCancellation.engine === 'rnnoise'
+                    ? 'RNNoise — ML-based, best voice isolation, slightly higher CPU'
+                    : 'Speex DSP — classic filter, lower CPU, less aggressive'}
+                </p>
               </div>
             )}
           </div>
         )}
+
+        {/* ── Connection ── */}
+        <div>
+          <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1.5">
+            Connection
+          </label>
+          <div className="space-y-2">
+            <div>
+              <div className="flex items-center justify-between mb-0.5">
+                <span className="text-xs text-zinc-600 dark:text-zinc-400">Priority</span>
+                <select
+                  value={connectionPriority}
+                  onChange={(e) => { const v = e.target.value as ConnectionPriority; setConnectionPriority(v); localStorage.setItem('connectionPriority', v); }}
+                  className="px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-700 text-zinc-900 dark:text-white border border-zinc-300 dark:border-zinc-600 text-xs"
+                >
+                  <option value="quality">Quality (higher bandwidth)</option>
+                  <option value="balanced">Balanced (default)</option>
+                  <option value="bandwidth_saver">Bandwidth Saver</option>
+                </select>
+              </div>
+              <p className="text-[10px] text-zinc-400 dark:text-zinc-500 leading-snug">
+                {connectionPriority === 'quality' && 'Disables silence suppression, enables packet recovery. Best audio quality.'}
+                {connectionPriority === 'balanced' && 'Default settings — good balance of quality and bandwidth.'}
+                {connectionPriority === 'bandwidth_saver' && 'Reduces bandwidth usage. May slightly affect audio quality.'}
+              </p>
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-xs text-zinc-600 dark:text-zinc-400">Lock incoming video quality</span>
+                <p className="text-[10px] text-zinc-400 dark:text-zinc-500 mt-0.5">Prevents auto-reduction on slow connections</p>
+              </div>
+              <button
+                onClick={() => { const v = !lockStreamQuality; setLockStreamQuality(v); localStorage.setItem('lockStreamQuality', v ? '1' : '0'); }}
+                className={`w-9 h-5 rounded-full transition-colors relative shrink-0 ${lockStreamQuality ? 'bg-indigo-500' : 'bg-zinc-300 dark:bg-zinc-600'}`}
+                aria-label={lockStreamQuality ? 'Unlock stream quality' : 'Lock stream quality'}
+              >
+                <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${lockStreamQuality ? 'left-[18px]' : 'left-0.5'}`} />
+              </button>
+            </div>
+            <div>
+              <div className="flex items-center justify-between mb-0.5">
+                <span className="text-xs text-zinc-600 dark:text-zinc-400">Default screen share quality</span>
+                <select
+                  value={defaultShareQuality}
+                  onChange={(e) => { const v = e.target.value as ShareQualityPref; setDefaultShareQuality(v); localStorage.setItem('distokoloshe_share_quality', v); }}
+                  className="px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-700 text-zinc-900 dark:text-white border border-zinc-300 dark:border-zinc-600 text-xs"
+                >
+                  <option value="low">Low (720p 30fps)</option>
+                  <option value="medium">Medium (1080p 30fps)</option>
+                  <option value="high">High (1080p 60fps)</option>
+                  <option value="ultra">Ultra (native 120fps)</option>
+                </select>
+              </div>
+            </div>
+            <p className="text-[10px] text-zinc-400 dark:text-zinc-500">Priority &amp; lock changes take effect on next room join.</p>
+          </div>
+        </div>
 
         {/* ── Hotkeys ── */}
         <div>

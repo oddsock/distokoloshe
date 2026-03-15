@@ -180,9 +180,10 @@ export function MusicControls({ isMobile }: MusicControlsProps) {
 
       {/* Error */}
       {error && (
-        <p className="text-xs text-amber-700 dark:text-amber-400 mb-2 cursor-pointer" onClick={() => setError(null)}>
-          {error}
-        </p>
+        <div className="text-xs text-red-400 bg-red-500/10 rounded px-2 py-1 mb-2 flex items-center justify-between">
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="text-red-400 hover:text-red-300 ml-2">&times;</button>
+        </div>
       )}
 
       {/* Queue */}

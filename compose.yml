@@ -107,6 +107,12 @@ services:
       - DOMAIN=${DOMAIN:-localhost}
     volumes:
       - ./data/certs:/etc/letsencrypt:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO/dev/null", "--timeout=3", "http://127.0.0.1:${LK_PORT:-7881}"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
   # ── Certbot (Let's Encrypt cert renewal) ────────────────
   # Only needed in production. Renews certs every 12 hours.
