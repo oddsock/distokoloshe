@@ -83,6 +83,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     remoteParticipants,
     activeSpeakers,
     connectionState,
+    e2eeEnabled,
     connect,
     disconnect,
   } = useLiveKitRoom();
