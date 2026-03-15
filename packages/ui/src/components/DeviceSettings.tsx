@@ -5,7 +5,7 @@ import type { Room } from 'livekit-client';
 import { type HotkeyBindings, formatKey } from '../hooks/useHotkeys';
 import { type SoundPack, PACK_LABELS, getStoredPack, setStoredPack, getStoredVolume, setStoredVolume, previewSound } from '../lib/sounds';
 import { Music } from 'lucide-react';
-import { useAutoUpdate } from '../hooks/useAutoUpdate';
+import type { useAutoUpdate } from '../hooks/useAutoUpdate';
 import * as api from '../lib/api';
 import type { NoiseEngine } from '../hooks/useNoiseCancellation';
 
@@ -21,11 +21,12 @@ interface DeviceSettingsProps {
     setEngine: (v: NoiseEngine) => void;
     supported: boolean | null;
   };
+  autoUpdate?: ReturnType<typeof useAutoUpdate>;
 }
 
-export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile, noiseCancellation }: DeviceSettingsProps) {
+export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile, noiseCancellation, autoUpdate }: DeviceSettingsProps) {
   const { audioInputs, audioOutputs, videoInputs } = useDevices();
-  const { status: updateStatus, updateInfo, error: updateError, appVersion, isTauri } = useAutoUpdate();
+  const { status: updateStatus, updateInfo, error: updateError, appVersion, isTauri } = autoUpdate ?? { status: 'idle' as const, updateInfo: null, error: null, appVersion: null, isTauri: false };
   const [micLevel, setMicLevel] = useState(0);
   const [rebinding, setRebinding] = useState<keyof HotkeyBindings | null>(null);
   const [playingTone, setPlayingTone] = useState(false);
