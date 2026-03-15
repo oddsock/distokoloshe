@@ -22,7 +22,7 @@ async def main():
             async with aiohttp.ClientSession() as session:
                 await session.post(
                     f"{api_url}/api/music/notify",
-                    json={**state, "stations": []},  # omit stations list to keep payload small
+                    json={**state, "stations": player.get_stations()},
                     headers={"X-Internal-Key": api_key},
                     timeout=aiohttp.ClientTimeout(total=5),
                 )
