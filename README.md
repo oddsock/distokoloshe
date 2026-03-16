@@ -17,10 +17,17 @@ Self-hosted real-time voice, video, and screen-sharing web application. Built on
 │             LiveKit SFU (host network)               │
 │  WS :7881  ·  UDP :50201-50400  ·  TURN :3478/5349  │
 └──────────────────────────────────────────────────────┘
+                         ▲
+                         │ audio track
+              ┌──────────────────────┐
+              │  Music Bot (Python)  │
+              │  DJ Tokoloshe :3001  │
+              └──────────────────────┘
 ```
 
 - **web** — nginx serving the Vite/React SPA. Reverse-proxies `/api/` to the API container and `/livekit/` to the LiveKit WebSocket.
-- **api** — Node.js/Express. Handles user auth (JWT + SQLite), room management, SSE events for real-time presence, and LiveKit token generation.
+- **api** — Node.js/Express. Handles user auth (JWT + SQLite), room management, votes, punishments, whispers, soundboard, chat, music state, SSE events for real-time presence, and LiveKit token generation.
+- **music** — Python bot ("DJ Tokoloshe") that streams internet radio into a dedicated LiveKit room. Exposes a small HTTP API on `:3001` for playback control; notifies the API server of state changes for SSE broadcast.
 - **desktop** — Tauri v2 desktop client (Windows/Linux/macOS). Shares UI code with the web app via `@distokoloshe/ui` package. Connects to any disTokoloshe server via configurable URL.
 - **livekit** — LiveKit SFU running in host network mode for proper WebRTC ICE negotiation. Includes built-in TURN relay for restrictive NATs (production only).
 - **certbot** — (production only) Auto-renews Let's Encrypt TLS certificates every 12 hours.
@@ -183,6 +190,7 @@ The SQLite database in `data/api/` persists across rebuilds.
 | `WEB_TLS_PORT` | No | `3443` | Host port for HTTPS / HTTP/3 |
 | `LK_PORT` | No | `7881` | LiveKit WebSocket port |
 | `SERVER_CITY` | No | — | Server location label (shown in connection quality UI) |
+| `MUSIC_ROOM_NAME` | No | `Music` | LiveKit room name the music bot joins |
 | `GITHUB_REPO` | No | — | GitHub repo for auto-update sync (e.g., `user/distokoloshe`) |
 | `GITHUB_TOKEN` | No | — | GitHub token (only needed for private repos) |
 
@@ -217,20 +225,27 @@ The SQLite database in `data/api/` persists across rebuilds.
 │   ├── desktop/             # Tauri v2 desktop client
 │   │   ├── src/             # Desktop entry (App.tsx, ServerConfig.tsx)
 │   │   └── src-tauri/       # Rust shell (global shortcuts, window state)
-│   └── server/              # Node.js/Express API (JWT + SQLite)
-│       └── src/
-│           ├── routes/      # auth, rooms, users, events (SSE)
-│           ├── livekit.ts   # Token generation + E2EE key derivation
-│           └── events.ts    # SSE client tracking + room membership
+│   ├── server/              # Node.js/Express API (JWT + SQLite)
+│   │   └── src/
+│   │       ├── routes/      # auth, rooms, users, votes, punishments, whispers,
+│   │       │                #   soundboard, chat, music, updates, events (SSE)
+│   │       ├── livekit.ts   # Token generation + E2EE key derivation
+│   │       └── events.ts    # SSE client tracking + room membership
+│   └── music/               # DJ Tokoloshe — Python music bot
+│       ├── main.py          # Entry point + HTTP API (:3001)
+│       ├── bot.py           # LiveKit participant (publishes audio track)
+│       ├── player.py        # Internet radio playback (FFmpeg)
+│       └── stations.py      # Station list
 ├── packages/
 │   └── ui/                  # Shared React components, hooks, and utilities
 │       └── src/
 │           ├── pages/       # Login, Room
 │           ├── hooks/       # useLiveKitRoom, useScreenShare, useAudioMixer, etc.
 │           ├── components/  # ScreenShareView, VolumeSlider, UserList, etc.
-│           └── lib/         # api.ts, sounds.ts, utils.ts, codec.ts
+│           └── lib/         # api.ts, sounds.ts, utils.ts, codec.ts, imageResize.ts
 ├── infra/
 │   ├── livekit/             # LiveKit SFU config + entrypoint
+│   ├── music/               # Music bot Node.js dependencies (build cache)
 │   └── scripts/             # init.sh, init-certs.sh
 └── data/                    # Persistent data (gitignored)
     ├── api/                 # SQLite database
