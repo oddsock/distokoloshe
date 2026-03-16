@@ -234,7 +234,7 @@ export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile,
     <div
       className={isMobile
         ? 'fixed bottom-16 left-2 right-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-xl shadow-2xl p-4 z-50 max-h-[70vh] overflow-y-auto'
-        : 'absolute bottom-full mb-2 right-0 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-xl shadow-2xl p-4 w-[340px] z-50'
+        : 'absolute bottom-full mb-2 right-0 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-xl shadow-2xl p-4 w-[340px] z-50 max-h-[70vh] overflow-y-auto'
       }
       onClick={(e) => e.stopPropagation()}
     >
