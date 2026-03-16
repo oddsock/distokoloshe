@@ -83,7 +83,7 @@ export function SignalStrength({ stats, serverCity, connecting }: SignalStrength
                   Loss: {packetLossPct.toFixed(1)}%
                 </p>
               )}
-              {iceType && <p>ICE: {iceType === 'relay' ? 'relay (TURN)' : iceType === 'srflx' ? 'srflx (NAT)' : iceType}</p>}
+              {iceType && <p>ICE: {iceType === 'relay' ? 'relay (TURN)' : iceType === 'srflx' ? 'srflx (NAT)' : iceType === 'prflx' ? 'prflx (P2P)' : iceType === 'host' ? 'host (direct)' : iceType}</p>}
               {sendBitrateKbps !== null && <p>Send: {sendBitrateKbps} kbps</p>}
               {audioCodec && <p>Audio: {audioCodec}</p>}
               {videoCodec && <p>Video: {videoCodec}</p>}
