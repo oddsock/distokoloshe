@@ -1,6 +1,7 @@
 import asyncio
 import os
 import sys
+import aiohttp
 from aiohttp import web
 from player import Player
 from bot import MusicBot
@@ -13,11 +14,28 @@ async def main():
             print(f"Missing required env var: {key}")
             sys.exit(1)
 
+    api_url = os.environ.get("API_URL", "http://127.0.0.1:3000")
+    api_key = os.environ.get("LIVEKIT_API_KEY", "")
+
+    async def notify_status_change(state: dict):
+        try:
+            async with aiohttp.ClientSession() as session:
+                await session.post(
+                    f"{api_url}/api/music/notify",
+                    json={**state, "stations": player.get_stations()},
+                    headers={"X-Internal-Key": api_key},
+                    timeout=aiohttp.ClientTimeout(total=5),
+                )
+        except Exception:
+            pass  # API unreachable — not critical
+
     player = Player()
     bot = MusicBot()
 
     # Wire player frames to bot (async callback)
     player.set_frame_callback(bot.handle_frame)
+    # Wire state changes to SSE broadcast via API
+    player.set_state_change_callback(notify_status_change)
 
     # Start player (radio by default)
     asyncio.create_task(player.start())

@@ -23,7 +23,7 @@ import { useAutoUpdate } from '../hooks/useAutoUpdate';
 import { getRoomInitials, toggleTheme, getTheme } from '../lib/utils';
 import * as api from '../lib/api';
 import { playSound } from '../lib/sounds';
-import { Mic, MicOff, Camera, CameraOff, Ear, EarOff, Monitor, MonitorOff, Volume2, VolumeX, Settings, Sun, Moon, LogOut, AudioLines, Music, X, MessageCircle, Download, Scissors } from 'lucide-react';
+import { Mic, MicOff, Camera, CameraOff, Ear, EarOff, Monitor, MonitorOff, Volume2, VolumeX, Settings, Sun, Moon, LogOut, AudioLines, Music, X, MessageCircle, Download, Scissors, Lock, ShieldAlert, RefreshCw } from 'lucide-react';
 
 interface RoomPageProps {
   user: api.User;
@@ -83,6 +83,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     remoteParticipants,
     activeSpeakers,
     connectionState,
+    e2eeEnabled,
     connect,
     disconnect,
   } = useLiveKitRoom();
@@ -114,6 +115,8 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
 
   const [showQualityMenu, setShowQualityMenu] = useState(false);
   const [showStopShareConfirm, setShowStopShareConfirm] = useState(false);
+  const isSafari = /Safari\//.test(navigator.userAgent) && !/Chrome\//.test(navigator.userAgent);
+  const [safariWarnDismissed, setSafariWarnDismissed] = useState(() => localStorage.getItem('safariCodecWarnDismissed') === '1');
   const [spotlight, setSpotlight] = useState<{ identity: string; source: 'screen_share' | 'camera' } | null>(null);
   const [audioTrackVersion, setAudioTrackVersion] = useState(0);
   const [videoTrackVersion, setVideoTrackVersion] = useState(0);
@@ -253,14 +256,26 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
 
   // Re-sync room membership when SSE reconnects after a drop
   const handleSSEReconnect = useCallback(async () => {
-    if (currentRoom && connectionState === ConnectionState.Connected) {
+    if (!currentRoom) return;
+    if (connectionState === ConnectionState.Connected) {
       try {
         await api.syncRoom(currentRoom.id);
       } catch (err) {
         console.warn('Room sync after SSE reconnect failed:', err);
       }
+    } else if (
+      connectionState === ConnectionState.Disconnected ||
+      connectionState === ConnectionState.Reconnecting
+    ) {
+      // LiveKit dropped while SSE was down — re-join the room
+      try {
+        const { token, wsUrl, e2eeKey } = await api.joinRoom(currentRoom.id);
+        await connect({ wsUrl, token, e2eeKey });
+      } catch (err) {
+        console.warn('LiveKit reconnect after SSE reconnect failed:', err);
+      }
     }
-  }, [currentRoom, connectionState]);
+  }, [currentRoom, connectionState, connect]);
 
   // SSE events for real-time updates
   useEvents({ handlers: {
@@ -543,6 +558,9 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
         return next;
       });
     },
+    'music:status': (data) => {
+      setMusicStatus(data as api.MusicStatus);
+    },
   }, onReconnect: handleSSEReconnect });
 
   // Close quality menu on outside click
@@ -600,16 +618,19 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     };
   }, [showSoundboard]);
 
-  // Close music popover when leaving the music room
+  // Music bot state — driven by SSE, no polling
   const hasMusicBot = remoteParticipants.some((p) => p.identity === '__music-bot__');
-  const [musicNowPlaying, setMusicNowPlaying] = useState<string | null>(null);
+  const [musicStatus, setMusicStatus] = useState<api.MusicStatus | null>(null);
   useEffect(() => {
-    if (!hasMusicBot) { setShowMusic(false); setMusicNowPlaying(null); return; }
-    const fetch = () => api.getMusicStatus().then((s) => setMusicNowPlaying(s.paused ? `(Paused) ${s.nowPlaying || ''}` : s.nowPlaying)).catch(() => {});
-    fetch();
-    const id = setInterval(fetch, 5000);
-    return () => clearInterval(id);
+    if (!hasMusicBot) { setShowMusic(false); setMusicStatus(null); return; }
+    api.getMusicStatus().then(setMusicStatus).catch(() => {});
   }, [hasMusicBot]);
+  const musicNowPlaying = musicStatus
+    ? (musicStatus.paused ? `(Paused) ${musicStatus.nowPlaying || ''}` : musicStatus.nowPlaying)
+    : null;
+  const refreshMusicStatus = useCallback(() => {
+    api.getMusicStatus().then(setMusicStatus).catch(() => {});
+  }, []);
 
   // Close music popover on outside click
   useEffect(() => {
@@ -938,7 +959,8 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
           <h2 className="text-lg font-bold">disTokoloshe</h2>
           <button
             onClick={() => setThemeState(toggleTheme())}
-            className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 text-sm"
+            className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 text-sm focus-visible:ring-2 focus-visible:ring-indigo-500 rounded"
+            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
             title="Toggle theme"
           >
             {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
@@ -1051,9 +1073,15 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
             </div>
           </div>
           <SignalStrength stats={connectionStats} serverCity={serverCity} connecting={connectionState === ConnectionState.Connecting || (connectionState === ConnectionState.Connected && connectionStats.rttMs === null)} />
+          {connectionState === ConnectionState.Connected && (
+            e2eeEnabled
+              ? <span data-tooltip="End-to-end encrypted" className="shrink-0 flex items-center"><Lock size={13} className="text-green-400" /></span>
+              : <span data-tooltip="Transport encryption only — E2EE not available in this browser" className="shrink-0 flex items-center"><ShieldAlert size={13} className="text-amber-400" /></span>
+          )}
           <button
             onClick={onLogout}
-            className="text-zinc-500 hover:text-red-400 transition-colors flex-shrink-0"
+            className="text-zinc-500 hover:text-red-400 transition-colors flex-shrink-0 focus-visible:ring-2 focus-visible:ring-indigo-500 rounded"
+            aria-label="Logout"
             title="Logout"
           >
             <LogOut size={14} />
@@ -1068,7 +1096,8 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
           {/* Left sidebar toggle — mobile only */}
           <button
             onClick={() => setLeftSidebarOpen(!leftSidebarOpen)}
-            className="mr-2 p-1.5 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700 md:hidden shrink-0"
+            className="mr-2 p-1.5 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700 focus-visible:ring-2 focus-visible:ring-indigo-500 md:hidden shrink-0"
+            aria-label="Toggle rooms sidebar"
             title="Toggle rooms"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1116,7 +1145,8 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
           {/* Right sidebar toggle — mobile only */}
           <button
             onClick={() => setRightSidebarOpen(!rightSidebarOpen)}
-            className="ml-2 p-1.5 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700 md:hidden shrink-0"
+            className="ml-2 p-1.5 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700 focus-visible:ring-2 focus-visible:ring-indigo-500 md:hidden shrink-0"
+            aria-label="Toggle members sidebar"
             title="Toggle members"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1128,9 +1158,9 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
         {/* Participant area */}
         <div className="flex-1 p-6 pb-20 overflow-y-auto">
           {error && (!error.roomId || error.roomId === currentRoom?.id) && (
-            <div className={`mb-4 p-3 bg-amber-50 dark:bg-zinc-800 border border-amber-500/40 rounded-lg text-amber-700 dark:text-amber-200 text-sm flex items-center transition-opacity duration-500 ${errorFading ? 'opacity-0' : 'opacity-100 animate-[fadeIn_0.2s_ease-out]'}`}>
+            <div className={`mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm flex items-center transition-opacity duration-500 ${errorFading ? 'opacity-0' : 'opacity-100 animate-[fadeIn_0.2s_ease-out]'}`}>
               <span className="flex-1">{error.msg}</span>
-              <button onClick={() => setError(null)} className="ml-2 text-amber-500 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-200">&times;</button>
+              <button onClick={() => setError(null)} className="ml-2 text-red-400 hover:text-red-300">&times;</button>
             </div>
           )}
 
@@ -1199,20 +1229,20 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                   <div className="flex gap-2">
                     <button
                       onClick={() => handleCastBallot(activeVote.id, true)}
-                      className="px-3 py-1 text-xs rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
+                      className="px-3 py-1 text-xs rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 focus-visible:ring-2 focus-visible:ring-red-500 transition-colors"
                     >
                       Yes, Punish
                     </button>
                     <button
                       onClick={() => handleCastBallot(activeVote.id, false)}
-                      className="px-3 py-1 text-xs rounded bg-green-500/20 text-green-400 hover:bg-green-500/30 transition-colors"
+                      className="px-3 py-1 text-xs rounded bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-300 dark:hover:bg-zinc-600 focus-visible:ring-2 focus-visible:ring-indigo-500 transition-colors"
                     >
                       No
                     </button>
                   </div>
                 )}
                 {myBallot !== null && (
-                  <span className="text-xs text-zinc-500">Voted {myBallot ? 'Yes' : 'No'}</span>
+                  <span className="text-xs font-medium text-zinc-400">Voted {myBallot ? <span className="text-red-400">Yes</span> : <span className="text-zinc-300">No</span>}</span>
                 )}
                 {activeVote.targetUserId === user.id && (
                   <span className="text-xs text-red-400">You are being voted on!</span>
@@ -1590,6 +1620,13 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
             </div>
           )}
 
+          {connectionState === ConnectionState.Reconnecting && (
+            <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-400 text-sm flex items-center gap-2 animate-[fadeIn_0.2s_ease-out]">
+              <RefreshCw size={14} className="animate-spin shrink-0" />
+              <span>Reconnecting… audio and video may be interrupted</span>
+            </div>
+          )}
+
           {connectionState === ConnectionState.Connecting && (
             <div className="flex items-center justify-center h-64">
               <p className="text-zinc-500">Connecting...</p>
@@ -1629,11 +1666,12 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
             <div className="flex flex-wrap items-center justify-center gap-2 md:gap-3">
             <button
               onClick={() => { const willMute = room.localParticipant.isMicrophoneEnabled; room.localParticipant.setMicrophoneEnabled(!willMute); playSound(willMute ? 'mute' : 'unmute'); }}
-              className={`p-2.5 rounded-lg transition-colors ${
+              className={`p-2.5 rounded-lg transition-colors focus-visible:ring-2 focus-visible:ring-indigo-500 ${
                 micMuted
                   ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
                   : 'bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600'
               }`}
+              aria-label={micMuted ? 'Unmute microphone' : 'Mute microphone'}
               data-tooltip={micMuted ? 'Unmute' : 'Mute'}
             >
               {micMuted ? <MicOff size={18} /> : <Mic size={18} />}
@@ -1641,11 +1679,12 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
 
             <button
               onClick={() => { room.localParticipant.setCameraEnabled(!isCameraOn); playSound(isCameraOn ? 'cameraOff' : 'cameraOn'); }}
-              className={`p-2.5 rounded-lg transition-colors ${
+              className={`p-2.5 rounded-lg transition-colors focus-visible:ring-2 focus-visible:ring-indigo-500 ${
                 isCameraOn
                   ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
                   : 'bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600'
               }`}
+              aria-label={isCameraOn ? 'Turn camera off' : 'Turn camera on'}
               data-tooltip={isCameraOn ? 'Camera Off' : 'Camera On'}
             >
               {isCameraOn ? <Camera size={18} /> : <CameraOff size={18} />}
@@ -1653,11 +1692,12 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
 
             <button
               onClick={handleToggleDeafen}
-              className={`p-2.5 rounded-lg transition-colors ${
+              className={`p-2.5 rounded-lg transition-colors focus-visible:ring-2 focus-visible:ring-indigo-500 ${
                 deafened
                   ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
                   : 'bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600'
               }`}
+              aria-label={deafened ? 'Undeafen' : 'Deafen'}
               data-tooltip={deafened ? 'Undeafen' : 'Deafen'}
             >
               {deafened ? <EarOff size={18} /> : <Ear size={18} />}
@@ -1673,11 +1713,12 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                     setShowQualityMenu(!showQualityMenu);
                   }
                 }}
-                className={`p-2.5 rounded-lg transition-colors ${
+                className={`p-2.5 rounded-lg transition-colors focus-visible:ring-2 focus-visible:ring-indigo-500 ${
                   isSharing
                     ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
                     : 'bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600'
                 }`}
+                aria-label={isSharing ? 'Stop screen share' : 'Share screen'}
                 data-tooltip={isSharing ? `Stop Sharing (${shareQuality.charAt(0).toUpperCase() + shareQuality.slice(1)})` : 'Share Screen'}
               >
                 {isSharing ? <Monitor size={18} /> : <MonitorOff size={18} />}
@@ -1721,9 +1762,21 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                       </button>
                     ),
                   )}
-                  {/Safari\//.test(navigator.userAgent) && !/Chrome\//.test(navigator.userAgent) && (
-                    <p className="px-3 py-1.5 text-[10px] text-amber-500 border-t border-zinc-200 dark:border-zinc-600 mt-1">
-                      Safari does not support screen share audio
+                  {isSafari && !safariWarnDismissed && (
+                    <div className="px-3 py-2 border-t border-zinc-200 dark:border-zinc-600 mt-1 flex items-start gap-2">
+                      <p className="text-[10px] text-amber-400 flex-1">
+                        Safari has limited screen share quality (VP8 only, no audio). Chrome or Firefox recommended.
+                      </p>
+                      <button
+                        onClick={() => { setSafariWarnDismissed(true); localStorage.setItem('safariCodecWarnDismissed', '1'); }}
+                        className="text-zinc-400 hover:text-zinc-200 text-xs shrink-0"
+                        aria-label="Dismiss Safari warning"
+                      >×</button>
+                    </div>
+                  )}
+                  {isSafari && safariWarnDismissed && (
+                    <p className="px-3 py-1.5 text-[10px] text-zinc-500 border-t border-zinc-200 dark:border-zinc-600 mt-1">
+                      Safari: VP8 only, no audio capture
                     </p>
                   )}
                 </div>
@@ -1733,7 +1786,8 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
             {!isMobile && <div className="relative">
               <button
                 onClick={() => setShowVolumes(!showVolumes)}
-                className="p-2.5 rounded-lg bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors"
+                className="p-2.5 rounded-lg bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors focus-visible:ring-2 focus-visible:ring-indigo-500"
+                aria-label="Adjust participant volumes"
                 data-tooltip="Volumes"
               >
                 <Volume2 size={18} />
@@ -1762,19 +1816,21 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
             <div className="relative">
               <button
                 onClick={() => setShowMusic(!showMusic)}
-                className="p-2.5 rounded-lg bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors"
+                className="p-2.5 rounded-lg bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors focus-visible:ring-2 focus-visible:ring-indigo-500"
+                aria-label="Open music controls"
                 data-tooltip="Music"
               >
                 <Music size={18} />
               </button>
-              {showMusic && <MusicControls isMobile={isMobile} />}
+              {showMusic && <MusicControls isMobile={isMobile} status={musicStatus} onRefresh={refreshMusicStatus} />}
             </div>
             )}
 
             <div className="relative">
               <button
                 onClick={() => setShowSoundboard(!showSoundboard)}
-                className="p-2.5 rounded-lg bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors"
+                className="p-2.5 rounded-lg bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors focus-visible:ring-2 focus-visible:ring-indigo-500"
+                aria-label="Open soundboard"
                 data-tooltip="Soundboard"
               >
                 <AudioLines size={18} />
@@ -1799,7 +1855,8 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
             <div className="relative">
               <button
                 onClick={() => setShowSettings(!showSettings)}
-                className="p-2.5 rounded-lg bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors"
+                className="p-2.5 rounded-lg bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors focus-visible:ring-2 focus-visible:ring-indigo-500"
+                aria-label="Open settings"
                 data-tooltip="Settings"
               >
                 <Settings size={18} />

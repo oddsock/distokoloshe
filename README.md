@@ -112,12 +112,52 @@ LiveKit's entrypoint automatically detects TLS certs and switches to production 
 
 Certbot runs as a persistent container (under the `production` profile) and checks for renewal every 12 hours. Certificates are stored on disk at `./data/certs/` (bind-mounted into containers), so they survive `docker volume prune`.
 
+> **Note:** After automatic renewal, nginx and livekit must be restarted to pick up the new certificate. Add a host-level cron job to handle this:
+> ```
+> 0 3 * * * cd /path/to/distokoloshe && docker compose restart web livekit 2>/dev/null
+> ```
+
 To manually force a renewal:
 
 ```bash
 docker compose run --rm --entrypoint "certbot" certbot renew --force-renewal
 docker compose restart web livekit
 ```
+
+### Backup & Restore
+
+All persistent data lives in `./data/`. To back up the SQLite database and certificates:
+
+```bash
+# Backup
+tar czf distokoloshe-backup-$(date +%Y%m%d).tar.gz ./data/api/ ./data/certs/
+
+# Restore
+tar xzf distokoloshe-backup-YYYYMMDD.tar.gz
+docker compose up -d
+```
+
+The database is at `./data/api/distokoloshe.db`. Soundboard audio clips are stored as BLOBs in the database, so a single backup covers everything.
+
+### Troubleshooting
+
+**Can't connect / audio drops in restrictive networks (corporate, strict NAT)**
+
+LiveKit uses TURN relay in production mode (when TLS certs are present). If clients can connect via direct P2P but audio drops for some users, check:
+
+1. Ports `3478/UDP` and `5349/TCP` are open in your firewall
+2. The TURN server is working — test with: `curl -s https://chat.yourdomain.com/api/server-info`
+3. LiveKit logs: `docker compose logs livekit --tail=50`
+
+If TURN isn't helping, ensure `DOMAIN` is set correctly in `.env` — LiveKit uses it to advertise its public IP to clients.
+
+**Linux Docker: `host.docker.internal` not resolving**
+
+The API and web containers use `host.docker.internal` to reach the LiveKit container (which runs in host network mode). This is pre-configured via `extra_hosts: host.docker.internal:host-gateway` in `compose.yml` — no additional setup required on Linux as long as you're using Docker Engine ≥ 20.10.
+
+**HTTP/3 (QUIC) not working**
+
+Port `443/UDP` must be open in your firewall for HTTP/3 to function. Clients fall back to TCP automatically if UDP 443 is blocked, but HTTP/3 improves latency and performance when available.
 
 ### Updating
 

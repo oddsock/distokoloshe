@@ -87,10 +87,12 @@ export function useLiveKitRoom() {
         console.warn('Browser does not support Encoded Transforms — E2EE disabled, using DTLS-SRTP transport encryption');
       }
 
+      const lockQuality = localStorage.getItem('lockStreamQuality') === '1';
+
       // NOTE: The `e2ee` field in RoomOptions is the current stable API (livekit-client ^2.17).
       // If a future SDK version renames this to `encryption`, update this block.
       const room = new Room({
-        adaptiveStream: true,
+        adaptiveStream: !lockQuality,
         dynacast: true,
         audioCaptureDefaults: {
           noiseSuppression: true,

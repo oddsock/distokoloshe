@@ -37,7 +37,7 @@ services:
       api:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-qO/dev/null", "http://127.0.0.1:80/"]
+      test: ["CMD-SHELL", "wget -qO/dev/null http://127.0.0.1:80/ || wget --no-check-certificate -qO/dev/null https://127.0.0.1:443/"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -71,8 +71,8 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-    expose:
-      - "3000"
+    ports:
+      - "127.0.0.1:3000:3000"   # Allow host-networked services (music bot) to reach API directly
     networks:
       - app_net
 
@@ -91,6 +91,7 @@ services:
       - E2EE_SECRET=${E2EE_SECRET:-}
       - LIVEKIT_URL=ws://127.0.0.1:${LK_PORT:-7881}
       - MUSIC_ROOM_NAME=${MUSIC_ROOM_NAME:-Music}
+      - API_URL=http://127.0.0.1:3000
 
   # ── LiveKit SFU (WebRTC media relay + built-in TURN) ───
   # Uses host networking so WebRTC ICE candidates work correctly.
@@ -107,6 +108,12 @@ services:
       - DOMAIN=${DOMAIN:-localhost}
     volumes:
       - ./data/certs:/etc/letsencrypt:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO/dev/null", "--timeout=3", "http://127.0.0.1:${LK_PORT:-7881}"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
   # ── Certbot (Let's Encrypt cert renewal) ────────────────
   # Only needed in production. Renews certs every 12 hours.
