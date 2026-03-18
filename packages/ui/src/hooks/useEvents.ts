@@ -72,7 +72,21 @@ export function useEvents({ handlers, onReconnect }: UseEventsOptions) {
 
   useEffect(() => {
     connect();
+
+    // Heartbeat: lets the server detect stale connections quickly.
+    // If the SSE drops and no heartbeat has arrived recently, the server skips
+    // the full 15s grace period and fires the disconnect in ~2s instead.
+    const heartbeatInterval = setInterval(() => {
+      const token = getStoredToken();
+      if (!token) return;
+      fetch(`${getBaseUrl()}/api/events/ping`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+      }).catch(() => {});
+    }, 8000);
+
     return () => {
+      clearInterval(heartbeatInterval);
       const es = eventSourceRef.current;
       if (es) {
         clearInterval((es as unknown as { _syncInterval: ReturnType<typeof setInterval> })._syncInterval);

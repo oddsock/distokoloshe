@@ -36,6 +36,21 @@ const MAX_CONNECTIONS_TOTAL = 500;
 
 // Grace period: defer leave/offline broadcasts so brief SSE reconnects are invisible
 const GRACE_PERIOD_MS = 15_000;
+// Fast disconnect: used when heartbeat is stale, meaning the user is truly gone
+const FAST_DISCONNECT_MS = 2_000;
+// A heartbeat within this window means the client was alive recently → likely an SSE reconnect
+const HEARTBEAT_FRESH_MS = 10_000;
+
+const lastHeartbeat = new Map<number, number>();
+
+export function updateHeartbeat(userId: number): void {
+  lastHeartbeat.set(userId, Date.now());
+}
+
+export function getHeartbeatAge(userId: number): number {
+  const ts = lastHeartbeat.get(userId);
+  return ts == null ? Infinity : Date.now() - ts;
+}
 
 interface PendingDisconnect {
   timer: NodeJS.Timeout;
@@ -112,14 +127,18 @@ export function scheduleDisconnect(
   userId: number,
   roomId: number | null,
   onExpire: () => void,
+  gracePeriod?: number,
 ): void {
   // Cancel any existing pending disconnect for this user
   cancelPendingDisconnect(userId);
 
+  // Default: use full grace period if heartbeat is fresh (SSE reconnect), otherwise fast
+  const delay = gracePeriod ?? (getHeartbeatAge(userId) < HEARTBEAT_FRESH_MS ? GRACE_PERIOD_MS : FAST_DISCONNECT_MS);
+
   const timer = setTimeout(() => {
     pendingDisconnects.delete(userId);
     onExpire();
-  }, GRACE_PERIOD_MS);
+  }, delay);
 
   pendingDisconnects.set(userId, { timer, roomId, userId });
 }

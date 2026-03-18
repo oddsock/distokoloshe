@@ -5,6 +5,7 @@ import {
   addClient, removeClient, broadcast, broadcastToRoom,
   isUserOnline, isUserInRoom, canAddClient,
   scheduleDisconnect, cancelPendingDisconnect, setUserRoom, getUserRoomId,
+  updateHeartbeat,
 } from '../events.js';
 import { removeFromChain } from '../whispers.js';
 
@@ -114,6 +115,12 @@ router.get('/', requireAuth, (req: Request, res: Response) => {
       }
     });
   });
+});
+
+// POST /api/events/ping — Heartbeat from client; keeps presence detection fresh
+router.post('/ping', requireAuth, (req: Request, res: Response) => {
+  updateHeartbeat(req.user!.sub);
+  res.json({ ok: true });
 });
 
 // POST /api/events/leave — Explicit leave signal (skips grace period)
