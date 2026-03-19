@@ -218,8 +218,11 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     : null;
 
   // Signal intentional leave on tab close/navigation so server skips grace period.
-  // beforeunload: reliable on desktop. pagehide: reliable on mobile Safari (swipe-close).
+  // beforeunload: reliable on desktop browsers. pagehide: reliable on mobile Safari (swipe-close).
+  // In Tauri, the Rust on_window_event handler sends the leave signal natively on close,
+  // so we skip these listeners (Tauri invoke is blocked during unload anyway).
   useEffect(() => {
+    if ('__TAURI_INTERNALS__' in window) return;
     const sendLeave = () => api.sendLeaveBeacon();
     window.addEventListener('beforeunload', sendLeave);
     window.addEventListener('pagehide', sendLeave);
