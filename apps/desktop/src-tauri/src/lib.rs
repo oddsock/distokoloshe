@@ -4,6 +4,24 @@ use tauri::Manager;
 use tauri_plugin_updater::UpdaterExt;
 use url::Url;
 
+// ── Auth state (synced from JS so Rust can send leave on window close) ──
+#[derive(Clone)]
+struct AuthInfo {
+    token: String,
+    server_url: String,
+}
+struct AuthState(Mutex<Option<AuthInfo>>);
+
+#[tauri::command]
+fn set_auth_info(state: tauri::State<'_, AuthState>, token: String, server_url: String) {
+    *state.0.lock().unwrap() = Some(AuthInfo { token, server_url });
+}
+
+#[tauri::command]
+fn clear_auth_info(state: tauri::State<'_, AuthState>) {
+    *state.0.lock().unwrap() = None;
+}
+
 // ── Update state ─────────────────────────────────────────
 struct PendingUpdate(Mutex<Option<tauri_plugin_updater::Update>>);
 
@@ -78,6 +96,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_process::init())
+        .manage(AuthState(Mutex::new(None)))
         .manage(PendingUpdate(Mutex::new(None)))
         .setup(|app| {
             #[cfg(desktop)]
@@ -93,27 +112,23 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             check_for_update,
             install_update,
+            set_auth_info,
+            clear_auth_info,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
-                // Fire the leave beacon before the webview is destroyed.
-                // This tells the server to skip the 15s grace period.
-                if let Some(ww) = window.app_handle().get_webview_window("main") {
-                    let _ = ww.eval(
-                        "try { \
-                            const token = localStorage.getItem('distokoloshe_token'); \
-                            const server = localStorage.getItem('distokoloshe_server_url') || ''; \
-                            if (token && server) { \
-                                navigator.sendBeacon( \
-                                    server + '/api/events/leave', \
-                                    new Blob([JSON.stringify({ token })], { type: 'application/json' }) \
-                                ); \
-                            } \
-                        } catch(e) {}"
-                    );
+                // Send leave signal via native HTTP, bypassing webview CORS restrictions.
+                let auth = window.app_handle().state::<AuthState>().0.lock().unwrap().clone();
+                if let Some(info) = auth {
+                    let url = format!("{}/api/events/leave", info.server_url);
+                    let body = serde_json::json!({ "token": info.token }).to_string();
+                    let _ = reqwest::blocking::Client::new()
+                        .post(&url)
+                        .header("Content-Type", "application/json")
+                        .body(body)
+                        .timeout(std::time::Duration::from_secs(2))
+                        .send();
                 }
-                // Brief pause to let the beacon fire
-                std::thread::sleep(std::time::Duration::from_millis(100));
             }
         })
         .run(tauri::generate_context!())

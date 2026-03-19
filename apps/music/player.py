@@ -174,12 +174,17 @@ class Player:
                 await self._play_next_from_queue()
             return
 
-        # High-quality resampler for 44.1→48kHz conversion (MP3 sources).
-        # soxr is vastly superior to default SWR for non-integer ratio conversions.
+        # Loudness normalization (EBU R128) + high-quality resampling.
+        # loudnorm tames hot radio streams to -14 LUFS / -1 dBTP, preventing
+        # clipping artifacts through the Opus encode/decode cycle.
+        loudnorm = "loudnorm=I=-14:TP=-1:LRA=11"
+
         if HAS_SOXR:
-            af = "aresample=resampler=soxr:precision=28:dither_method=none"
+            resample = "aresample=resampler=soxr:precision=28:dither_method=none"
         else:
-            af = "aresample=resampler=swr:filter_size=128:phase_shift=10:cutoff=0.95:dither_method=none"
+            resample = "aresample=resampler=swr:filter_size=128:phase_shift=10:cutoff=0.95:dither_method=none"
+
+        af = f"{loudnorm},{resample}"
 
         proc = await asyncio.create_subprocess_exec(
             "ffmpeg",

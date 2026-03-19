@@ -4,6 +4,22 @@ const BASE_URL_KEY = 'distokoloshe_server_url';
 // Base URL for API requests. Empty = relative (web proxy), absolute = desktop.
 let baseUrl = localStorage.getItem(BASE_URL_KEY) || '';
 
+/** Sync auth credentials to Tauri managed state (no-op outside desktop app). */
+function syncAuthToTauri(token: string | null, serverUrl?: string): void {
+  if (!('__TAURI_INTERNALS__' in window)) return;
+  import('@tauri-apps/api/core').then(({ invoke }) => {
+    if (token) {
+      invoke('set_auth_info', { token, serverUrl: serverUrl ?? baseUrl }).catch(() => {});
+    } else {
+      invoke('clear_auth_info').catch(() => {});
+    }
+  }).catch(() => {});
+}
+
+// Sync existing auth to Tauri on module load (covers app restart with saved token)
+const _initToken = localStorage.getItem(TOKEN_KEY);
+if (_initToken) syncAuthToTauri(_initToken);
+
 export function getBaseUrl(): string {
   return baseUrl;
 }
@@ -15,6 +31,9 @@ export function setBaseUrl(url: string): void {
   } else {
     localStorage.removeItem(BASE_URL_KEY);
   }
+  // Re-sync auth with updated server URL
+  const token = getStoredToken();
+  if (token) syncAuthToTauri(token, baseUrl);
 }
 
 export function getStoredToken(): string | null {
@@ -23,10 +42,12 @@ export function getStoredToken(): string | null {
 
 export function setStoredToken(token: string): void {
   localStorage.setItem(TOKEN_KEY, token);
+  syncAuthToTauri(token);
 }
 
 export function clearStoredToken(): void {
   localStorage.removeItem(TOKEN_KEY);
+  syncAuthToTauri(null);
 }
 
 export class ApiError extends Error {

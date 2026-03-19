@@ -61,6 +61,7 @@ export function useAuth() {
   );
 
   const logout = useCallback(() => {
+    api.sendLeaveBeacon(); // instant leave before token is cleared
     api.clearStoredToken();
     setState({ user: null, initialized: true, isLoading: false, error: null });
   }, []);
