@@ -152,6 +152,15 @@ export function syncRoom(roomId: number) {
 export function sendLeaveBeacon(): void {
   const token = getStoredToken();
   if (!token) return;
+
+  // In Tauri, use native HTTP to bypass CORS restrictions
+  if ('__TAURI_INTERNALS__' in window) {
+    import('@tauri-apps/api/core').then(({ invoke }) => {
+      invoke('send_leave', { token, serverUrl: baseUrl }).catch(() => {});
+    }).catch(() => {});
+    return;
+  }
+
   const url = `${getBaseUrl()}/api/events/leave`;
   navigator.sendBeacon(url, new Blob(
     [JSON.stringify({ token })],

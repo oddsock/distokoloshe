@@ -22,6 +22,21 @@ fn clear_auth_info(state: tauri::State<'_, AuthState>) {
     *state.0.lock().unwrap() = None;
 }
 
+#[tauri::command]
+async fn send_leave(token: String, server_url: String) -> Result<(), String> {
+    let url = format!("{}/api/events/leave", server_url);
+    let body = serde_json::json!({ "token": token }).to_string();
+    reqwest::Client::new()
+        .post(&url)
+        .header("Content-Type", "application/json")
+        .body(body)
+        .timeout(std::time::Duration::from_secs(2))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 // ── Update state ─────────────────────────────────────────
 struct PendingUpdate(Mutex<Option<tauri_plugin_updater::Update>>);
 
@@ -114,6 +129,7 @@ pub fn run() {
             install_update,
             set_auth_info,
             clear_auth_info,
+            send_leave,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
