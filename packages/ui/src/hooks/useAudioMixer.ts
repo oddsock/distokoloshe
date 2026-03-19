@@ -58,7 +58,19 @@ export function useAudioMixer() {
       const saved = loadSavedVolumes();
       const defaultVol = identity === MUSIC_BOT_IDENTITY ? MUSIC_BOT_DEFAULT_VOLUME : 1.0;
       const volume = Math.max(0, Math.min(1, saved[identity] ?? defaultVol));
-      el.volume = deafenedRef.current ? 0 : volume;
+      const deaf = deafenedRef.current;
+      el.volume = deaf ? 0 : volume;
+
+      // If deafened, disable the underlying media stream tracks to prevent
+      // buffer accumulation (matches setDeafened behavior)
+      if (deaf) {
+        const stream = el.srcObject;
+        if (stream instanceof MediaStream) {
+          for (const t of stream.getAudioTracks()) {
+            t.enabled = false;
+          }
+        }
+      }
 
       el.play().catch((err) => {
         console.warn(`Audio play failed for ${key}:`, err);
