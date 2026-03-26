@@ -23,6 +23,7 @@ export default defineConfig({
         '@tauri-apps/plugin-process',
         '@tauri-apps/api/core',
         '@tauri-apps/api/app',
+        '@tauri-apps/api/path',
       ],
     },
   },
