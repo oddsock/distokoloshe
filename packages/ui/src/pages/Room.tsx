@@ -264,6 +264,52 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     }).catch(() => setPunishmentChecked(true));
   }, []);
 
+  // Auto-rejoin when LiveKit drops (e.g. "createOffer with closed peer connection")
+  // Only triggers after we were Connected and then dropped — not during intentional joins.
+  const rejoinTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rejoinAttemptsRef = useRef(0);
+  const wasConnectedRef = useRef(false);
+  const MAX_REJOIN_ATTEMPTS = 3;
+  useEffect(() => {
+    if (connectionState === ConnectionState.Connected) {
+      wasConnectedRef.current = true;
+      rejoinAttemptsRef.current = 0;
+      if (rejoinTimerRef.current) {
+        clearTimeout(rejoinTimerRef.current);
+        rejoinTimerRef.current = null;
+      }
+      return;
+    }
+    if (connectionState !== ConnectionState.Disconnected) {
+      if (rejoinTimerRef.current) {
+        clearTimeout(rejoinTimerRef.current);
+        rejoinTimerRef.current = null;
+      }
+      return;
+    }
+    // Only auto-rejoin if we previously had a successful connection that dropped
+    if (!wasConnectedRef.current || !currentRoom) return;
+    if (rejoinAttemptsRef.current >= MAX_REJOIN_ATTEMPTS) return;
+    wasConnectedRef.current = false;
+    const attempt = ++rejoinAttemptsRef.current;
+    const delay = Math.min(2000 * attempt, 8000);
+    rejoinTimerRef.current = setTimeout(async () => {
+      rejoinTimerRef.current = null;
+      try {
+        const { token, wsUrl, e2eeKey } = await api.joinRoom(currentRoom.id);
+        await connect({ wsUrl, token, e2eeKey });
+      } catch (err) {
+        console.warn(`Auto-rejoin attempt ${attempt}/${MAX_REJOIN_ATTEMPTS} failed:`, err);
+      }
+    }, delay);
+    return () => {
+      if (rejoinTimerRef.current) {
+        clearTimeout(rejoinTimerRef.current);
+        rejoinTimerRef.current = null;
+      }
+    };
+  }, [currentRoom, connectionState, connect]);
+
   // Re-sync room membership when SSE reconnects after a drop
   const handleSSEReconnect = useCallback(async () => {
     if (!currentRoom) return;
