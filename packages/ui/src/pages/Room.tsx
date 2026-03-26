@@ -265,12 +265,14 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
   }, []);
 
   // Auto-rejoin when LiveKit drops (e.g. "createOffer with closed peer connection")
+  // Only triggers after we were Connected and then dropped — not during intentional joins.
   const rejoinTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rejoinAttemptsRef = useRef(0);
+  const wasConnectedRef = useRef(false);
   const MAX_REJOIN_ATTEMPTS = 3;
   useEffect(() => {
-    if (!currentRoom) return;
     if (connectionState === ConnectionState.Connected) {
+      wasConnectedRef.current = true;
       rejoinAttemptsRef.current = 0;
       if (rejoinTimerRef.current) {
         clearTimeout(rejoinTimerRef.current);
@@ -285,8 +287,10 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
       }
       return;
     }
+    // Only auto-rejoin if we previously had a successful connection that dropped
+    if (!wasConnectedRef.current || !currentRoom) return;
     if (rejoinAttemptsRef.current >= MAX_REJOIN_ATTEMPTS) return;
-    // LiveKit gave up reconnecting — attempt a full rejoin after a short delay
+    wasConnectedRef.current = false;
     const attempt = ++rejoinAttemptsRef.current;
     const delay = Math.min(2000 * attempt, 8000);
     rejoinTimerRef.current = setTimeout(async () => {
