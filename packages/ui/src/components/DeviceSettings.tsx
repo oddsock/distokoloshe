@@ -454,6 +454,7 @@ export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile,
             {([
               ['toggleMute', 'Toggle Mute'],
               ['toggleDeafen', 'Toggle Deafen'],
+              ['captureSoundbites', 'Capture Soundbites'],
             ] as [keyof typeof hotkeyBindings, string][]).map(([action, label]) => (
               <div key={action} className="flex items-center justify-between">
                 <span className="text-xs text-zinc-600 dark:text-zinc-400">{label}</span>

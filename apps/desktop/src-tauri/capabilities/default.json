@@ -10,6 +10,7 @@
     "global-shortcut:allow-is-registered",
     "dialog:allow-save",
     "fs:allow-write-file",
+    "fs:scope-download",
     "updater:default",
     "process:default",
     {

@@ -109,18 +109,17 @@ export function useSoundbiteRecorder() {
     recordingsRef.current.delete(identity);
   }, []);
 
-  const captureSoundbite = useCallback((identity: string, displayName: string) => {
+  /** Extract WAV blob + filename for a single participant (no I/O). */
+  const extractSoundbite = useCallback((identity: string, displayName: string): { blob: Blob; fileName: string } | null => {
     const recording = recordingsRef.current.get(identity);
-    if (!recording || recording.samplesFilled === 0) return;
+    if (!recording || recording.samplesFilled === 0) return null;
 
     const { buffer, writeIndex, samplesFilled } = recording;
     const samples = new Float32Array(samplesFilled);
 
     if (samplesFilled < buffer.length) {
-      // Buffer not yet full — data is contiguous from 0
       samples.set(buffer.subarray(0, samplesFilled));
     } else {
-      // Buffer is full — oldest data starts at writeIndex
       const tail = buffer.subarray(writeIndex);
       const head = buffer.subarray(0, writeIndex);
       samples.set(tail, 0);
@@ -130,8 +129,12 @@ export function useSoundbiteRecorder() {
     const sampleRate = audioCtxRef.current?.sampleRate || 48000;
     const blob = encodeWav(samples, sampleRate);
     const fileName = `${displayName}_soundbite_${Date.now()}.wav`;
+    return { blob, fileName };
+  }, []);
 
-    if (isTauri()) {
+  /** Save a blob+filename — Tauri uses save dialog, web uses download link. */
+  const saveSoundbite = useCallback((blob: Blob, fileName: string, skipDialog = false) => {
+    if (isTauri() && !skipDialog) {
       // Tauri webview doesn't support blob URL downloads — use native save dialog
       import(/* @vite-ignore */ '@tauri-apps/plugin-dialog').then(({ save }) =>
         save({ defaultPath: fileName, filters: [{ name: 'WAV Audio', extensions: ['wav'] }] })
@@ -141,6 +144,20 @@ export function useSoundbiteRecorder() {
         const arrayBuf = await blob.arrayBuffer();
         await writeFile(path, new Uint8Array(arrayBuf));
       }).catch((err) => console.error('Failed to save soundbite:', err));
+    } else if (isTauri() && skipDialog) {
+      // Auto-save to downloads directory without prompting
+      (async () => {
+        try {
+          const { downloadDir, join } = await import(/* @vite-ignore */ '@tauri-apps/api/path');
+          const { writeFile } = await import(/* @vite-ignore */ '@tauri-apps/plugin-fs');
+          const dir = await downloadDir();
+          const path = await join(dir, fileName);
+          const arrayBuf = await blob.arrayBuffer();
+          await writeFile(path, new Uint8Array(arrayBuf));
+        } catch (err) {
+          console.error('Failed to auto-save soundbite:', err);
+        }
+      })();
     } else {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -152,6 +169,21 @@ export function useSoundbiteRecorder() {
       URL.revokeObjectURL(url);
     }
   }, []);
+
+  const captureSoundbite = useCallback((identity: string, displayName: string) => {
+    const result = extractSoundbite(identity, displayName);
+    if (!result) return;
+    saveSoundbite(result.blob, result.fileName);
+  }, [extractSoundbite, saveSoundbite]);
+
+  /** Capture all active participants at once (hotkey). Skips save dialog. */
+  const captureAllSoundbites = useCallback((participants: { identity: string; displayName: string }[]) => {
+    for (const { identity, displayName } of participants) {
+      const result = extractSoundbite(identity, displayName);
+      if (!result) continue;
+      saveSoundbite(result.blob, result.fileName, true);
+    }
+  }, [extractSoundbite, saveSoundbite]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -170,5 +202,5 @@ export function useSoundbiteRecorder() {
     };
   }, []);
 
-  return { startRecording, stopRecording, captureSoundbite };
+  return { startRecording, stopRecording, captureSoundbite, captureAllSoundbites };
 }

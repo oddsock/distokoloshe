@@ -89,7 +89,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
   } = useLiveKitRoom();
 
   const { attachTrack, detachTrack, setVolume, getVolume, setMuted, isMuted, setTrackMuted, isTrackMuted, deafened, setDeafened } = useAudioMixer();
-  const { startRecording, stopRecording, captureSoundbite } = useSoundbiteRecorder();
+  const { startRecording, stopRecording, captureSoundbite, captureAllSoundbites } = useSoundbiteRecorder();
   const { enabled: ncEnabled, setEnabled: setNcEnabled, engine: ncEngine, setEngine: setNcEngine, supported: ncSupported } = useNoiseCancellation(room);
   const autoUpdate = useAutoUpdate();
   const [mutedUsers, setMutedUsers] = useState<Set<string>>(new Set());
@@ -135,9 +135,16 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
   const handleToggleDeafen = useCallback(() => {
     setDeafened(!deafened);
   }, [deafened, setDeafened]);
+  const handleCaptureSoundbites = useCallback(() => {
+    const participants = remoteParticipants
+      .filter((p) => p.identity !== '__music-bot__')
+      .map((p) => ({ identity: p.identity, displayName: p.name || p.identity }));
+    captureAllSoundbites(participants);
+  }, [remoteParticipants, captureAllSoundbites]);
   const { bindings: hotkeyBindings, setBindings: setHotkeyBindings } = useHotkeys({
     onToggleMute: handleToggleMute,
     onToggleDeafen: handleToggleDeafen,
+    onCaptureSoundbites: handleCaptureSoundbites,
     enabled: connectionState === ConnectionState.Connected,
   });
 
@@ -256,6 +263,36 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
       setPunishmentChecked(true);
     }).catch(() => setPunishmentChecked(true));
   }, []);
+
+  // Auto-rejoin when LiveKit drops (e.g. "createOffer with closed peer connection")
+  const rejoinTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!currentRoom) return;
+    if (connectionState !== ConnectionState.Disconnected) {
+      // Clear any pending rejoin if we reconnected
+      if (rejoinTimerRef.current) {
+        clearTimeout(rejoinTimerRef.current);
+        rejoinTimerRef.current = null;
+      }
+      return;
+    }
+    // LiveKit gave up reconnecting — attempt a full rejoin after a short delay
+    rejoinTimerRef.current = setTimeout(async () => {
+      rejoinTimerRef.current = null;
+      try {
+        const { token, wsUrl, e2eeKey } = await api.joinRoom(currentRoom.id);
+        await connect({ wsUrl, token, e2eeKey });
+      } catch (err) {
+        console.warn('Auto-rejoin after disconnect failed:', err);
+      }
+    }, 2000);
+    return () => {
+      if (rejoinTimerRef.current) {
+        clearTimeout(rejoinTimerRef.current);
+        rejoinTimerRef.current = null;
+      }
+    };
+  }, [currentRoom, connectionState, connect]);
 
   // Re-sync room membership when SSE reconnects after a drop
   const handleSSEReconnect = useCallback(async () => {

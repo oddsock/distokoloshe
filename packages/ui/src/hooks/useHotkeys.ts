@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 export interface HotkeyBindings {
   toggleMute: string;
   toggleDeafen: string;
+  captureSoundbites: string;
 }
 
 const HOTKEYS_KEY = 'distokoloshe_hotkeys';
@@ -10,6 +11,7 @@ const HOTKEYS_KEY = 'distokoloshe_hotkeys';
 const DEFAULT_BINDINGS: HotkeyBindings = {
   toggleMute: 'KeyM',
   toggleDeafen: 'KeyD',
+  captureSoundbites: 'Ctrl+Shift+KeyS',
 };
 
 const isTauri = () => '__TAURI_INTERNALS__' in window;
@@ -100,14 +102,15 @@ export function formatKey(binding: string): string {
 interface UseHotkeysOptions {
   onToggleMute: () => void;
   onToggleDeafen: () => void;
+  onCaptureSoundbites: () => void;
   enabled: boolean;
 }
 
-export function useHotkeys({ onToggleMute, onToggleDeafen, enabled }: UseHotkeysOptions) {
+export function useHotkeys({ onToggleMute, onToggleDeafen, onCaptureSoundbites, enabled }: UseHotkeysOptions) {
   const [bindings, setBindingsState] = useState<HotkeyBindings>(loadHotkeys);
   const registeredRef = useRef<string[]>([]);
-  const callbacksRef = useRef({ onToggleMute, onToggleDeafen });
-  callbacksRef.current = { onToggleMute, onToggleDeafen };
+  const callbacksRef = useRef({ onToggleMute, onToggleDeafen, onCaptureSoundbites });
+  callbacksRef.current = { onToggleMute, onToggleDeafen, onCaptureSoundbites };
 
   const setBindings = useCallback((next: HotkeyBindings) => {
     setBindingsState(next);
@@ -128,12 +131,15 @@ export function useHotkeys({ onToggleMute, onToggleDeafen, enabled }: UseHotkeys
       } else if (matchesKeyEvent(bindings.toggleDeafen, e)) {
         e.preventDefault();
         onToggleDeafen();
+      } else if (matchesKeyEvent(bindings.captureSoundbites, e)) {
+        e.preventDefault();
+        onCaptureSoundbites();
       }
     };
 
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [enabled, bindings, onToggleMute, onToggleDeafen]);
+  }, [enabled, bindings, onToggleMute, onToggleDeafen, onCaptureSoundbites]);
 
   // ── Tauri global shortcuts (only for bindings WITH modifiers) ──
   useEffect(() => {
@@ -155,6 +161,7 @@ export function useHotkeys({ onToggleMute, onToggleDeafen, enabled }: UseHotkeys
       const entries: [string, () => void][] = [
         [bindings.toggleMute, () => callbacksRef.current.onToggleMute()],
         [bindings.toggleDeafen, () => callbacksRef.current.onToggleDeafen()],
+        [bindings.captureSoundbites, () => callbacksRef.current.onCaptureSoundbites()],
       ];
 
       for (const [binding, callback] of entries) {
