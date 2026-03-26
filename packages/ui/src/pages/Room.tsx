@@ -266,26 +266,38 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
 
   // Auto-rejoin when LiveKit drops (e.g. "createOffer with closed peer connection")
   const rejoinTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rejoinAttemptsRef = useRef(0);
+  const MAX_REJOIN_ATTEMPTS = 3;
   useEffect(() => {
     if (!currentRoom) return;
-    if (connectionState !== ConnectionState.Disconnected) {
-      // Clear any pending rejoin if we reconnected
+    if (connectionState === ConnectionState.Connected) {
+      rejoinAttemptsRef.current = 0;
       if (rejoinTimerRef.current) {
         clearTimeout(rejoinTimerRef.current);
         rejoinTimerRef.current = null;
       }
       return;
     }
+    if (connectionState !== ConnectionState.Disconnected) {
+      if (rejoinTimerRef.current) {
+        clearTimeout(rejoinTimerRef.current);
+        rejoinTimerRef.current = null;
+      }
+      return;
+    }
+    if (rejoinAttemptsRef.current >= MAX_REJOIN_ATTEMPTS) return;
     // LiveKit gave up reconnecting — attempt a full rejoin after a short delay
+    const attempt = ++rejoinAttemptsRef.current;
+    const delay = Math.min(2000 * attempt, 8000);
     rejoinTimerRef.current = setTimeout(async () => {
       rejoinTimerRef.current = null;
       try {
         const { token, wsUrl, e2eeKey } = await api.joinRoom(currentRoom.id);
         await connect({ wsUrl, token, e2eeKey });
       } catch (err) {
-        console.warn('Auto-rejoin after disconnect failed:', err);
+        console.warn(`Auto-rejoin attempt ${attempt}/${MAX_REJOIN_ATTEMPTS} failed:`, err);
       }
-    }, 2000);
+    }, delay);
     return () => {
       if (rejoinTimerRef.current) {
         clearTimeout(rejoinTimerRef.current);
