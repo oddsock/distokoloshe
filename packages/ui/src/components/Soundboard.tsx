@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { Volume2, Volume1, VolumeX, Trash2, Plus, Loader2, Square, Play } from 'lucide-react';
 import type { SoundboardClip } from '../lib/api';
+import { ClipTrimmer } from './ClipTrimmer';
 
 interface SoundboardProps {
   clips: SoundboardClip[];
@@ -12,7 +13,7 @@ interface SoundboardProps {
   onStop: () => void;
   onPreview: (clipId: number) => void;
   onStopPreview: () => void;
-  onUpload: (name: string, file: File) => Promise<string | null>;
+  onUpload: (name: string, file: File | Blob) => Promise<string | null>;
   onDelete: (clipId: number) => Promise<string | null>;
 }
 
@@ -23,13 +24,28 @@ export function Soundboard({ clips, playingId, previewingId, volume, onVolumeCha
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
+  const [trimmerBuffer, setTrimmerBuffer] = useState<AudioBuffer | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleUpload = async () => {
     if (!uploadFile || !uploadName.trim()) return;
+    setError(null);
+    try {
+      const data = await uploadFile.arrayBuffer();
+      const ctx = new AudioContext();
+      const buffer = await ctx.decodeAudioData(data);
+      await ctx.close();
+      setTrimmerBuffer(buffer);
+    } catch {
+      setError('Could not decode audio file');
+    }
+  };
+
+  const handleTrimConfirm = async (blob: Blob) => {
+    setTrimmerBuffer(null);
     setUploading(true);
     setError(null);
-    const err = await onUpload(uploadName.trim(), uploadFile);
+    const err = await onUpload(uploadName.trim(), blob);
     setUploading(false);
     if (err) {
       setError(err);
@@ -40,6 +56,8 @@ export function Soundboard({ clips, playingId, previewingId, volume, onVolumeCha
       setShowUpload(false);
     }
   };
+
+  const handleTrimCancel = () => setTrimmerBuffer(null);
 
   const handleDelete = async (clipId: number) => {
     const err = await onDelete(clipId);
@@ -54,6 +72,17 @@ export function Soundboard({ clips, playingId, previewingId, volume, onVolumeCha
     >
       <div className="flex items-center gap-2 mb-3">
         <h3 className="text-sm font-semibold text-zinc-900 dark:text-white">Soundboard</h3>
+        <button
+          onClick={() => setShowUpload(!showUpload)}
+          className={`flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${
+            showUpload
+              ? 'bg-indigo-500/20 text-indigo-400 ring-1 ring-indigo-500/40'
+              : 'bg-zinc-100 dark:bg-zinc-600 text-zinc-700 dark:text-zinc-300 border border-zinc-300 dark:border-zinc-500 hover:border-indigo-500'
+          }`}
+        >
+          <Plus size={12} />
+          Add
+        </button>
         <div className="flex items-center gap-1.5 ml-auto">
           <button
             onClick={() => onVolumeChange(volume > 0 ? 0 : 0.5)}
@@ -178,18 +207,6 @@ export function Soundboard({ clips, playingId, previewingId, volume, onVolumeCha
               );
             })}
 
-            {/* Add Sound button — always last in grid */}
-            <button
-              onClick={() => setShowUpload(!showUpload)}
-              className={`flex items-center justify-center gap-1 rounded-lg py-2.5 text-xs font-medium transition-colors ${
-                showUpload
-                  ? 'bg-indigo-500/20 text-indigo-400 ring-1 ring-indigo-500/40'
-                  : 'bg-zinc-100 dark:bg-zinc-700 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-600 hover:text-zinc-700 dark:hover:text-zinc-200'
-              }`}
-            >
-              <Plus size={14} />
-              Add Sound
-            </button>
           </div>
         )}
       </div>
@@ -234,6 +251,16 @@ export function Soundboard({ clips, playingId, previewingId, volume, onVolumeCha
             </button>
           </div>
         </div>
+      )}
+
+      {/* Clip trimmer modal */}
+      {trimmerBuffer && (
+        <ClipTrimmer
+          audioBuffer={trimmerBuffer}
+          maxDuration={10}
+          onConfirm={handleTrimConfirm}
+          onCancel={handleTrimCancel}
+        />
       )}
     </div>
   );

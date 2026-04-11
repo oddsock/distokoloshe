@@ -285,11 +285,11 @@ export function listSoundboardClips() {
   return request<{ clips: SoundboardClip[] }>('/soundboard');
 }
 
-export async function uploadSoundboardClip(name: string, file: File): Promise<{ clip: SoundboardClip }> {
+export async function uploadSoundboardClip(name: string, file: File | Blob): Promise<{ clip: SoundboardClip }> {
   const token = getStoredToken();
   const form = new FormData();
   form.append('name', name);
-  form.append('file', file);
+  form.append('file', file, file instanceof File ? file.name : 'clip.wav');
 
   const headers: Record<string, string> = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;
