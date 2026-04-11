@@ -1,6 +1,6 @@
 {
   "productName": "disTokoloshe",
-  "version": "2.0.8",
+  "version": "2.0.9",
   "identifier": "com.distokoloshe.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
