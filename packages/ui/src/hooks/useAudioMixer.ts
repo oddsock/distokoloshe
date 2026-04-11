@@ -3,8 +3,15 @@ import type { RemoteTrackPublication, RemoteParticipant } from 'livekit-client';
 import { Track } from 'livekit-client';
 
 interface ParticipantAudio {
+  /** Hidden audio element that receives the WebRTC MediaStream */
   element: HTMLAudioElement;
+  /** AudioContext that routes audio to speakers (forces stereo upmix) */
+  ctx: AudioContext;
+  /** GainNode for per-user volume control */
+  gain: GainNode;
+  /** Saved volume level (0–1) */
   volume: number;
+  /** Whether the user has been individually muted */
   muted: boolean;
 }
 
@@ -46,61 +53,67 @@ export function useAudioMixer() {
       // Skip if already attached for this participant+source
       if (nodesRef.current.has(key)) return;
 
+      // Create a hidden, muted audio element to receive the WebRTC stream.
+      // We mute the element itself because audio is routed through an
+      // AudioContext instead — this avoids double-playback and ensures mono
+      // WebRTC tracks are properly upmixed to stereo (fixes one-speaker bug
+      // in Chromium WebView / Tauri).
       const el = document.createElement('audio');
       el.autoplay = true;
+      el.muted = true;
       el.dataset.participant = identity;
       el.dataset.source = source;
       document.body.appendChild(el);
 
       track.attach(el);
 
-      // Apply saved per-user volume (0–1), respecting deafen state
+      // Route through Web Audio API for stereo upmix + volume control
+      const ctx = new AudioContext();
+      const mediaSource = ctx.createMediaElementSource(el);
+      const gain = ctx.createGain();
+      mediaSource.connect(gain);
+      gain.connect(ctx.destination);
+
+      // Apply saved per-user volume, respecting deafen state
       const saved = loadSavedVolumes();
       const defaultVol = identity === MUSIC_BOT_IDENTITY ? MUSIC_BOT_DEFAULT_VOLUME : 1.0;
       const volume = Math.max(0, Math.min(1, saved[identity] ?? defaultVol));
       const deaf = deafenedRef.current;
-      el.volume = deaf ? 0 : volume;
+      gain.gain.value = deaf ? 0 : volume;
 
-      // If deafened, disable the underlying media stream tracks to prevent
-      // buffer accumulation (matches setDeafened behavior)
+      // If deafened, also suspend the AudioContext to prevent buffer buildup
       if (deaf) {
-        const stream = el.srcObject;
-        if (stream instanceof MediaStream) {
-          for (const t of stream.getAudioTracks()) {
-            t.enabled = false;
-          }
-        }
+        ctx.suspend();
       }
 
       el.play().catch((err) => {
         console.warn(`Audio play failed for ${key}:`, err);
       });
 
-      nodesRef.current.set(key, { element: el, volume, muted: false });
+      nodesRef.current.set(key, { element: el, ctx, gain, volume, muted: false });
     },
     [],
   );
 
   const detachTrack = useCallback((participant: RemoteParticipant, source?: Track.Source) => {
     const identity = participant.identity;
-    if (source != null) {
-      // Detach specific source
-      const key = compositeKey(identity, source);
+    const cleanup = (key: string) => {
       const node = nodesRef.current.get(key);
       if (node) {
         node.element.pause();
         node.element.srcObject = null;
         node.element.remove();
+        node.ctx.close().catch(() => {});
         nodesRef.current.delete(key);
       }
+    };
+
+    if (source != null) {
+      cleanup(compositeKey(identity, source));
     } else {
-      // Detach all sources for this identity
-      for (const [key, node] of nodesRef.current.entries()) {
+      for (const key of Array.from(nodesRef.current.keys())) {
         if (key.startsWith(identity + ':')) {
-          node.element.pause();
-          node.element.srcObject = null;
-          node.element.remove();
-          nodesRef.current.delete(key);
+          cleanup(key);
         }
       }
     }
@@ -113,7 +126,7 @@ export function useAudioMixer() {
       if (key.startsWith(identity + ':')) {
         node.volume = clamped;
         if (!node.muted) {
-          node.element.volume = clamped;
+          node.gain.gain.value = clamped;
         }
       }
     }
@@ -133,11 +146,10 @@ export function useAudioMixer() {
   }, []);
 
   const setMuted = useCallback((identity: string, muted: boolean) => {
-    // Mute/unmute all sources for this identity
     for (const [key, node] of nodesRef.current.entries()) {
       if (key.startsWith(identity + ':')) {
         node.muted = muted;
-        node.element.volume = muted ? 0 : node.volume;
+        node.gain.gain.value = muted ? 0 : node.volume;
       }
     }
   }, []);
@@ -155,7 +167,7 @@ export function useAudioMixer() {
     const node = nodesRef.current.get(key);
     if (node) {
       node.muted = muted;
-      node.element.volume = muted ? 0 : node.volume;
+      node.gain.gain.value = muted ? 0 : node.volume;
     }
   }, []);
 
@@ -170,25 +182,24 @@ export function useAudioMixer() {
     deafenedRef.current = deaf;
     setDeafenedState(deaf);
     for (const node of nodesRef.current.values()) {
-      node.element.volume = deaf ? 0 : (node.muted ? 0 : node.volume);
-      // Disable/enable the underlying media stream tracks to prevent
-      // buffer accumulation while deafened (avoids speed-up on undeafen)
-      const stream = node.element.srcObject;
-      if (stream instanceof MediaStream) {
-        for (const track of stream.getAudioTracks()) {
-          track.enabled = !deaf;
-        }
+      node.gain.gain.value = deaf ? 0 : (node.muted ? 0 : node.volume);
+      // Suspend/resume AudioContext to prevent buffer accumulation
+      if (deaf) {
+        node.ctx.suspend();
+      } else {
+        node.ctx.resume();
       }
     }
   }, []);
 
-  // Cleanup on unmount: remove all audio elements from DOM
+  // Cleanup on unmount: close all AudioContexts and remove audio elements
   useEffect(() => {
     return () => {
       for (const node of nodesRef.current.values()) {
         node.element.pause();
         node.element.srcObject = null;
         node.element.remove();
+        node.ctx.close().catch(() => {});
       }
       nodesRef.current.clear();
     };
