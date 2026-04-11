@@ -3,8 +3,6 @@ import type { RemoteTrackPublication, RemoteParticipant } from 'livekit-client';
 import { Track } from 'livekit-client';
 
 interface ParticipantAudio {
-  /** Hidden audio element that receives the WebRTC MediaStream */
-  element: HTMLAudioElement;
   /** AudioContext that routes audio to speakers (forces stereo upmix) */
   ctx: AudioContext;
   /** GainNode for per-user volume control */
@@ -53,22 +51,16 @@ export function useAudioMixer() {
       // Skip if already attached for this participant+source
       if (nodesRef.current.has(key)) return;
 
-      // Create a hidden audio element to receive the WebRTC stream.
-      // createMediaElementSource() reroutes the element's audio output into
-      // the AudioContext, so the element won't play to speakers directly.
-      // Do NOT set el.muted — that silences the stream before the Web Audio
-      // API can capture it.
-      const el = document.createElement('audio');
-      el.autoplay = true;
-      el.dataset.participant = identity;
-      el.dataset.source = source;
-      document.body.appendChild(el);
+      const mediaStreamTrack = track.mediaStreamTrack;
+      if (!mediaStreamTrack) return;
 
-      track.attach(el);
-
-      // Route through Web Audio API for stereo upmix + volume control
+      // Route through Web Audio API directly from the MediaStream.
+      // This bypasses audio element issues and ensures mono WebRTC
+      // tracks are properly upmixed to stereo (fixes one-speaker bug
+      // in Chromium WebView / Tauri). GainNode provides volume control.
       const ctx = new AudioContext();
-      const mediaSource = ctx.createMediaElementSource(el);
+      const stream = new MediaStream([mediaStreamTrack]);
+      const mediaSource = ctx.createMediaStreamSource(stream);
       const gain = ctx.createGain();
       mediaSource.connect(gain);
       gain.connect(ctx.destination);
@@ -85,11 +77,7 @@ export function useAudioMixer() {
         ctx.suspend();
       }
 
-      el.play().catch((err) => {
-        console.warn(`Audio play failed for ${key}:`, err);
-      });
-
-      nodesRef.current.set(key, { element: el, ctx, gain, volume, muted: false });
+      nodesRef.current.set(key, { ctx, gain, volume, muted: false });
     },
     [],
   );
@@ -99,9 +87,6 @@ export function useAudioMixer() {
     const cleanup = (key: string) => {
       const node = nodesRef.current.get(key);
       if (node) {
-        node.element.pause();
-        node.element.srcObject = null;
-        node.element.remove();
         node.ctx.close().catch(() => {});
         nodesRef.current.delete(key);
       }
@@ -191,13 +176,10 @@ export function useAudioMixer() {
     }
   }, []);
 
-  // Cleanup on unmount: close all AudioContexts and remove audio elements
+  // Cleanup on unmount: close all AudioContexts
   useEffect(() => {
     return () => {
       for (const node of nodesRef.current.values()) {
-        node.element.pause();
-        node.element.srcObject = null;
-        node.element.remove();
         node.ctx.close().catch(() => {});
       }
       nodesRef.current.clear();
