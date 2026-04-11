@@ -69,8 +69,8 @@
   100% { transform: translateX(-100%); }
 }
 
-/* Scrolling text for soundbite labels — pixel-precise seamless wrap */
-@keyframes marquee-scroll {
-  0% { transform: translateX(0); }
-  100% { transform: translateX(var(--marquee-scroll)); }
+/* Scrolling text for soundbite labels — pause, scroll, pause, wrap */
+@keyframes marquee-left {
+  0%, 10% { transform: translateX(0); }
+  90%, 100% { transform: translateX(-100%); }
 }

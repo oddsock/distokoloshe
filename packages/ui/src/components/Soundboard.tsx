@@ -2,7 +2,6 @@ import { useState, useRef } from 'react';
 import { Volume2, Volume1, VolumeX, Trash2, Plus, Loader2, Square, Play } from 'lucide-react';
 import type { SoundboardClip } from '../lib/api';
 import { ClipTrimmer } from './ClipTrimmer';
-import { MarqueeText } from './MarqueeText';
 
 interface SoundboardProps {
   clips: SoundboardClip[];
@@ -189,7 +188,9 @@ export function Soundboard({ clips, playingId, previewingId, volume, onVolumeCha
                           <Square size={14} className="text-indigo-400" />
                         </span>
                       )}
-                      <MarqueeText text={clip.name} className="text-xs font-medium leading-tight" />
+                      <span className="text-xs font-medium block leading-tight overflow-hidden">
+                        <span className="inline-block max-w-full whitespace-nowrap truncate group-hover:overflow-visible group-hover:animate-[marquee-left_4s_linear_infinite]">{clip.name}</span>
+                      </span>
                       <span className="text-[10px] italic text-zinc-400 dark:text-zinc-500 block truncate leading-tight">{clip.uploaderName}</span>
                     </button>
 
