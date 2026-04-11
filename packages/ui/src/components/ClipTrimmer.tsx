@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Play, Square, Check, X } from 'lucide-react';
 import { encodeWav } from '../lib/encodeWav';
 
@@ -221,7 +222,7 @@ export function ClipTrimmer({ audioBuffer, maxDuration, onConfirm, onCancel }: C
     return () => window.removeEventListener('keydown', handleKey);
   }, [onCancel]);
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center"
       onClick={onCancel}
@@ -314,6 +315,7 @@ export function ClipTrimmer({ audioBuffer, maxDuration, onConfirm, onCancel }: C
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
