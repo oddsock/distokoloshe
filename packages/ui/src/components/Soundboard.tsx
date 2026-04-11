@@ -189,7 +189,11 @@ export function Soundboard({ clips, playingId, previewingId, volume, onVolumeCha
                         </span>
                       )}
                       <span className="text-xs font-medium block leading-tight overflow-hidden">
-                        <span className="inline-block max-w-full whitespace-nowrap truncate group-hover:overflow-visible group-hover:animate-[marquee-left_4s_linear_infinite]">{clip.name}</span>
+                        <span className="inline-block whitespace-nowrap truncate max-w-full group-hover:max-w-none group-hover:animate-[marquee-left_6s_linear_infinite]">
+                          <span>{clip.name}</span>
+                          <span className="hidden group-hover:inline text-zinc-400 dark:text-zinc-500">{'\u00a0\u00a0\u00a0|\u00a0\u00a0\u00a0'}</span>
+                          <span className="hidden group-hover:inline">{clip.name}</span>
+                        </span>
                       </span>
                       <span className="text-[10px] italic text-zinc-400 dark:text-zinc-500 block truncate leading-tight">{clip.uploaderName}</span>
                     </button>
