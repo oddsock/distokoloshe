@@ -36,6 +36,7 @@ export function ClipTrimmer({ audioBuffer, maxDuration, onConfirm, onCancel }: C
   const [startFrac, setStartFrac] = useState(0);
   const [endFrac, setEndFrac] = useState(initialEnd);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [playheadFrac, setPlayheadFrac] = useState(0);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -48,6 +49,8 @@ export function ClipTrimmer({ audioBuffer, maxDuration, onConfirm, onCancel }: C
   } | null>(null);
   const playCtxRef = useRef<AudioContext | null>(null);
   const playSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const playStartTimeRef = useRef(0);
+  const rafRef = useRef(0);
 
   const startTime = startFrac * duration;
   const endTime = endFrac * duration;
@@ -156,6 +159,7 @@ export function ClipTrimmer({ audioBuffer, maxDuration, onConfirm, onCancel }: C
 
   // ── Preview playback ──
   const stopPlayback = useCallback(() => {
+    cancelAnimationFrame(rafRef.current);
     if (playSourceRef.current) {
       playSourceRef.current.onended = null;
       try { playSourceRef.current.stop(); } catch {}
@@ -166,6 +170,7 @@ export function ClipTrimmer({ audioBuffer, maxDuration, onConfirm, onCancel }: C
       playCtxRef.current = null;
     }
     setIsPlaying(false);
+    setPlayheadFrac(0);
   }, []);
 
   const startPlayback = useCallback(() => {
@@ -175,7 +180,9 @@ export function ClipTrimmer({ audioBuffer, maxDuration, onConfirm, onCancel }: C
     source.buffer = audioBuffer;
     source.connect(ctx.destination);
     source.onended = () => {
+      cancelAnimationFrame(rafRef.current);
       setIsPlaying(false);
+      setPlayheadFrac(0);
       playSourceRef.current = null;
       ctx.close().catch(() => {});
       playCtxRef.current = null;
@@ -183,12 +190,24 @@ export function ClipTrimmer({ audioBuffer, maxDuration, onConfirm, onCancel }: C
     source.start(0, startTime, selectionDuration);
     playCtxRef.current = ctx;
     playSourceRef.current = source;
+    playStartTimeRef.current = ctx.currentTime;
     setIsPlaying(true);
+
+    // Animate playhead
+    const tick = () => {
+      if (!playCtxRef.current) return;
+      const elapsed = playCtxRef.current.currentTime - playStartTimeRef.current;
+      const frac = Math.min(1, elapsed / selectionDuration);
+      setPlayheadFrac(frac);
+      if (frac < 1) rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
   }, [audioBuffer, startTime, selectionDuration, stopPlayback]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      cancelAnimationFrame(rafRef.current);
       if (playSourceRef.current) {
         try { playSourceRef.current.stop(); } catch {}
       }
@@ -276,6 +295,14 @@ export function ClipTrimmer({ audioBuffer, maxDuration, onConfirm, onCancel }: C
           >
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-6 rounded-sm bg-indigo-500 border border-indigo-300 shadow" />
           </div>
+
+          {/* Playhead scrubber */}
+          {isPlaying && (
+            <div
+              className="absolute inset-y-0 w-0.5 bg-white shadow-[0_0_4px_rgba(255,255,255,0.8)] pointer-events-none z-10"
+              style={{ left: `${(startFrac + playheadFrac * (endFrac - startFrac)) * 100}%` }}
+            />
+          )}
         </div>
 
         {/* Time display */}

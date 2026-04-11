@@ -72,6 +72,17 @@ export function Soundboard({ clips, playingId, previewingId, volume, onVolumeCha
     >
       <div className="flex items-center gap-2 mb-3">
         <h3 className="text-sm font-semibold text-zinc-900 dark:text-white">Soundboard</h3>
+        <button
+          onClick={() => setShowUpload(!showUpload)}
+          className={`flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${
+            showUpload
+              ? 'bg-indigo-500/20 text-indigo-400 ring-1 ring-indigo-500/40'
+              : 'bg-zinc-100 dark:bg-zinc-600 text-zinc-700 dark:text-zinc-300 border border-zinc-300 dark:border-zinc-500 hover:border-indigo-500'
+          }`}
+        >
+          <Plus size={12} />
+          Add
+        </button>
         <div className="flex items-center gap-1.5 ml-auto">
           <button
             onClick={() => onVolumeChange(volume > 0 ? 0 : 0.5)}
@@ -196,18 +207,6 @@ export function Soundboard({ clips, playingId, previewingId, volume, onVolumeCha
               );
             })}
 
-            {/* Add Sound button — always last in grid */}
-            <button
-              onClick={() => setShowUpload(!showUpload)}
-              className={`flex items-center justify-center gap-1 rounded-lg py-2.5 text-xs font-medium transition-colors ${
-                showUpload
-                  ? 'bg-indigo-500/20 text-indigo-400 ring-1 ring-indigo-500/40'
-                  : 'bg-zinc-100 dark:bg-zinc-700 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-600 hover:text-zinc-700 dark:hover:text-zinc-200'
-              }`}
-            >
-              <Plus size={14} />
-              Add Sound
-            </button>
           </div>
         )}
       </div>
