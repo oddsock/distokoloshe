@@ -349,6 +349,7 @@ border border-zinc-200/50 dark:border-zinc-700/50
 | Control bar, backdrops | `z-30` | Floating bar, mobile overlays |
 | Sidebars (mobile) | `z-40` | Slide-in panels |
 | All popovers/menus | `z-50` | Settings, dropdowns, tooltips |
+| Full-screen modals | `z-[60]` | Portal modals (clip trimmer, etc.) |
 
 ---
 
@@ -503,3 +504,51 @@ Arrow: CSS border-triangle pointing down
 ```
 border-l-4 border-r-4 border-t-4 border-transparent border-t-zinc-700
 ```
+
+---
+
+## Full-Screen Modal (Portal)
+
+Used for complex interactions that need to escape popover/panel containers (e.g. clip trimmer).
+
+**Rendered via `createPortal(…, document.body)` to escape parent overflow/positioning.**
+
+### Backdrop
+
+```
+fixed inset-0 bg-black/50 z-[60] flex items-center justify-center
+```
+
+- `z-[60]` — above all popovers (`z-50`)
+- Click backdrop to dismiss (`onClick={onCancel}`)
+
+### Panel
+
+```
+bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600
+rounded-xl shadow-2xl p-4 w-[min(520px,calc(100vw-2rem))]
+```
+
+Inner panel: `onClick={(e) => e.stopPropagation()}`
+
+### Dialog Title
+
+```
+text-sm font-semibold text-zinc-900 dark:text-white mb-3
+```
+
+### Button Row
+
+```
+flex items-center gap-2 mt-3
+```
+
+- Primary action (right): `bg-indigo-600 hover:bg-indigo-500 text-white px-2.5 py-1 text-xs font-medium rounded-lg`
+- Secondary/cancel (right): `bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-300 dark:hover:bg-zinc-600 px-2.5 py-1 text-xs font-medium rounded-lg`
+- Utility (left): same as secondary
+- Spacer between left/right groups: `<div className="flex-1" />`
+
+### Dismiss
+
+- Escape key listener: `window.addEventListener('keydown', …)`
+- Backdrop click: fires `onCancel`
