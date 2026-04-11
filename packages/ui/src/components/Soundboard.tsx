@@ -159,8 +159,12 @@ export function Soundboard({ clips, playingId, previewingId, volume, onVolumeCha
                           <Square size={14} className="text-indigo-400" />
                         </span>
                       )}
-                      <span className="text-xs font-medium block truncate leading-tight">{clip.name}</span>
-                      <span className="text-[10px] italic text-zinc-400 dark:text-zinc-500 block truncate leading-tight">{clip.uploaderName}</span>
+                      <span className="text-xs font-medium block leading-tight overflow-hidden">
+                        <span className="inline-block whitespace-nowrap truncate group-hover:overflow-visible group-hover:animate-[marquee_6s_linear_infinite]">{clip.name}</span>
+                      </span>
+                      <span className="text-[10px] italic text-zinc-400 dark:text-zinc-500 block leading-tight overflow-hidden">
+                        <span className="inline-block whitespace-nowrap truncate group-hover:overflow-visible group-hover:animate-[marquee_6s_linear_infinite]">{clip.uploaderName}</span>
+                      </span>
                     </button>
 
                     {/* Delete button (any user) */}

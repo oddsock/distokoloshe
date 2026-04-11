@@ -1530,9 +1530,9 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                     {/* Main video area: camera > screen share > avatar */}
                     <div
                       className={`aspect-video bg-zinc-200 dark:bg-zinc-700 rounded-lg mb-3 flex items-center justify-center relative overflow-hidden ${
-                        screenSharePub && !cameraPub ? 'cursor-pointer ring-1 ring-zinc-600 hover:ring-indigo-500 transition-all' : ''
+                        (cameraPub || screenSharePub) ? 'cursor-pointer ring-1 ring-zinc-600 hover:ring-indigo-500 transition-all' : ''
                       }`}
-                      onClick={screenSharePub && !cameraPub ? () => setSpotlight({ identity: p.identity, source: 'screen_share' }) : undefined}
+                      onClick={cameraPub ? () => setSpotlight({ identity: p.identity, source: 'camera' }) : screenSharePub ? () => setSpotlight({ identity: p.identity, source: 'screen_share' }) : undefined}
                     >
                       {cameraPub ? (
                         <VideoTrackView publication={cameraPub} />
