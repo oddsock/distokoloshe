@@ -196,12 +196,14 @@ The SQLite database in `data/api/` persists across rebuilds.
 
 ## Features
 
-- **Voice & video rooms** — Create voice or video rooms. Auto-joins your last room on login
+- **Voice & video rooms** — Create voice or video rooms. Auto-joins your last room on login. Click any participant's camera to spotlight/maximize it (same as screen shares)
 - **Screen sharing** — Quality picker (720p/1080p/1080p60/native), browser-aware codec selection (AV1 on Firefox, VP9 on Chromium, VP8/H.264 on Safari), optional audio capture
 - **End-to-end encryption** — AES-GCM via LiveKit Encoded Transforms with per-room HMAC-SHA256 key derivation. Graceful fallback to unencrypted on unsupported browsers (Safari)
-- **Per-user volume control** — Individual volume sliders (0-200%) with persistent settings per participant
+- **Per-user volume control** — Individual volume sliders (0-200%) with persistent settings per participant. Audio routed through Web Audio API for proper stereo upmix across all platforms
+- **Soundboard** — Upload audio clips (max 10 seconds) to play to the room. Inline clip trimmer with waveform visualization, draggable start/end handles, preview playback with animated scrubber, and trim-to-WAV before upload. Per-clip preview (local-only) and room playback with volume control
 - **Democratic moderation** — Vote to jail disruptive users. 30-second voting window, quorum of 3, simple majority. Passed votes auto-create a timed jail room and kick the target from LiveKit. Room creator can lift punishments early
 - **Whispers mode** — Room mode that shuffles participants into a random chain (Fisher-Yates). Chain updates live as users join/leave
+- **Music bot** — DJ Tokoloshe streams internet radio into rooms via a Python LiveKit bot. HTTP API for playback control, now-playing display with marquee scroll, E2EE compatible
 - **Sound notifications** — 4 synthesized sound packs (Mystical Chimes, Mischievous Pops, Retro Arcade, Digital Whispers) with 8 events each. All generated via Web Audio API oscillators — no audio files
 - **Real-time presence** — SSE-based online/offline status, room membership, vote/punishment/whispers events (13 event types)
 - **Connection quality** — Live signal strength indicator with RTT (round-trip time) and jitter stats, server region display
