@@ -212,7 +212,7 @@ export function useSoundboard(room: LiveKitRoom | null) {
   }, []);
 
   const uploadClip = useCallback(
-    async (name: string, file: File): Promise<string | null> => {
+    async (name: string, file: File | Blob): Promise<string | null> => {
       // Client-side duration check
       try {
         const data = await file.arrayBuffer();

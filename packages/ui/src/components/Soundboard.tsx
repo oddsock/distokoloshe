@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { Volume2, Volume1, VolumeX, Trash2, Plus, Loader2, Square, Play } from 'lucide-react';
 import type { SoundboardClip } from '../lib/api';
+import { ClipTrimmer } from './ClipTrimmer';
 
 interface SoundboardProps {
   clips: SoundboardClip[];
@@ -12,7 +13,7 @@ interface SoundboardProps {
   onStop: () => void;
   onPreview: (clipId: number) => void;
   onStopPreview: () => void;
-  onUpload: (name: string, file: File) => Promise<string | null>;
+  onUpload: (name: string, file: File | Blob) => Promise<string | null>;
   onDelete: (clipId: number) => Promise<string | null>;
 }
 
@@ -23,13 +24,28 @@ export function Soundboard({ clips, playingId, previewingId, volume, onVolumeCha
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
+  const [trimmerBuffer, setTrimmerBuffer] = useState<AudioBuffer | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleUpload = async () => {
     if (!uploadFile || !uploadName.trim()) return;
+    setError(null);
+    try {
+      const data = await uploadFile.arrayBuffer();
+      const ctx = new AudioContext();
+      const buffer = await ctx.decodeAudioData(data);
+      await ctx.close();
+      setTrimmerBuffer(buffer);
+    } catch {
+      setError('Could not decode audio file');
+    }
+  };
+
+  const handleTrimConfirm = async (blob: Blob) => {
+    setTrimmerBuffer(null);
     setUploading(true);
     setError(null);
-    const err = await onUpload(uploadName.trim(), uploadFile);
+    const err = await onUpload(uploadName.trim(), blob);
     setUploading(false);
     if (err) {
       setError(err);
@@ -40,6 +56,8 @@ export function Soundboard({ clips, playingId, previewingId, volume, onVolumeCha
       setShowUpload(false);
     }
   };
+
+  const handleTrimCancel = () => setTrimmerBuffer(null);
 
   const handleDelete = async (clipId: number) => {
     const err = await onDelete(clipId);
@@ -234,6 +252,16 @@ export function Soundboard({ clips, playingId, previewingId, volume, onVolumeCha
             </button>
           </div>
         </div>
+      )}
+
+      {/* Clip trimmer modal */}
+      {trimmerBuffer && (
+        <ClipTrimmer
+          audioBuffer={trimmerBuffer}
+          maxDuration={10}
+          onConfirm={handleTrimConfirm}
+          onCancel={handleTrimCancel}
+        />
       )}
     </div>
   );
