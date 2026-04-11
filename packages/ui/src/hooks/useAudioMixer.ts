@@ -53,14 +53,13 @@ export function useAudioMixer() {
       // Skip if already attached for this participant+source
       if (nodesRef.current.has(key)) return;
 
-      // Create a hidden, muted audio element to receive the WebRTC stream.
-      // We mute the element itself because audio is routed through an
-      // AudioContext instead — this avoids double-playback and ensures mono
-      // WebRTC tracks are properly upmixed to stereo (fixes one-speaker bug
-      // in Chromium WebView / Tauri).
+      // Create a hidden audio element to receive the WebRTC stream.
+      // createMediaElementSource() reroutes the element's audio output into
+      // the AudioContext, so the element won't play to speakers directly.
+      // Do NOT set el.muted — that silences the stream before the Web Audio
+      // API can capture it.
       const el = document.createElement('audio');
       el.autoplay = true;
-      el.muted = true;
       el.dataset.participant = identity;
       el.dataset.source = source;
       document.body.appendChild(el);
