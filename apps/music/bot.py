@@ -15,26 +15,6 @@ from livekit.rtc._proto import ffi_pb2 as proto_ffi
 BOT_IDENTITY = "__music-bot__"
 BOT_NAME = "DJ Tokoloshe"
 
-# ── Monkey-patch: the Python SDK doesn't set key_ring_size or
-#    key_derivation_function on the E2EE proto, but the Rust FFI requires them.
-#    Intercept FfiClient.request to fill in the missing fields on connect
-#    requests before they reach the FFI layer.
-_original_ffi_request = FfiClient.request
-
-def _patched_ffi_request(self, req):
-    if req.HasField("connect"):
-        for field_name in ("e2ee", "encryption"):
-            opts = req.connect.options
-            if opts.HasField(field_name):
-                kp = getattr(opts, field_name).key_provider_options
-                if not kp.key_ring_size:
-                    kp.key_ring_size = 16
-                if not kp.key_derivation_function:
-                    kp.key_derivation_function = 1  # HKDF
-    return _original_ffi_request(self, req)
-
-FfiClient.request = _patched_ffi_request
-
 SAMPLE_RATE = 48000
 NUM_CHANNELS = 2
 
