@@ -49,6 +49,11 @@ class Player:
         self._on_frame: Optional[FrameCallback] = None
         self._on_state_change = None
         self._read_task: Optional[asyncio.Task] = None
+        # External mode: PCM frames pushed in by the desktop client over WS.
+        self._external_session: Optional[dict] = None
+        self._external_queue: Optional[asyncio.Queue] = None
+        self._external_task: Optional[asyncio.Task] = None
+        self._external_eof = False
 
     def set_frame_callback(self, cb: FrameCallback):
         self._on_frame = cb
@@ -65,13 +70,17 @@ class Player:
 
     def get_state(self) -> dict:
         station = get_station(self._current_station_id)
-        return {
+        state = {
             "mode": self._mode,
             "paused": self._paused,
             "nowPlaying": self._now_playing,
             "currentStation": station,
             "queue": list(self._queue),
         }
+        if self._mode == "external" and self._external_session:
+            state["streamer"] = self._external_session.get("addedBy")
+            state["externalSessionId"] = self._external_session.get("id")
+        return state
 
     def get_stations(self) -> list[dict]:
         return STATIONS
@@ -137,6 +146,170 @@ class Player:
             except ProcessLookupError:
                 pass
         return self._paused
+
+    # ── External (client-piped) source ───────────────────
+
+    async def start_external(self, session: dict) -> bool:
+        """Take over the audio source with PCM pushed from a remote client.
+
+        Returns False if another external session is already active (single-streamer
+        lock). On success the radio/queue is suspended and resumes via
+        end_external() or any disconnect path.
+        """
+        if self._mode == "external" and self._external_session:
+            return False
+        await self._stop_ffmpeg()
+        self._stop_metadata_poller()
+        self._mode = "external"
+        self._external_session = {
+            "id": str(session.get("id") or session.get("sessionId") or ""),
+            "title": session.get("title") or "External stream",
+            "addedBy": session.get("addedBy") or "Unknown",
+        }
+        self._now_playing = self._external_session["title"]
+        self._external_queue = asyncio.Queue(maxsize=150)  # ~3s of 20ms frames
+        self._external_eof = False
+        self._external_task = asyncio.create_task(
+            self._external_read_loop(self._external_session["id"])
+        )
+        self._notify_state_change()
+        return True
+
+    async def feed_external(self, session_id: str, pcm: bytes) -> bool:
+        if (
+            self._mode != "external"
+            or not self._external_session
+            or self._external_session["id"] != session_id
+            or self._external_queue is None
+        ):
+            return False
+        try:
+            # Bounded queue: if downstream cannot keep up we drop the oldest
+            # frame to keep latency from drifting forever. The desktop client
+            # is expected to apply its own backpressure via the ring buffer
+            # described in the plan, so this is only a safety net.
+            if self._external_queue.full():
+                try:
+                    self._external_queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    pass
+            self._external_queue.put_nowait(pcm)
+            return True
+        except asyncio.QueueFull:
+            return False
+
+    async def end_external(self, session_id: Optional[str] = None) -> bool:
+        """Tear down the active external session (if any) and resume radio.
+
+        Idempotent: a stale session_id (e.g. from a disconnected client racing
+        a fresh start) is a no-op so reconnects don't kill the new session.
+        """
+        if self._mode != "external" or not self._external_session:
+            return False
+        if session_id is not None and session_id != self._external_session["id"]:
+            return False
+        self._external_eof = True
+        if self._external_queue is not None:
+            try:
+                self._external_queue.put_nowait(b"")  # EOS sentinel
+            except asyncio.QueueFull:
+                pass
+        if self._external_task and not self._external_task.done():
+            try:
+                await asyncio.wait_for(self._external_task, timeout=2)
+            except asyncio.TimeoutError:
+                self._external_task.cancel()
+                try:
+                    await self._external_task
+                except asyncio.CancelledError:
+                    pass
+        self._external_task = None
+        self._external_queue = None
+        self._external_session = None
+        await self._play_radio()
+        return True
+
+    async def _external_read_loop(self, session_id: str):
+        """Pace external PCM frames into the AudioSource at 20ms intervals.
+
+        Mirrors _read_loop: pre-buffers ~2s, then maintains next_frame_time so
+        small jitter on the WS upload averages out without speed-up bursts.
+        """
+        assert self._external_queue is not None
+        frame_duration = FRAME_MS / 1000.0
+        prebuf_frames = 2000 // FRAME_MS
+        buffered: list[bytes] = []
+        prebuffering = True
+        next_frame_time = 0.0
+        try:
+            while (
+                self._mode == "external"
+                and self._external_session
+                and self._external_session["id"] == session_id
+            ):
+                if prebuffering:
+                    try:
+                        chunk = await asyncio.wait_for(
+                            self._external_queue.get(), timeout=10
+                        )
+                    except asyncio.TimeoutError:
+                        # Streamer never delivered enough audio — give up.
+                        break
+                    if chunk == b"":
+                        break  # EOS before prebuffer reached
+                    buffered.append(chunk)
+                    if len(buffered) >= prebuf_frames:
+                        prebuffering = False
+                        next_frame_time = _time.monotonic()
+                        print(f"[player] External prebuffered {len(buffered)} frames")
+                    continue
+
+                # Get the next frame (from prebuffer if non-empty, else queue)
+                if buffered:
+                    frame = buffered.pop(0)
+                else:
+                    try:
+                        frame = await asyncio.wait_for(
+                            self._external_queue.get(), timeout=5
+                        )
+                    except asyncio.TimeoutError:
+                        # Streamer stalled past tolerance — treat as EOS
+                        break
+                if frame == b"":
+                    break
+
+                now = _time.monotonic()
+                drift = next_frame_time - now
+                if drift > 0:
+                    await asyncio.sleep(drift)
+                elif drift < -0.1:
+                    next_frame_time = _time.monotonic()
+                next_frame_time += frame_duration
+
+                if self._on_frame:
+                    await self._on_frame(frame)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            print(f"[player] external_read_loop error: {e}")
+        finally:
+            print(f"[player] External session {session_id} ended")
+            # If we're still the active session (e.g. loop exited due to stall
+            # rather than explicit end_external), schedule a self-clean so
+            # radio resumes. Use a task because this runs inside the task we
+            # want to end_external() to await.
+            if (
+                self._mode == "external"
+                and self._external_session
+                and self._external_session["id"] == session_id
+            ):
+                asyncio.create_task(self._self_teardown(session_id))
+
+    async def _self_teardown(self, session_id: str):
+        # Break the self-await cycle: detach the task handle first so
+        # end_external() doesn't wait on itself.
+        self._external_task = None
+        await self.end_external(session_id)
 
     # ── Playback ─────────────────────────────────────────
 

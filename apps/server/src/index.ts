@@ -24,7 +24,7 @@ import punishmentRoutes from './routes/punishments.js';
 import soundboardRoutes from './routes/soundboard.js';
 import chatRoutes from './routes/chat.js';
 import updateRoutes from './routes/updates.js';
-import musicRoutes from './routes/music.js';
+import musicRoutes, { handlePipeUpgrade, cleanupExternalOnBot } from './routes/music.js';
 import { startUpdateSync } from './updater.js';
 
 const app = express();
@@ -85,6 +85,18 @@ process.on('uncaughtException', (err) => {
 const PORT = process.env.PORT || 3000;
 const server = app.listen(PORT, () => {
   console.log(`disTokoloshe API listening on :${PORT}`);
+  // Clear any stale external session that survived an API restart.
+  void cleanupExternalOnBot();
+});
+
+// WebSocket upgrade: client-piped audio from the desktop app.
+server.on('upgrade', (req, socket, head) => {
+  const url = req.url ?? '';
+  if (url.startsWith('/api/music/pipe')) {
+    handlePipeUpgrade(req, socket, head);
+    return;
+  }
+  socket.destroy();
 });
 
 // ── Graceful shutdown ────────────────────────────────────

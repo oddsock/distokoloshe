@@ -1,6 +1,17 @@
-from aiohttp import web
-from player import Player
+import asyncio
+import json
+import os
+import uuid
+
+from aiohttp import web, WSMsgType
+
+from player import Player, BYTES_PER_FRAME
 from stations import get_station
+
+
+def _internal_key_ok(request: web.Request) -> bool:
+    expected = os.environ.get("LIVEKIT_API_KEY", "")
+    return bool(expected) and request.headers.get("X-Internal-Key") == expected
 
 
 def create_routes(player: Player) -> web.RouteTableDef:
@@ -58,5 +69,79 @@ def create_routes(player: Player) -> web.RouteTableDef:
     async def pause(request):
         paused = await player.toggle_pause()
         return web.json_response({"paused": paused})
+
+    # ── External (client-piped) source ───────────────────
+
+    @routes.post("/external/end")
+    async def external_end(request):
+        if not _internal_key_ok(request):
+            return web.json_response({"error": "Forbidden"}, status=403)
+        body = await request.json() if request.can_read_body else {}
+        session_id = body.get("sessionId") if isinstance(body, dict) else None
+        ended = await player.end_external(session_id)
+        return web.json_response({"ok": ended})
+
+    @routes.get("/external")
+    async def external_ws(request):
+        if not _internal_key_ok(request):
+            return web.Response(status=403, text="Forbidden")
+        ws = web.WebSocketResponse(
+            heartbeat=5.0,  # aiohttp pings every 5s, closes on no pong
+            max_msg_size=BYTES_PER_FRAME * 4,
+        )
+        await ws.prepare(request)
+
+        session_id: str | None = None
+        try:
+            async for msg in ws:
+                if msg.type == WSMsgType.TEXT:
+                    try:
+                        data = json.loads(msg.data)
+                    except json.JSONDecodeError:
+                        await ws.send_json({"type": "error", "message": "bad json"})
+                        continue
+                    ctype = data.get("type")
+                    if ctype == "start":
+                        if session_id is not None:
+                            await ws.send_json({"type": "error", "message": "already started"})
+                            continue
+                        new_id = str(data.get("sessionId") or uuid.uuid4())
+                        ok = await player.start_external({
+                            "id": new_id,
+                            "title": (data.get("title") or "External stream")[:256],
+                            "addedBy": (data.get("addedBy") or "Unknown")[:64],
+                        })
+                        if not ok:
+                            await ws.send_json({"type": "busy"})
+                            await ws.close(code=4009, message=b"busy")
+                            break
+                        session_id = new_id
+                        await ws.send_json({"type": "started", "sessionId": new_id})
+                    elif ctype == "end":
+                        if session_id:
+                            await player.end_external(session_id)
+                            await ws.send_json({"type": "ended"})
+                            session_id = None
+                        await ws.close()
+                        break
+                    else:
+                        await ws.send_json({"type": "error", "message": "unknown type"})
+                elif msg.type == WSMsgType.BINARY:
+                    if not session_id:
+                        continue  # ignore frames before start
+                    if len(msg.data) != BYTES_PER_FRAME:
+                        # Silently drop off-size frames; keeps the loop pacing clean.
+                        continue
+                    await player.feed_external(session_id, msg.data)
+                elif msg.type == WSMsgType.ERROR:
+                    print(f"[api] external ws error: {ws.exception()}")
+                    break
+        finally:
+            if session_id:
+                # Client vanished (disconnect, heartbeat timeout, error) — let
+                # the radio resume. Safe no-op if the session was already torn down.
+                await player.end_external(session_id)
+
+        return ws
 
     return routes

@@ -13,6 +13,7 @@ import { UserList } from '../components/UserList';
 import { SignalStrength } from '../components/SignalStrength';
 import { Soundboard } from '../components/Soundboard';
 import { MusicControls } from '../components/MusicControls';
+import { usePipePlayer } from '../hooks/usePipePlayer';
 import { useSoundboard } from '../hooks/useSoundboard';
 import { useConnectionStats } from '../hooks/useConnectionStats';
 import { useHotkeys } from '../hooks/useHotkeys';
@@ -89,6 +90,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
   } = useLiveKitRoom();
 
   const { attachTrack, detachTrack, setVolume, getVolume, setMuted, isMuted, setTrackMuted, isTrackMuted, deafened, setDeafened } = useAudioMixer();
+  const pipe = usePipePlayer();
   const { startRecording, stopRecording, captureSoundbite, captureAllSoundbites } = useSoundbiteRecorder();
   const { enabled: ncEnabled, setEnabled: setNcEnabled, engine: ncEngine, setEngine: setNcEngine, supported: ncSupported } = useNoiseCancellation(room);
   const autoUpdate = useAutoUpdate();
@@ -618,6 +620,14 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
       setMusicStatus(data as api.MusicStatus);
     },
   }, onReconnect: handleSSEReconnect });
+
+  // Stop any active client-piped audio when the Room unmounts (logout, refresh).
+  // The Tauri window-close handler covers app exit; this covers in-app teardown.
+  useEffect(() => {
+    return () => {
+      if (pipe.available) void pipe.stop();
+    };
+  }, [pipe]);
 
   // Close quality menu on outside click
   useEffect(() => {
@@ -1878,7 +1888,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
               >
                 <Music size={18} />
               </button>
-              {showMusic && <MusicControls isMobile={isMobile} status={musicStatus} onRefresh={refreshMusicStatus} />}
+              {showMusic && <MusicControls isMobile={isMobile} status={musicStatus} onRefresh={refreshMusicStatus} pipe={pipe} />}
             </div>
             )}
 

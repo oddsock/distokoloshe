@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.2.0 — Client-Piped URL Playback
+
+- Desktop client can now decode any yt-dlp supported URL (YouTube, SoundCloud, Bandcamp, …) or local audio file and pipe the PCM to the music bot. Audio still appears to come from DJ Tokoloshe for everyone in the room.
+- Bundled ffmpeg + yt-dlp sidecars per platform (staged by GitHub Actions on release).
+- New `/api/music/pipe` JWT-authenticated WebSocket relay between the desktop client and the music bot.
+- Single-streamer lock: radio auto-pauses when a pipe starts and auto-resumes on stop, disconnect, leave, or app close.
+- Music bot gains an `external` mode with the same 2-second jitter pre-buffer as the radio path.
+
 ## 1.0.0 — Initial Public Release
 
 ### Voice & Video

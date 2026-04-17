@@ -29,6 +29,21 @@ jobs:
       - name: Install dependencies
         run: npm install --ignore-scripts
 
+      - name: Stage ffmpeg + yt-dlp sidecars (Windows)
+        shell: pwsh
+        run: |
+          $triple = "x86_64-pc-windows-msvc"
+          $dir = "apps/desktop/src-tauri/binaries"
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+
+          $ffmpegZip = "$env:RUNNER_TEMP/ffmpeg.zip"
+          Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile $ffmpegZip
+          Expand-Archive -Path $ffmpegZip -DestinationPath "$env:RUNNER_TEMP/ffmpeg-extract" -Force
+          $ffmpegExe = Get-ChildItem -Path "$env:RUNNER_TEMP/ffmpeg-extract" -Filter ffmpeg.exe -Recurse | Select-Object -First 1
+          Copy-Item $ffmpegExe.FullName "$dir/ffmpeg-$triple.exe"
+
+          Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile "$dir/yt-dlp-$triple.exe"
+
       - name: Build desktop app
         run: npx tauri build
         working-directory: apps/desktop
@@ -67,6 +82,23 @@ jobs:
 
       - name: Install dependencies
         run: npm install --ignore-scripts
+
+      - name: Stage ffmpeg + yt-dlp sidecars (macOS)
+        shell: bash
+        run: |
+          set -euo pipefail
+          triple="$(rustc -vV | sed -n 's/host: //p')"
+          dir="apps/desktop/src-tauri/binaries"
+          mkdir -p "$dir"
+
+          # evermeet.cx provides a static universal/native ffmpeg build for macOS
+          curl -fsSL -o "$RUNNER_TEMP/ffmpeg.zip" "https://evermeet.cx/ffmpeg/getrelease/zip"
+          unzip -o "$RUNNER_TEMP/ffmpeg.zip" -d "$RUNNER_TEMP/ffmpeg-extract"
+          cp "$RUNNER_TEMP/ffmpeg-extract/ffmpeg" "$dir/ffmpeg-$triple"
+          chmod +x "$dir/ffmpeg-$triple"
+
+          curl -fsSL -o "$dir/yt-dlp-$triple" "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
+          chmod +x "$dir/yt-dlp-$triple"
 
       - name: Build desktop app
         run: npx tauri build
@@ -146,6 +178,24 @@ jobs:
 
       - name: Install dependencies
         run: npm install --ignore-scripts
+
+      - name: Stage ffmpeg + yt-dlp sidecars (Linux)
+        shell: bash
+        run: |
+          set -euo pipefail
+          triple="$(rustc -vV | sed -n 's/host: //p')"
+          dir="apps/desktop/src-tauri/binaries"
+          mkdir -p "$dir"
+
+          # John Van Sickle static build for x86_64 linux
+          curl -fsSL -o "$RUNNER_TEMP/ffmpeg.tar.xz" "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
+          mkdir -p "$RUNNER_TEMP/ffmpeg-extract"
+          tar -xf "$RUNNER_TEMP/ffmpeg.tar.xz" -C "$RUNNER_TEMP/ffmpeg-extract" --strip-components=1
+          cp "$RUNNER_TEMP/ffmpeg-extract/ffmpeg" "$dir/ffmpeg-$triple"
+          chmod +x "$dir/ffmpeg-$triple"
+
+          curl -fsSL -o "$dir/yt-dlp-$triple" "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux"
+          chmod +x "$dir/yt-dlp-$triple"
 
       - name: Build desktop app
         run: npx tauri build

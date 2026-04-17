@@ -7,14 +7,17 @@ import {
   setMusicStation,
   toggleMusicPause,
 } from '../lib/api';
+import type { PipeController } from '../hooks/usePipePlayer';
+import { PipePanel } from './PipePanel';
 
 interface MusicControlsProps {
   isMobile?: boolean;
   status: MusicStatus | null;
   onRefresh: () => void;
+  pipe: PipeController;
 }
 
-export function MusicControls({ isMobile, status, onRefresh }: MusicControlsProps) {
+export function MusicControls({ isMobile, status, onRefresh, pipe }: MusicControlsProps) {
   const [urlInput, setUrlInput] = useState('');
   const [titleInput, setTitleInput] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -117,7 +120,12 @@ export function MusicControls({ isMobile, status, onRefresh }: MusicControlsProp
         {status.mode === 'radio' && status.currentStation && (
           <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5">{status.currentStation.name} &middot; {status.currentStation.genre}</p>
         )}
+        {status.mode === 'external' && status.streamer && (
+          <p className="text-[10px] text-indigo-500 dark:text-indigo-400 mt-0.5">Piped by {status.streamer}</p>
+        )}
       </div>
+
+      <PipePanel pipe={pipe} />
 
       {/* Radio Station */}
       <div className="mb-3">

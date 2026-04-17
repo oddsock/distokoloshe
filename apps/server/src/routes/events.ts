@@ -8,6 +8,7 @@ import {
   updateHeartbeat,
 } from '../events.js';
 import { removeFromChain } from '../whispers.js';
+import { releasePipeIfOwnedBy } from './music.js';
 
 const router = Router();
 
@@ -112,6 +113,7 @@ router.get('/', requireAuth, (req: Request, res: Response) => {
           'SELECT id, username, display_name FROM users WHERE id = ?',
         ).get(userId) as { id: number; username: string; display_name: string };
         broadcast('user:offline', { user });
+        void releasePipeIfOwnedBy(userId);
       }
     });
   });
@@ -159,6 +161,9 @@ router.post('/leave', requireAuth, (req: Request, res: Response) => {
   }
 
   db.prepare("UPDATE users SET last_seen = datetime('now') WHERE id = ?").run(userId);
+
+  // If this user was piping audio, release the lock and resume the radio.
+  void releasePipeIfOwnedBy(userId);
 
   res.json({ left: true });
 });

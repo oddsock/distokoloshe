@@ -1,6 +1,6 @@
 {
   "productName": "disTokoloshe",
-  "version": "2.1.2",
+  "version": "2.2.0",
   "identifier": "com.distokoloshe.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -34,6 +34,10 @@
       "icons/128x128@2x.png",
       "icons/icon.ico",
       "icons/icon.icns"
+    ],
+    "externalBin": [
+      "binaries/ffmpeg",
+      "binaries/yt-dlp"
     ],
     "macOS": {
       "entitlements": "Entitlements.plist",

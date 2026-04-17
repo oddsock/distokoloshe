@@ -391,12 +391,15 @@ export interface MusicStation {
 }
 
 export interface MusicStatus {
-  mode: 'radio' | 'queue';
+  mode: 'radio' | 'queue' | 'external';
   paused: boolean;
   nowPlaying: string | null;
   currentStation: MusicStation | null;
   queue: MusicQueueEntry[];
   stations: MusicStation[];
+  /** Display name of the user piping audio when mode === 'external'. */
+  streamer?: string;
+  externalSessionId?: string;
 }
 
 export function getMusicStatus() {

@@ -9,8 +9,16 @@
     "global-shortcut:allow-unregister",
     "global-shortcut:allow-is-registered",
     "dialog:allow-save",
+    "dialog:allow-open",
     "fs:allow-write-file",
     "fs:scope-download",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        { "name": "binaries/ffmpeg", "sidecar": true, "args": true },
+        { "name": "binaries/yt-dlp", "sidecar": true, "args": true }
+      ]
+    },
     "updater:default",
     "process:default",
     {

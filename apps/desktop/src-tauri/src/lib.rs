@@ -1,7 +1,10 @@
+mod pipe;
+
 use serde::Serialize;
 use std::sync::Mutex;
 use tauri::Manager;
 use tauri_plugin_updater::UpdaterExt;
+use tokio::sync::Mutex as TokioMutex;
 use url::Url;
 
 // ── Auth state (synced from JS so Rust can send leave on window close) ──
@@ -107,12 +110,14 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_process::init())
         .manage(AuthState(Mutex::new(None)))
         .manage(PendingUpdate(Mutex::new(None)))
+        .manage(pipe::PipeState(TokioMutex::new(None)))
         .setup(|app| {
             #[cfg(desktop)]
             {
@@ -130,9 +135,15 @@ pub fn run() {
             set_auth_info,
             clear_auth_info,
             send_leave,
+            pipe::pipe_start,
+            pipe::pipe_stop,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
+                // Tear down any active pipe before the runtime exits so the
+                // server's pipe lock is released and the radio resumes.
+                pipe::force_stop_blocking(window.app_handle());
+
                 // Send leave signal via native HTTP, bypassing webview CORS restrictions.
                 let auth = window.app_handle().state::<AuthState>().0.lock().unwrap().clone();
                 if let Some(info) = auth {
