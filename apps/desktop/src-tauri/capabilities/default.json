@@ -15,8 +15,8 @@
     {
       "identifier": "shell:allow-execute",
       "allow": [
-        { "name": "binaries/ffmpeg", "sidecar": true, "args": true },
-        { "name": "binaries/yt-dlp", "sidecar": true, "args": true }
+        { "name": "ffmpeg", "sidecar": true, "args": true },
+        { "name": "yt-dlp", "sidecar": true, "args": true }
       ]
     },
     "updater:default",

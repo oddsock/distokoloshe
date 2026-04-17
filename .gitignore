@@ -11,5 +11,5 @@ dist/
 target/
 package-lock.json
 # Tauri sidecar binaries (ffmpeg + yt-dlp) are staged by CI; never commit
-apps/desktop/src-tauri/binaries/*
-!apps/desktop/src-tauri/binaries/.gitkeep
+apps/desktop/src-tauri/ffmpeg-*
+apps/desktop/src-tauri/yt-dlp-*

@@ -37,7 +37,7 @@ fn emit(app: &AppHandle, state: &str, title: Option<String>, error: Option<Strin
 async fn resolve_url(app: &AppHandle, url: &str) -> Result<(String, String), String> {
     let cmd = app
         .shell()
-        .sidecar("binaries/yt-dlp")
+        .sidecar("yt-dlp")
         .map_err(|e| format!("yt-dlp sidecar missing: {e}"))?
         .args([
             "--no-playlist",
@@ -137,7 +137,7 @@ pub async fn pipe_start(
     };
 
     // Spawn ffmpeg → s16le 48k stereo PCM on stdout.
-    let cmd = match app.shell().sidecar("binaries/ffmpeg") {
+    let cmd = match app.shell().sidecar("ffmpeg") {
         Ok(c) => c,
         Err(e) => {
             let msg = format!("ffmpeg sidecar missing: {e}");

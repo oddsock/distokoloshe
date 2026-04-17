@@ -36,8 +36,8 @@
       "icons/icon.icns"
     ],
     "externalBin": [
-      "binaries/ffmpeg",
-      "binaries/yt-dlp"
+      "ffmpeg",
+      "yt-dlp"
     ],
     "macOS": {
       "entitlements": "Entitlements.plist",

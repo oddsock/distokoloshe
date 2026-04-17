@@ -34,7 +34,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $triple = (rustc -vV | Select-String '^host: ').ToString().Split(' ')[1]
-          $dir = "apps/desktop/src-tauri/binaries"
+          $dir = "apps/desktop/src-tauri"
           New-Item -ItemType Directory -Force -Path $dir | Out-Null
           Write-Host "Target triple: $triple"
 
@@ -50,7 +50,7 @@ jobs:
           # Verify both staged binaries exist with the exact names Tauri expects
           if (-not (Test-Path "$dir/ffmpeg-$triple.exe")) { throw "missing ffmpeg sidecar" }
           if (-not (Test-Path "$dir/yt-dlp-$triple.exe")) { throw "missing yt-dlp sidecar" }
-          Get-ChildItem $dir | Format-Table Name, Length
+          Get-ChildItem $dir -Filter "ffmpeg-*","yt-dlp-*" | Format-Table Name, Length
 
       - name: Build desktop app
         run: npx tauri build
@@ -96,7 +96,7 @@ jobs:
         run: |
           set -euo pipefail
           triple="$(rustc -vV | sed -n 's/host: //p')"
-          dir="apps/desktop/src-tauri/binaries"
+          dir="apps/desktop/src-tauri"
           mkdir -p "$dir"
           echo "Target triple: $triple"
 
@@ -112,7 +112,7 @@ jobs:
           # Verify both staged binaries exist with the exact names Tauri expects
           test -f "$dir/ffmpeg-$triple" || { echo "missing ffmpeg sidecar"; exit 1; }
           test -f "$dir/yt-dlp-$triple" || { echo "missing yt-dlp sidecar"; exit 1; }
-          ls -la "$dir"
+          ls -la "$dir"/ffmpeg-* "$dir"/yt-dlp-*
 
       - name: Build desktop app
         run: npx tauri build
@@ -198,7 +198,7 @@ jobs:
         run: |
           set -euo pipefail
           triple="$(rustc -vV | sed -n 's/host: //p')"
-          dir="apps/desktop/src-tauri/binaries"
+          dir="apps/desktop/src-tauri"
           mkdir -p "$dir"
           echo "Target triple: $triple"
 
@@ -215,7 +215,7 @@ jobs:
           # Verify both staged binaries exist with the exact names Tauri expects
           test -f "$dir/ffmpeg-$triple" || { echo "missing ffmpeg sidecar"; exit 1; }
           test -f "$dir/yt-dlp-$triple" || { echo "missing yt-dlp sidecar"; exit 1; }
-          ls -la "$dir"
+          ls -la "$dir"/ffmpeg-* "$dir"/yt-dlp-*
 
       - name: Build desktop app
         run: npx tauri build
