@@ -142,35 +142,38 @@ export function MusicControls({ isMobile, status, onRefresh, pipe }: MusicContro
         </select>
       </div>
 
-      {/* Add to Queue */}
-      <div className="mb-3">
-        <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">Add to Queue</label>
-        <div className="flex gap-1 mb-1">
+      {/* Add to Queue — desktop only; server-side decoding is unreliable for
+          most modern hosts. Web users still see the queue list below. */}
+      {pipe.available && (
+        <div className="mb-3">
+          <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">Add to Queue</label>
+          <div className="flex gap-1 mb-1">
+            <input
+              type="text"
+              placeholder="Audio URL..."
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAddToQueue()}
+              className="flex-1 px-2 py-1.5 rounded-lg text-xs bg-zinc-100 dark:bg-zinc-700 text-zinc-900 dark:text-white border border-zinc-300 dark:border-zinc-600 focus:border-indigo-500 outline-none placeholder-zinc-400 dark:placeholder-zinc-500"
+            />
+            <button
+              onClick={handleAddToQueue}
+              disabled={busy || !urlInput.trim()}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
+            >
+              Add
+            </button>
+          </div>
           <input
             type="text"
-            placeholder="Audio URL..."
-            value={urlInput}
-            onChange={(e) => setUrlInput(e.target.value)}
+            placeholder="Title (optional)"
+            value={titleInput}
+            onChange={(e) => setTitleInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleAddToQueue()}
-            className="flex-1 px-2 py-1.5 rounded-lg text-xs bg-zinc-100 dark:bg-zinc-700 text-zinc-900 dark:text-white border border-zinc-300 dark:border-zinc-600 focus:border-indigo-500 outline-none placeholder-zinc-400 dark:placeholder-zinc-500"
+            className="w-full px-2 py-1.5 rounded-lg text-xs bg-zinc-100 dark:bg-zinc-700 text-zinc-900 dark:text-white border border-zinc-300 dark:border-zinc-600 focus:border-indigo-500 outline-none placeholder-zinc-400 dark:placeholder-zinc-500"
           />
-          <button
-            onClick={handleAddToQueue}
-            disabled={busy || !urlInput.trim()}
-            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
-          >
-            Add
-          </button>
         </div>
-        <input
-          type="text"
-          placeholder="Title (optional)"
-          value={titleInput}
-          onChange={(e) => setTitleInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleAddToQueue()}
-          className="w-full px-2 py-1.5 rounded-lg text-xs bg-zinc-100 dark:bg-zinc-700 text-zinc-900 dark:text-white border border-zinc-300 dark:border-zinc-600 focus:border-indigo-500 outline-none placeholder-zinc-400 dark:placeholder-zinc-500"
-        />
-      </div>
+      )}
 
       {/* Error */}
       {error && (
