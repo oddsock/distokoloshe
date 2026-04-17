@@ -32,17 +32,25 @@ jobs:
       - name: Stage ffmpeg + yt-dlp sidecars (Windows)
         shell: pwsh
         run: |
-          $triple = "x86_64-pc-windows-msvc"
+          $ErrorActionPreference = 'Stop'
+          $triple = (rustc -vV | Select-String '^host: ').ToString().Split(' ')[1]
           $dir = "apps/desktop/src-tauri/binaries"
           New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          Write-Host "Target triple: $triple"
 
           $ffmpegZip = "$env:RUNNER_TEMP/ffmpeg.zip"
           Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile $ffmpegZip
           Expand-Archive -Path $ffmpegZip -DestinationPath "$env:RUNNER_TEMP/ffmpeg-extract" -Force
           $ffmpegExe = Get-ChildItem -Path "$env:RUNNER_TEMP/ffmpeg-extract" -Filter ffmpeg.exe -Recurse | Select-Object -First 1
+          if (-not $ffmpegExe) { throw "ffmpeg.exe not found in extracted archive" }
           Copy-Item $ffmpegExe.FullName "$dir/ffmpeg-$triple.exe"
 
           Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile "$dir/yt-dlp-$triple.exe"
+
+          # Verify both staged binaries exist with the exact names Tauri expects
+          if (-not (Test-Path "$dir/ffmpeg-$triple.exe")) { throw "missing ffmpeg sidecar" }
+          if (-not (Test-Path "$dir/yt-dlp-$triple.exe")) { throw "missing yt-dlp sidecar" }
+          Get-ChildItem $dir | Format-Table Name, Length
 
       - name: Build desktop app
         run: npx tauri build
@@ -90,8 +98,9 @@ jobs:
           triple="$(rustc -vV | sed -n 's/host: //p')"
           dir="apps/desktop/src-tauri/binaries"
           mkdir -p "$dir"
+          echo "Target triple: $triple"
 
-          # evermeet.cx provides a static universal/native ffmpeg build for macOS
+          # evermeet.cx provides a static native ffmpeg build for macOS
           curl -fsSL -o "$RUNNER_TEMP/ffmpeg.zip" "https://evermeet.cx/ffmpeg/getrelease/zip"
           unzip -o "$RUNNER_TEMP/ffmpeg.zip" -d "$RUNNER_TEMP/ffmpeg-extract"
           cp "$RUNNER_TEMP/ffmpeg-extract/ffmpeg" "$dir/ffmpeg-$triple"
@@ -99,6 +108,11 @@ jobs:
 
           curl -fsSL -o "$dir/yt-dlp-$triple" "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
           chmod +x "$dir/yt-dlp-$triple"
+
+          # Verify both staged binaries exist with the exact names Tauri expects
+          test -f "$dir/ffmpeg-$triple" || { echo "missing ffmpeg sidecar"; exit 1; }
+          test -f "$dir/yt-dlp-$triple" || { echo "missing yt-dlp sidecar"; exit 1; }
+          ls -la "$dir"
 
       - name: Build desktop app
         run: npx tauri build
@@ -186,6 +200,7 @@ jobs:
           triple="$(rustc -vV | sed -n 's/host: //p')"
           dir="apps/desktop/src-tauri/binaries"
           mkdir -p "$dir"
+          echo "Target triple: $triple"
 
           # John Van Sickle static build for x86_64 linux
           curl -fsSL -o "$RUNNER_TEMP/ffmpeg.tar.xz" "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
@@ -196,6 +211,11 @@ jobs:
 
           curl -fsSL -o "$dir/yt-dlp-$triple" "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux"
           chmod +x "$dir/yt-dlp-$triple"
+
+          # Verify both staged binaries exist with the exact names Tauri expects
+          test -f "$dir/ffmpeg-$triple" || { echo "missing ffmpeg sidecar"; exit 1; }
+          test -f "$dir/yt-dlp-$triple" || { echo "missing yt-dlp sidecar"; exit 1; }
+          ls -la "$dir"
 
       - name: Build desktop app
         run: npx tauri build
