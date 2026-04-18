@@ -50,7 +50,7 @@ jobs:
           # Verify both staged binaries exist with the exact names Tauri expects
           if (-not (Test-Path "$dir/ffmpeg-$triple.exe")) { throw "missing ffmpeg sidecar" }
           if (-not (Test-Path "$dir/yt-dlp-$triple.exe")) { throw "missing yt-dlp sidecar" }
-          Get-ChildItem $dir -Filter "ffmpeg-*","yt-dlp-*" | Format-Table Name, Length
+          Get-ChildItem $dir | Where-Object { $_.Name -like 'ffmpeg-*' -or $_.Name -like 'yt-dlp-*' } | Format-Table Name, Length
 
       - name: Build desktop app
         run: npx tauri build

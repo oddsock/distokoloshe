@@ -35,6 +35,9 @@ fn emit(app: &AppHandle, state: &str, title: Option<String>, error: Option<Strin
 
 /// Resolve a yt-dlp-supported URL to (direct stream URL, title).
 async fn resolve_url(app: &AppHandle, url: &str) -> Result<(String, String), String> {
+    // Single --print template with a tab separator gives unambiguous parsing
+    // (avoids the --get-url + --print interleaving order being yt-dlp version
+    // dependent).
     let cmd = app
         .shell()
         .sidecar("yt-dlp")
@@ -43,9 +46,9 @@ async fn resolve_url(app: &AppHandle, url: &str) -> Result<(String, String), Str
             "--no-playlist",
             "-f",
             "bestaudio/best",
-            "--get-url",
+            "--no-warnings",
             "--print",
-            "%(title)s",
+            "%(title)s\t%(url)s",
             url,
         ]);
     let (mut rx, _child) = cmd.spawn().map_err(|e| format!("yt-dlp spawn: {e}"))?;
@@ -54,20 +57,14 @@ async fn resolve_url(app: &AppHandle, url: &str) -> Result<(String, String), Str
     let mut stderr: Vec<u8> = Vec::new();
     while let Some(ev) = rx.recv().await {
         match ev {
-            CommandEvent::Stdout(b) => {
-                stdout.extend_from_slice(&b);
-                stdout.push(b'\n');
-            }
-            CommandEvent::Stderr(b) => {
-                stderr.extend_from_slice(&b);
-                stderr.push(b'\n');
-            }
+            CommandEvent::Stdout(b) => stdout.extend_from_slice(&b),
+            CommandEvent::Stderr(b) => stderr.extend_from_slice(&b),
             CommandEvent::Terminated(t) => {
                 if t.code != Some(0) {
                     return Err(format!(
                         "yt-dlp exit {:?}: {}",
                         t.code,
-                        String::from_utf8_lossy(&stderr).trim().to_string()
+                        String::from_utf8_lossy(&stderr).trim()
                     ));
                 }
                 break;
@@ -76,13 +73,16 @@ async fn resolve_url(app: &AppHandle, url: &str) -> Result<(String, String), Str
         }
     }
     let text = String::from_utf8_lossy(&stdout);
-    let mut lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
-    if lines.len() < 2 {
-        return Err(format!("yt-dlp returned no usable output: {text}"));
+    let line = text
+        .lines()
+        .find(|l| l.contains('\t'))
+        .ok_or_else(|| format!("yt-dlp returned no usable output: {text}"))?;
+    let mut parts = line.splitn(2, '\t');
+    let title = parts.next().unwrap_or("").trim().to_string();
+    let stream = parts.next().unwrap_or("").trim().to_string();
+    if stream.is_empty() {
+        return Err(format!("yt-dlp returned empty stream URL: {text}"));
     }
-    // yt-dlp --print runs after --get-url, so output is: <url>\n<title>\n
-    let title = lines.pop().unwrap().trim().to_string();
-    let stream = lines.pop().unwrap().trim().to_string();
     Ok((stream, title))
 }
 
@@ -175,11 +175,15 @@ pub async fn pipe_start(
     let (stop_tx, mut stop_rx) = mpsc::channel::<()>(1);
 
     // Decoder task: chunk ffmpeg stdout into 3840-byte frames.
+    let app_for_decoder = app.clone();
     let decoder = tokio::spawn(async move {
         let mut buf: Vec<u8> = Vec::with_capacity(PCM_FRAME_BYTES * 4);
+        let mut stderr_buf: Vec<u8> = Vec::with_capacity(2048);
+        let mut bytes_seen: u64 = 0;
         while let Some(ev) = ffmpeg_rx.recv().await {
             match ev {
                 CommandEvent::Stdout(chunk) => {
+                    bytes_seen += chunk.len() as u64;
                     buf.extend_from_slice(&chunk);
                     while buf.len() >= PCM_FRAME_BYTES {
                         let frame: Vec<u8> = buf.drain(..PCM_FRAME_BYTES).collect();
@@ -189,13 +193,27 @@ pub async fn pipe_start(
                     }
                 }
                 CommandEvent::Stderr(b) => {
+                    if stderr_buf.len() < 2048 {
+                        stderr_buf.extend_from_slice(&b);
+                    }
                     let line = String::from_utf8_lossy(&b);
                     if !line.trim().is_empty() {
                         eprintln!("[pipe] ffmpeg: {}", line.trim());
                     }
                 }
                 CommandEvent::Terminated(t) => {
-                    eprintln!("[pipe] ffmpeg exit: {:?}", t.code);
+                    let code = t.code;
+                    let stderr_text = String::from_utf8_lossy(&stderr_buf).trim().to_string();
+                    eprintln!("[pipe] ffmpeg exit: {code:?} ({bytes_seen} bytes; stderr: {stderr_text})");
+                    let bad_exit = code.map_or(true, |c| c != 0);
+                    if bad_exit || bytes_seen == 0 {
+                        let detail = if stderr_text.is_empty() {
+                            format!("ffmpeg produced no audio (exit {code:?})")
+                        } else {
+                            format!("ffmpeg failed (exit {code:?}): {stderr_text}")
+                        };
+                        emit(&app_for_decoder, "error", None, Some(detail));
+                    }
                     break;
                 }
                 _ => {}
