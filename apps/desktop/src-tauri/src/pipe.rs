@@ -352,8 +352,8 @@ pub async fn pipe_start(
     // and some static ffmpeg builds on Windows — sustained stdout writes go
     // silent otherwise. See plugins-workspace#2135 and pyinstaller#8426.)
     let ffmpeg_args = vec![
-        "-nostdin".to_string(),
-        "-loglevel".into(), "verbose".into(),
+        "-hide_banner".to_string(),
+        "-loglevel".into(), "warning".into(), // smaller stderr volume to avoid pipe buffer back-pressure stalls
         "-i".into(), ffmpeg_input.clone(),
         "-vn".into(),
         "-ac".into(), "2".into(),
@@ -394,14 +394,20 @@ pub async fn pipe_start(
     let app_for_err = app.clone();
     let stderr_tail: Arc<TokioMutex<Vec<u8>>> = Arc::new(TokioMutex::new(Vec::with_capacity(8192)));
     let stderr_tail_clone = stderr_tail.clone();
+    log(&app, "ffmpeg", "stderr task starting");
     tokio::spawn(async move {
         const MAX_TAIL: usize = 4096;
         let mut reader = ffmpeg_stderr;
         let mut buf = [0u8; 4096];
+        let mut total: u64 = 0;
         loop {
             match reader.read(&mut buf).await {
-                Ok(0) => break,
+                Ok(0) => {
+                    log(&app_for_err, "ffmpeg", format!("stderr EOF after {total} bytes"));
+                    break;
+                }
                 Ok(n) => {
+                    total += n as u64;
                     log(&app_for_err, "ffmpeg", String::from_utf8_lossy(&buf[..n]).into_owned());
                     let mut t = stderr_tail_clone.lock().await;
                     t.extend_from_slice(&buf[..n]);
@@ -410,7 +416,10 @@ pub async fn pipe_start(
                         t.drain(..drop);
                     }
                 }
-                Err(_) => break,
+                Err(e) => {
+                    log(&app_for_err, "ffmpeg", format!("stderr read error after {total} bytes: {e}"));
+                    break;
+                }
             }
         }
     });
@@ -419,16 +428,25 @@ pub async fn pipe_start(
     let app_for_decoder = app.clone();
     let ffmpeg_for_decoder = ffmpeg_arc.clone();
     let stderr_for_decoder = stderr_tail.clone();
+    log(&app, "ffmpeg", "decoder task starting");
     let decoder = tokio::spawn(async move {
         let mut reader = ffmpeg_stdout;
         let mut pcm_buf: Vec<u8> = Vec::with_capacity(PCM_FRAME_BYTES * 4);
         let mut read_buf = [0u8; 16 * 1024];
         let mut bytes_seen: u64 = 0;
+        let mut read_count: u64 = 0;
         loop {
             match reader.read(&mut read_buf).await {
-                Ok(0) => break,
+                Ok(0) => {
+                    log(&app_for_decoder, "ffmpeg", format!("stdout EOF after {bytes_seen} bytes ({read_count} reads)"));
+                    break;
+                }
                 Ok(n) => {
                     bytes_seen += n as u64;
+                    read_count += 1;
+                    if read_count == 1 {
+                        log(&app_for_decoder, "ffmpeg", format!("first stdout chunk: {n} bytes"));
+                    }
                     pcm_buf.extend_from_slice(&read_buf[..n]);
                     while pcm_buf.len() >= PCM_FRAME_BYTES {
                         let frame: Vec<u8> = pcm_buf.drain(..PCM_FRAME_BYTES).collect();
@@ -437,7 +455,10 @@ pub async fn pipe_start(
                         }
                     }
                 }
-                Err(_) => break,
+                Err(e) => {
+                    log(&app_for_decoder, "ffmpeg", format!("stdout read error after {bytes_seen} bytes: {e}"));
+                    break;
+                }
             }
         }
         // Flush partial frame
@@ -446,14 +467,24 @@ pub async fn pipe_start(
             let _ = frame_tx.send(pcm_buf).await;
         }
         // Wait on ffmpeg exit so we have the real code for the error message.
-        let code: Option<i32>;
-        {
+        let wait_result = {
             let mut guard = ffmpeg_for_decoder.lock().await;
-            code = match guard.as_mut() {
-                Some(child) => child.wait().await.ok().and_then(|s| s.code()),
+            match guard.as_mut() {
+                Some(child) => Some(child.wait().await),
                 None => None,
-            };
-        }
+            }
+        };
+        let code = match &wait_result {
+            Some(Ok(s)) => s.code(),
+            Some(Err(e)) => {
+                log(&app_for_decoder, "ffmpeg", format!("wait() error: {e}"));
+                None
+            }
+            None => {
+                log(&app_for_decoder, "ffmpeg", "child handle was already taken before wait()");
+                None
+            }
+        };
         let stderr_text = String::from_utf8_lossy(&*stderr_for_decoder.lock().await).trim().to_string();
         let short_tail: String = stderr_text
             .lines()
