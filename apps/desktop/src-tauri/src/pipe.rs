@@ -206,9 +206,14 @@ pub async fn pipe_start(
     };
 
     // Spawn ffmpeg → s16le 48k stereo PCM on stdout.
+    // User-Agent: YouTube's googlevideo CDN 403s ffmpeg's default "Lavf/*" UA,
+    // which causes ffmpeg to exit with no stderr on some builds. A normal
+    // browser UA sidesteps that.
+    let ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
     let ffmpeg_args: Vec<String> = vec![
         "-nostdin".into(),
-        "-loglevel".into(), "info".into(),
+        "-loglevel".into(), "verbose".into(),
+        "-user_agent".into(), ua.into(),
         "-reconnect".into(), "1".into(),
         "-reconnect_streamed".into(), "1".into(),
         "-reconnect_delay_max".into(), "5".into(),
