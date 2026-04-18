@@ -33,6 +33,20 @@ fn emit(app: &AppHandle, state: &str, title: Option<String>, error: Option<Strin
     let _ = app.emit("pipe://state", PipeEvent { state, title, error });
 }
 
+#[derive(Serialize, Clone)]
+struct PipeLogEvent<'a> {
+    source: &'a str,
+    line: String,
+}
+
+fn log(app: &AppHandle, source: &str, line: impl Into<String>) {
+    let text = line.into();
+    if text.trim().is_empty() {
+        return;
+    }
+    let _ = app.emit("pipe://log", PipeLogEvent { source, line: text });
+}
+
 /// Resolve a yt-dlp-supported URL to (direct stream URL, title).
 async fn resolve_url(app: &AppHandle, url: &str) -> Result<(String, String), String> {
     // Single --print template with a tab separator gives unambiguous parsing
@@ -58,7 +72,11 @@ async fn resolve_url(app: &AppHandle, url: &str) -> Result<(String, String), Str
     while let Some(ev) = rx.recv().await {
         match ev {
             CommandEvent::Stdout(b) => stdout.extend_from_slice(&b),
-            CommandEvent::Stderr(b) => stderr.extend_from_slice(&b),
+            CommandEvent::Stderr(b) => {
+                let text = String::from_utf8_lossy(&b).into_owned();
+                log(app, "yt-dlp", text);
+                stderr.extend_from_slice(&b);
+            }
             CommandEvent::Terminated(t) => {
                 if t.code != Some(0) {
                     return Err(format!(
@@ -147,8 +165,7 @@ pub async fn pipe_start(
         }
     }
         .args([
-            "-hide_banner",
-            "-loglevel", "error",
+            "-loglevel", "info",
             "-reconnect", "1",
             "-reconnect_streamed", "1",
             "-reconnect_delay_max", "5",
@@ -177,8 +194,11 @@ pub async fn pipe_start(
     // Decoder task: chunk ffmpeg stdout into 3840-byte frames.
     let app_for_decoder = app.clone();
     let decoder = tokio::spawn(async move {
+        const STDERR_TAIL_BYTES: usize = 4096;
         let mut buf: Vec<u8> = Vec::with_capacity(PCM_FRAME_BYTES * 4);
-        let mut stderr_buf: Vec<u8> = Vec::with_capacity(2048);
+        // Retain only the last STDERR_TAIL_BYTES so verbose ffmpeg output
+        // still surfaces the actual error line at the end.
+        let mut stderr_tail: Vec<u8> = Vec::with_capacity(STDERR_TAIL_BYTES * 2);
         let mut bytes_seen: u64 = 0;
         while let Some(ev) = ffmpeg_rx.recv().await {
             match ev {
@@ -193,24 +213,35 @@ pub async fn pipe_start(
                     }
                 }
                 CommandEvent::Stderr(b) => {
-                    if stderr_buf.len() < 2048 {
-                        stderr_buf.extend_from_slice(&b);
+                    stderr_tail.extend_from_slice(&b);
+                    if stderr_tail.len() > STDERR_TAIL_BYTES * 2 {
+                        let drop = stderr_tail.len() - STDERR_TAIL_BYTES;
+                        stderr_tail.drain(..drop);
                     }
-                    let line = String::from_utf8_lossy(&b);
-                    if !line.trim().is_empty() {
-                        eprintln!("[pipe] ffmpeg: {}", line.trim());
-                    }
+                    let text = String::from_utf8_lossy(&b).into_owned();
+                    log(&app_for_decoder, "ffmpeg", text);
                 }
                 CommandEvent::Terminated(t) => {
                     let code = t.code;
-                    let stderr_text = String::from_utf8_lossy(&stderr_buf).trim().to_string();
-                    eprintln!("[pipe] ffmpeg exit: {code:?} ({bytes_seen} bytes; stderr: {stderr_text})");
+                    let stderr_text = String::from_utf8_lossy(&stderr_tail).trim().to_string();
+                    // Keep the tail for the UI — the last 2-3 lines carry the
+                    // actual failure, not the banner/codec setup chatter.
+                    let short_tail: String = stderr_text
+                        .lines()
+                        .rev()
+                        .take(4)
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                        .rev()
+                        .collect::<Vec<_>>()
+                        .join(" | ");
+                    log(&app_for_decoder, "ffmpeg", format!("exited code={code:?}, bytes={bytes_seen}"));
                     let bad_exit = code.map_or(true, |c| c != 0);
                     if bad_exit || bytes_seen == 0 {
-                        let detail = if stderr_text.is_empty() {
-                            format!("ffmpeg produced no audio (exit {code:?})")
+                        let detail = if short_tail.is_empty() {
+                            format!("ffmpeg produced no audio (exit {code:?}, no stderr — possibly a missing DLL or the binary isn't runnable)")
                         } else {
-                            format!("ffmpeg failed (exit {code:?}): {stderr_text}")
+                            format!("ffmpeg exit {code:?}: {short_tail}")
                         };
                         emit(&app_for_decoder, "error", None, Some(detail));
                     }

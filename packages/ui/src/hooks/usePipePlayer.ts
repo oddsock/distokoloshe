@@ -11,6 +11,11 @@ interface PipeStatePayload {
   error?: string | null;
 }
 
+interface PipeLogPayload {
+  source: string;
+  line: string;
+}
+
 export interface PipeController {
   available: boolean;
   state: PipeState;
@@ -29,30 +34,40 @@ export function usePipePlayer(): PipeController {
   const [state, setState] = useState<PipeState>('idle');
   const [title, setTitle] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const unlistenRef = useRef<(() => void) | null>(null);
+  const unlistenRef = useRef<Array<() => void>>([]);
 
   useEffect(() => {
     if (!isTauri()) return;
     let cancelled = false;
     (async () => {
       const { listen } = await import('@tauri-apps/api/event');
-      const off = await listen<PipeStatePayload>('pipe://state', (event) => {
+      const offState = await listen<PipeStatePayload>('pipe://state', (event) => {
         const p = event.payload;
         setState(p.state);
         if (p.title !== undefined) setTitle(p.title ?? null);
-        if (p.error !== undefined) setError(p.error ?? null);
-        else if (p.state !== 'error') setError(null);
+        // Errors are sticky — keep them visible until the user starts a new
+        // pipe. Otherwise the uploader's trailing "stopped" event would
+        // wipe the message before the user can read it.
+        if (p.error !== undefined && p.error !== null) setError(p.error);
+        else if (p.state === 'starting') setError(null);
+      });
+      const offLog = await listen<PipeLogPayload>('pipe://log', (event) => {
+        const { source, line } = event.payload;
+        // Mirror sidecar stderr to the devtools console so users can paste
+        // exact ffmpeg/yt-dlp errors when reporting issues.
+        console.log(`[pipe:${source}] ${line.trim()}`);
       });
       if (cancelled) {
-        off();
+        offState();
+        offLog();
         return;
       }
-      unlistenRef.current = off;
+      unlistenRef.current = [offState, offLog];
     })().catch(() => {});
     return () => {
       cancelled = true;
-      unlistenRef.current?.();
-      unlistenRef.current = null;
+      unlistenRef.current.forEach((off) => off());
+      unlistenRef.current = [];
     };
   }, []);
 
