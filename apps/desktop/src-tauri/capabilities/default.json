@@ -12,13 +12,6 @@
     "dialog:allow-open",
     "fs:allow-write-file",
     "fs:scope-download",
-    {
-      "identifier": "shell:allow-execute",
-      "allow": [
-        { "name": "ffmpeg", "sidecar": true, "args": true },
-        { "name": "yt-dlp", "sidecar": true, "args": true }
-      ]
-    },
     "updater:default",
     "process:default",
     {

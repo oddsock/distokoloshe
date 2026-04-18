@@ -8,8 +8,6 @@ use serde::Serialize;
 use std::process::Stdio;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
-use tauri_plugin_shell::process::CommandEvent;
-use tauri_plugin_shell::ShellExt;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::{Child as TokioChild, ChildStdin, Command as TokioCommand};
 use tokio::sync::{mpsc, Mutex as TokioMutex};
@@ -91,89 +89,39 @@ fn log(app: &AppHandle, source: &str, line: impl Into<String>) {
     let _ = app.emit("pipe://log", PipeLogEvent { source, line: text });
 }
 
-/// Run a sidecar with one arg, capture everything, log it, and return (exit, stdout, stderr).
-async fn probe(app: &AppHandle, name: &'static str, arg: &'static str) -> Result<(Option<i32>, String, String), String> {
-    let cmd = app
-        .shell()
-        .sidecar(name)
-        .map_err(|e| format!("{name} sidecar missing: {e}"))?
-        .args([arg]);
-    let (mut rx, _child) = cmd.spawn().map_err(|e| format!("{name} spawn: {e}"))?;
-    let mut stdout = Vec::new();
-    let mut stderr = Vec::new();
-    let mut code: Option<i32> = None;
-    while let Some(ev) = rx.recv().await {
-        match ev {
-            CommandEvent::Stdout(b) => stdout.extend_from_slice(&b),
-            CommandEvent::Stderr(b) => stderr.extend_from_slice(&b),
-            CommandEvent::Terminated(t) => { code = t.code; break; }
-            _ => {}
-        }
-    }
-    let stdout_s = String::from_utf8_lossy(&stdout).trim().to_string();
-    let stderr_s = String::from_utf8_lossy(&stderr).trim().to_string();
-    log(app, name, format!("`{name} {arg}` exit={code:?} stdout_len={} stderr_len={}", stdout_s.len(), stderr_s.len()));
-    if !stdout_s.is_empty() { log(app, name, format!("stdout: {stdout_s}")); }
-    if !stderr_s.is_empty() { log(app, name, format!("stderr: {stderr_s}")); }
-    Ok((code, stdout_s, stderr_s))
-}
+/// Fetch a yt-dlp-supported URL's title (metadata only — no download).
+async fn fetch_title(ytdlp_path: &std::path::Path, url: &str) -> Result<String, String> {
+    let mut cmd = sidecar_command(ytdlp_path);
+    cmd.args([
+        "--no-playlist",
+        "--no-warnings",
+        "--print",
+        "%(title)s",
+        url,
+    ]);
+    let mut child = cmd.spawn().map_err(|e| format!("yt-dlp spawn: {e}"))?;
+    let mut stdout = child.stdout.take().expect("yt-dlp stdout piped");
+    let mut stderr = child.stderr.take().expect("yt-dlp stderr piped");
 
-/// Resolve a yt-dlp-supported URL to (direct stream URL, title).
-async fn resolve_url(app: &AppHandle, url: &str) -> Result<(String, String), String> {
-    // Single --print template with a tab separator gives unambiguous parsing
-    // (avoids the --get-url + --print interleaving order being yt-dlp version
-    // dependent).
-    let cmd = app
-        .shell()
-        .sidecar("yt-dlp")
-        .map_err(|e| format!("yt-dlp sidecar missing: {e}"))?
-        .args([
-            "--no-playlist",
-            "-f",
-            "bestaudio/best",
-            "--no-warnings",
-            "--print",
-            "%(title)s\t%(url)s",
-            url,
-        ]);
-    let (mut rx, _child) = cmd.spawn().map_err(|e| format!("yt-dlp spawn: {e}"))?;
-
-    let mut stdout: Vec<u8> = Vec::new();
-    let mut stderr: Vec<u8> = Vec::new();
-    while let Some(ev) = rx.recv().await {
-        match ev {
-            CommandEvent::Stdout(b) => stdout.extend_from_slice(&b),
-            CommandEvent::Stderr(b) => {
-                let text = String::from_utf8_lossy(&b).into_owned();
-                log(app, "yt-dlp", text);
-                stderr.extend_from_slice(&b);
-            }
-            CommandEvent::Terminated(t) => {
-                if t.code != Some(0) {
-                    return Err(format!(
-                        "yt-dlp exit {:?}: {}",
-                        t.code,
-                        String::from_utf8_lossy(&stderr).trim()
-                    ));
-                }
-                break;
-            }
-            _ => {}
-        }
+    let mut stdout_buf = Vec::new();
+    let mut stderr_buf = Vec::new();
+    let _ = tokio::try_join!(
+        stdout.read_to_end(&mut stdout_buf),
+        stderr.read_to_end(&mut stderr_buf),
+    );
+    let status = child.wait().await.map_err(|e| format!("yt-dlp wait: {e}"))?;
+    if !status.success() {
+        return Err(format!(
+            "yt-dlp exit {:?}: {}",
+            status.code(),
+            String::from_utf8_lossy(&stderr_buf).trim()
+        ));
     }
-    log(app, "yt-dlp", format!("stdout: {}", String::from_utf8_lossy(&stdout).trim()));
-    let text = String::from_utf8_lossy(&stdout);
-    let line = text
-        .lines()
-        .find(|l| l.contains('\t'))
-        .ok_or_else(|| format!("yt-dlp returned no usable output: {text}"))?;
-    let mut parts = line.splitn(2, '\t');
-    let title = parts.next().unwrap_or("").trim().to_string();
-    let stream = parts.next().unwrap_or("").trim().to_string();
-    if stream.is_empty() {
-        return Err(format!("yt-dlp returned empty stream URL: {text}"));
+    let title = String::from_utf8_lossy(&stdout_buf).trim().to_string();
+    if title.is_empty() {
+        return Err("yt-dlp returned empty title".into());
     }
-    Ok((stream, title))
+    Ok(title)
 }
 
 #[tauri::command]
@@ -203,30 +151,7 @@ pub async fn pipe_start(
         *g = None;
     }
 
-    // Pre-flight: make sure each sidecar actually runs and prints a version.
-    // If not, the real pipeline would silently fail with exit 1 and zero
-    // stderr — this turns that into a crystal-clear message.
-    for &bin in &["ffmpeg", "yt-dlp"] {
-        let arg = if bin == "ffmpeg" { "-version" } else { "--version" };
-        match probe(&app, bin, arg).await {
-            Ok((Some(0), stdout, _)) if !stdout.is_empty() => { /* ok */ }
-            Ok((code, stdout, stderr)) => {
-                let msg = format!(
-                    "{bin} pre-flight failed (exit {code:?}). Binary is installed but not runnable — likely blocked by Windows Defender/SmartScreen or missing a dependency. stdout: {stdout}; stderr: {stderr}"
-                );
-                emit(&app, "error", None, Some(msg.clone()));
-                release(&state).await;
-                return Err(msg);
-            }
-            Err(e) => {
-                emit(&app, "error", None, Some(e.clone()));
-                release(&state).await;
-                return Err(e);
-            }
-        }
-    }
-
-    // Determine title + resolve sidecar paths.
+    // Resolve sidecar paths.
     let title: String;
     let ffmpeg_path = match resolve_sidecar("ffmpeg") {
         Ok(p) => p,
@@ -267,8 +192,8 @@ pub async fn pipe_start(
             .unwrap_or_else(|| "Local file".into());
         ffmpeg_input = source.clone();
     } else {
-        match resolve_url(&app, &source).await {
-            Ok((_stream_url, t)) => title = title_hint.unwrap_or(t),
+        match fetch_title(&ytdlp_path, &source).await {
+            Ok(t) => title = title_hint.unwrap_or(t),
             Err(e) => {
                 emit(&app, "error", None, Some(e.clone()));
                 release(&state).await;
@@ -285,11 +210,8 @@ pub async fn pipe_start(
             "-o", "-",
             &source,
         ];
-        log(&app, "yt-dlp", format!("yt-dlp {}", yt_args.join(" ")));
         let mut yt_cmd = sidecar_command(&ytdlp_path);
-        yt_cmd.env("PYTHONIOENCODING", "utf-8")
-            .env("PYTHONUNBUFFERED", "1")
-            .args(yt_args);
+        yt_cmd.args(yt_args);
         ytdlp_for_bridge = Some(match yt_cmd.spawn() {
             Ok(c) => c,
             Err(e) => {
@@ -302,23 +224,18 @@ pub async fn pipe_start(
         ffmpeg_input = "pipe:0".into();
     }
 
-    // Spawn ffmpeg via tokio directly (bypassing tauri-plugin-shell to avoid
-    // the plugin's CREATE_NO_WINDOW flag which interacts badly with PyInstaller
-    // and some static ffmpeg builds on Windows — sustained stdout writes go
-    // silent otherwise. See plugins-workspace#2135 and pyinstaller#8426.)
-    let ffmpeg_args = vec![
-        "-hide_banner".to_string(),
-        "-loglevel".into(), "warning".into(), // smaller stderr volume to avoid pipe buffer back-pressure stalls
-        "-i".into(), ffmpeg_input.clone(),
-        "-vn".into(),
-        "-ac".into(), "2".into(),
-        "-ar".into(), "48000".into(),
-        "-f".into(), "s16le".into(),
-        "pipe:1".into(),
+    let ffmpeg_args = [
+        "-hide_banner",
+        "-loglevel", "error",
+        "-i", &ffmpeg_input,
+        "-vn",
+        "-ac", "2",
+        "-ar", "48000",
+        "-f", "s16le",
+        "pipe:1",
     ];
-    log(&app, "ffmpeg", format!("spawning ffmpeg {}", ffmpeg_args.join(" ")));
     let mut ffmpeg_cmd = sidecar_command(&ffmpeg_path);
-    ffmpeg_cmd.args(&ffmpeg_args);
+    ffmpeg_cmd.args(ffmpeg_args);
     let mut ffmpeg_child = match ffmpeg_cmd.spawn() {
         Ok(c) => c,
         Err(e) => {
@@ -351,27 +268,20 @@ pub async fn pipe_start(
         };
         let app_for_bridge = app.clone();
         tokio::spawn(async move {
-            let mut bytes_piped: u64 = 0;
             let mut buf = [0u8; 16 * 1024];
             loop {
                 match yt_stdout.read(&mut buf).await {
-                    Ok(0) => break,
+                    Ok(0) | Err(_) => break,
                     Ok(n) => {
-                        bytes_piped += n as u64;
                         if let Err(e) = stdin.write_all(&buf[..n]).await {
-                            log(&app_for_bridge, "bridge", format!("ffmpeg stdin write failed after {bytes_piped} bytes: {e}"));
+                            log(&app_for_bridge, "bridge", format!("ffmpeg stdin write failed: {e}"));
                             break;
                         }
-                    }
-                    Err(e) => {
-                        log(&app_for_bridge, "bridge", format!("yt-dlp stdout read error after {bytes_piped} bytes: {e}"));
-                        break;
                     }
                 }
             }
             // EOF to ffmpeg so it flushes the tail of the decode.
             let _ = stdin.shutdown().await;
-            log(&app_for_bridge, "yt-dlp", format!("stream done: {bytes_piped} bytes piped"));
         });
 
         let app_for_yt_err = app.clone();
@@ -399,24 +309,18 @@ pub async fn pipe_start(
     let ffmpeg_arc: Arc<TokioMutex<Option<TokioChild>>> =
         Arc::new(TokioMutex::new(Some(ffmpeg_child)));
 
-    // ffmpeg stderr → devtools log + capture tail for error message
+    // ffmpeg stderr → devtools log + tail capture for error reporting
     let app_for_err = app.clone();
     let stderr_tail: Arc<TokioMutex<Vec<u8>>> = Arc::new(TokioMutex::new(Vec::with_capacity(8192)));
     let stderr_tail_clone = stderr_tail.clone();
-    log(&app, "ffmpeg", "stderr task starting");
     tokio::spawn(async move {
         const MAX_TAIL: usize = 4096;
         let mut reader = ffmpeg_stderr;
         let mut buf = [0u8; 4096];
-        let mut total: u64 = 0;
         loop {
             match reader.read(&mut buf).await {
-                Ok(0) => {
-                    log(&app_for_err, "ffmpeg", format!("stderr EOF after {total} bytes"));
-                    break;
-                }
+                Ok(0) | Err(_) => break,
                 Ok(n) => {
-                    total += n as u64;
                     log(&app_for_err, "ffmpeg", String::from_utf8_lossy(&buf[..n]).into_owned());
                     let mut t = stderr_tail_clone.lock().await;
                     t.extend_from_slice(&buf[..n]);
@@ -424,10 +328,6 @@ pub async fn pipe_start(
                         let drop = t.len() - MAX_TAIL;
                         t.drain(..drop);
                     }
-                }
-                Err(e) => {
-                    log(&app_for_err, "ffmpeg", format!("stderr read error after {total} bytes: {e}"));
-                    break;
                 }
             }
         }
@@ -437,25 +337,16 @@ pub async fn pipe_start(
     let app_for_decoder = app.clone();
     let ffmpeg_for_decoder = ffmpeg_arc.clone();
     let stderr_for_decoder = stderr_tail.clone();
-    log(&app, "ffmpeg", "decoder task starting");
     let decoder = tokio::spawn(async move {
         let mut reader = ffmpeg_stdout;
         let mut pcm_buf: Vec<u8> = Vec::with_capacity(PCM_FRAME_BYTES * 4);
         let mut read_buf = [0u8; 16 * 1024];
         let mut bytes_seen: u64 = 0;
-        let mut read_count: u64 = 0;
         loop {
             match reader.read(&mut read_buf).await {
-                Ok(0) => {
-                    log(&app_for_decoder, "ffmpeg", format!("stdout EOF after {bytes_seen} bytes ({read_count} reads)"));
-                    break;
-                }
+                Ok(0) | Err(_) => break,
                 Ok(n) => {
                     bytes_seen += n as u64;
-                    read_count += 1;
-                    if read_count == 1 {
-                        log(&app_for_decoder, "ffmpeg", format!("first stdout chunk: {n} bytes"));
-                    }
                     pcm_buf.extend_from_slice(&read_buf[..n]);
                     while pcm_buf.len() >= PCM_FRAME_BYTES {
                         let frame: Vec<u8> = pcm_buf.drain(..PCM_FRAME_BYTES).collect();
@@ -464,53 +355,36 @@ pub async fn pipe_start(
                         }
                     }
                 }
-                Err(e) => {
-                    log(&app_for_decoder, "ffmpeg", format!("stdout read error after {bytes_seen} bytes: {e}"));
-                    break;
-                }
             }
         }
-        // Flush partial frame
         if !pcm_buf.is_empty() {
             pcm_buf.resize(PCM_FRAME_BYTES, 0);
             let _ = frame_tx.send(pcm_buf).await;
         }
-        // Wait on ffmpeg exit so we have the real code for the error message.
-        let wait_result = {
+        // Reap the child to get the real exit code for error reporting.
+        let code = {
             let mut guard = ffmpeg_for_decoder.lock().await;
             match guard.as_mut() {
-                Some(child) => Some(child.wait().await),
+                Some(child) => child.wait().await.ok().and_then(|s| s.code()),
                 None => None,
             }
         };
-        let code = match &wait_result {
-            Some(Ok(s)) => s.code(),
-            Some(Err(e)) => {
-                log(&app_for_decoder, "ffmpeg", format!("wait() error: {e}"));
-                None
-            }
-            None => {
-                log(&app_for_decoder, "ffmpeg", "child handle was already taken before wait()");
-                None
-            }
-        };
-        let stderr_text = String::from_utf8_lossy(&*stderr_for_decoder.lock().await).trim().to_string();
-        let short_tail: String = stderr_text
-            .lines()
-            .rev()
-            .take(4)
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .collect::<Vec<_>>()
-            .join(" | ");
-        log(&app_for_decoder, "ffmpeg", format!("exited code={code:?}, bytes={bytes_seen}"));
         let bad_exit = code.map_or(true, |c| c != 0);
         if bad_exit || bytes_seen == 0 {
-            let detail = if short_tail.is_empty() {
-                format!("ffmpeg produced no audio (exit {code:?}, no stderr)")
+            let stderr_text = String::from_utf8_lossy(&*stderr_for_decoder.lock().await).trim().to_string();
+            let tail: String = stderr_text
+                .lines()
+                .rev()
+                .take(4)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect::<Vec<_>>()
+                .join(" | ");
+            let detail = if tail.is_empty() {
+                format!("ffmpeg produced no audio (exit {code:?})")
             } else {
-                format!("ffmpeg exit {code:?}: {short_tail}")
+                format!("ffmpeg exit {code:?}: {tail}")
             };
             emit(&app_for_decoder, "error", None, Some(detail));
         }
