@@ -16,6 +16,9 @@ use tokio::sync::{mpsc, Mutex as TokioMutex};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::protocol::Message;
 
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
 pub const PCM_FRAME_BYTES: usize = 3840; // 48000 * 2ch * 2B * 0.02s
 const RING_FRAMES: usize = 1000; // ~20s of pre-buffered PCM upload-side
 
@@ -63,17 +66,20 @@ fn resolve_sidecar(name: &str) -> Result<std::path::PathBuf, String> {
 }
 
 /// Build a tokio::process::Command for a sidecar with piped stdio.
-/// Deliberately DOES NOT set CREATE_NO_WINDOW (breaks PyInstaller + sustained
-/// pipes — plugins-workspace#2135 / pyinstaller#8426) or DETACHED_PROCESS
-/// (PyInstaller bootloader needs at least a minimal console to initialise).
-/// Accept a brief console flash on Windows in exchange for working stdio.
-/// A nicer fix via STARTUPINFOW + SW_HIDE can come later once piping works.
+/// CREATE_NO_WINDOW hides the console window. The earlier silent-exit failures
+/// blamed on this flag were actually the React useEffect race in usePipePlayer
+/// killing the pipe on every render — that's fixed, so the flag is safe.
 fn sidecar_command(path: &std::path::Path) -> TokioCommand {
     let mut cmd = TokioCommand::new(path);
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
     cmd
 }
 

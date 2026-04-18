@@ -204,13 +204,18 @@ class Player:
             return False
         self._external_eof = True
         if self._external_queue is not None:
-            try:
-                self._external_queue.put_nowait(b"")  # EOS sentinel
-            except asyncio.QueueFull:
-                pass
+            # Push EOS sentinel via blocking put so the read loop sees it
+            # *after* every queued frame finishes playing, not in the middle.
+            await self._external_queue.put(b"")
         if self._external_task and not self._external_task.done():
+            # Allow up to ~10s for the prebuffer (2s) + queue (3s) + a bit of
+            # pacing slack to drain naturally. Without enough time here the
+            # task gets cancelled and the user hears the song cut off near
+            # the end (everything buffered after the WS upload finishes is
+            # discarded). Stop is also called on user-press, so this only
+            # delays a deliberate stop by a few seconds at most.
             try:
-                await asyncio.wait_for(self._external_task, timeout=2)
+                await asyncio.wait_for(self._external_task, timeout=10)
             except asyncio.TimeoutError:
                 self._external_task.cancel()
                 try:
