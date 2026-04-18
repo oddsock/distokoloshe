@@ -623,11 +623,13 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
 
   // Stop any active client-piped audio when the Room unmounts (logout, refresh).
   // The Tauri window-close handler covers app exit; this covers in-app teardown.
+  // CRITICAL: depend on pipe.stop (stable useCallback ref), NOT pipe (new object
+  // every render — would fire the cleanup on every re-render and kill the pipe).
   useEffect(() => {
     return () => {
-      if (pipe.available) void pipe.stop();
+      void pipe.stop();
     };
-  }, [pipe]);
+  }, [pipe.stop]);
 
   // Close quality menu on outside click
   useEffect(() => {
