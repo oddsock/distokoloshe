@@ -47,6 +47,33 @@ fn log(app: &AppHandle, source: &str, line: impl Into<String>) {
     let _ = app.emit("pipe://log", PipeLogEvent { source, line: text });
 }
 
+/// Run a sidecar with one arg, capture everything, log it, and return (exit, stdout, stderr).
+async fn probe(app: &AppHandle, name: &'static str, arg: &'static str) -> Result<(Option<i32>, String, String), String> {
+    let cmd = app
+        .shell()
+        .sidecar(name)
+        .map_err(|e| format!("{name} sidecar missing: {e}"))?
+        .args([arg]);
+    let (mut rx, _child) = cmd.spawn().map_err(|e| format!("{name} spawn: {e}"))?;
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    let mut code: Option<i32> = None;
+    while let Some(ev) = rx.recv().await {
+        match ev {
+            CommandEvent::Stdout(b) => stdout.extend_from_slice(&b),
+            CommandEvent::Stderr(b) => stderr.extend_from_slice(&b),
+            CommandEvent::Terminated(t) => { code = t.code; break; }
+            _ => {}
+        }
+    }
+    let stdout_s = String::from_utf8_lossy(&stdout).trim().to_string();
+    let stderr_s = String::from_utf8_lossy(&stderr).trim().to_string();
+    log(app, name, format!("`{name} {arg}` exit={code:?} stdout_len={} stderr_len={}", stdout_s.len(), stderr_s.len()));
+    if !stdout_s.is_empty() { log(app, name, format!("stdout: {stdout_s}")); }
+    if !stderr_s.is_empty() { log(app, name, format!("stderr: {stderr_s}")); }
+    Ok((code, stdout_s, stderr_s))
+}
+
 /// Resolve a yt-dlp-supported URL to (direct stream URL, title).
 async fn resolve_url(app: &AppHandle, url: &str) -> Result<(String, String), String> {
     // Single --print template with a tab separator gives unambiguous parsing
@@ -129,6 +156,29 @@ pub async fn pipe_start(
     async fn release(state: &tauri::State<'_, PipeState>) {
         let mut g = state.0.lock().await;
         *g = None;
+    }
+
+    // Pre-flight: make sure each sidecar actually runs and prints a version.
+    // If not, the real pipeline would silently fail with exit 1 and zero
+    // stderr — this turns that into a crystal-clear message.
+    for &bin in &["ffmpeg", "yt-dlp"] {
+        let arg = if bin == "ffmpeg" { "-version" } else { "--version" };
+        match probe(&app, bin, arg).await {
+            Ok((Some(0), stdout, _)) if !stdout.is_empty() => { /* ok */ }
+            Ok((code, stdout, stderr)) => {
+                let msg = format!(
+                    "{bin} pre-flight failed (exit {code:?}). Binary is installed but not runnable — likely blocked by Windows Defender/SmartScreen or missing a dependency. stdout: {stdout}; stderr: {stderr}"
+                );
+                emit(&app, "error", None, Some(msg.clone()));
+                release(&state).await;
+                return Err(msg);
+            }
+            Err(e) => {
+                emit(&app, "error", None, Some(e.clone()));
+                release(&state).await;
+                return Err(e);
+            }
+        }
     }
 
     // Resolve source → ffmpeg input + display title
