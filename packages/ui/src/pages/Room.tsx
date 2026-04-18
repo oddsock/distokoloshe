@@ -1723,6 +1723,12 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value.slice(0, 200))}
                 onPaste={handleChatPaste}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                    e.preventDefault();
+                    handleChatSend(e as unknown as React.FormEvent);
+                  }
+                }}
                 placeholder="Send a message…"
                 maxLength={200}
                 className="flex-1 min-w-0 px-3 py-1.5 rounded-lg text-sm bg-zinc-100 dark:bg-zinc-700 text-zinc-900 dark:text-white border border-zinc-300 dark:border-zinc-600 focus:border-indigo-500 outline-none placeholder-zinc-400 dark:placeholder-zinc-500"
