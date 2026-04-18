@@ -183,20 +183,14 @@ class Player:
             or self._external_queue is None
         ):
             return False
-        try:
-            # Bounded queue: if downstream cannot keep up we drop the oldest
-            # frame to keep latency from drifting forever. The desktop client
-            # is expected to apply its own backpressure via the ring buffer
-            # described in the plan, so this is only a safety net.
-            if self._external_queue.full():
-                try:
-                    self._external_queue.get_nowait()
-                except asyncio.QueueEmpty:
-                    pass
-            self._external_queue.put_nowait(pcm)
-            return True
-        except asyncio.QueueFull:
-            return False
+        # Block (await) when the queue is full instead of dropping frames.
+        # ffmpeg decodes far faster than realtime; if we drop here the player
+        # loop reads newer-than-expected frames every 20ms and the audio
+        # fast-forwards / sounds robotic. Awaiting put() backpressures the
+        # WS handler -> TCP -> server relay -> desktop uploader -> ffmpeg
+        # stdout, naturally throttling the entire pipeline to realtime.
+        await self._external_queue.put(pcm)
+        return True
 
     async def end_external(self, session_id: Optional[str] = None) -> bool:
         """Tear down the active external session (if any) and resume radio.
