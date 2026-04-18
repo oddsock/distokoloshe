@@ -5,6 +5,7 @@
 
 use futures_util::{SinkExt, StreamExt};
 use serde::Serialize;
+use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_shell::process::{CommandEvent, CommandChild};
 use tauri_plugin_shell::ShellExt;
@@ -16,7 +17,8 @@ pub const PCM_FRAME_BYTES: usize = 3840; // 48000 * 2ch * 2B * 0.02s
 const RING_FRAMES: usize = 1000; // ~20s of pre-buffered PCM upload-side
 
 pub struct ActivePipe {
-    pub child: Option<CommandChild>,
+    pub child: Option<Arc<TokioMutex<Option<CommandChild>>>>,
+    pub ytdlp_child: Option<CommandChild>,
     pub stop: Option<mpsc::Sender<()>>,
 }
 
@@ -148,7 +150,7 @@ pub async fn pipe_start(
         if guard.is_some() {
             return Err("A pipe is already active".into());
         }
-        *guard = Some(ActivePipe { child: None, stop: None });
+        *guard = Some(ActivePipe { child: None, ytdlp_child: None, stop: None });
     }
     emit(&app, "starting", title_hint.clone(), None);
 
@@ -182,9 +184,18 @@ pub async fn pipe_start(
         }
     }
 
-    // Resolve source → ffmpeg input + display title
-    let (input, title) = if kind == "file" {
-        let display = title_hint
+    // Determine title + pipeline:
+    //   - file  → ffmpeg reads the path directly
+    //   - url   → yt-dlp streams bytes to stdout, ffmpeg reads them from stdin
+    //     (bypasses ffmpeg's HTTP client entirely; yt-dlp handles cookies,
+    //     headers, client_version params, etc. Same approach mpv/vlc use.)
+    let title: String;
+    let mut yt_rx_for_bridge: Option<mpsc::Receiver<CommandEvent>> = None;
+    let mut yt_child_for_stop: Option<CommandChild> = None;
+    let ffmpeg_input: String;
+
+    if kind == "file" {
+        title = title_hint
             .clone()
             .or_else(|| {
                 std::path::Path::new(&source)
@@ -193,31 +204,54 @@ pub async fn pipe_start(
                     .map(|s| s.to_string())
             })
             .unwrap_or_else(|| "Local file".into());
-        (source.clone(), display)
+        ffmpeg_input = source.clone();
     } else {
+        // Resolve title via a short metadata-only yt-dlp run.
         match resolve_url(&app, &source).await {
-            Ok((stream_url, title)) => (stream_url, title_hint.unwrap_or(title)),
+            Ok((_stream_url, t)) => title = title_hint.unwrap_or(t),
             Err(e) => {
                 emit(&app, "error", None, Some(e.clone()));
                 release(&state).await;
                 return Err(e);
             }
         }
-    };
+
+        let yt_stream_args: Vec<String> = vec![
+            "--no-playlist".into(),
+            "-f".into(), "bestaudio/best".into(),
+            "--no-warnings".into(),
+            "-o".into(), "-".into(),
+            source.clone(),
+        ];
+        log(&app, "yt-dlp", format!("streaming yt-dlp {}", yt_stream_args.join(" ")));
+        let yt_cmd = match app.shell().sidecar("yt-dlp") {
+            Ok(c) => c,
+            Err(e) => {
+                let msg = format!("yt-dlp sidecar missing: {e}");
+                emit(&app, "error", None, Some(msg.clone()));
+                release(&state).await;
+                return Err(msg);
+            }
+        }.args(yt_stream_args);
+        let (yt_rx, yt_child) = match yt_cmd.spawn() {
+            Ok(pair) => pair,
+            Err(e) => {
+                let msg = format!("yt-dlp spawn: {e}");
+                emit(&app, "error", None, Some(msg.clone()));
+                release(&state).await;
+                return Err(msg);
+            }
+        };
+        ffmpeg_input = "pipe:0".into();
+        yt_rx_for_bridge = Some(yt_rx);
+        yt_child_for_stop = Some(yt_child);
+    }
 
     // Spawn ffmpeg → s16le 48k stereo PCM on stdout.
-    // User-Agent: YouTube's googlevideo CDN 403s ffmpeg's default "Lavf/*" UA,
-    // which causes ffmpeg to exit with no stderr on some builds. A normal
-    // browser UA sidesteps that.
-    let ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
     let ffmpeg_args: Vec<String> = vec![
         "-nostdin".into(),
         "-loglevel".into(), "verbose".into(),
-        "-user_agent".into(), ua.into(),
-        "-reconnect".into(), "1".into(),
-        "-reconnect_streamed".into(), "1".into(),
-        "-reconnect_delay_max".into(), "5".into(),
-        "-i".into(), input.clone(),
+        "-i".into(), ffmpeg_input.clone(),
         "-vn".into(),
         "-ac".into(), "2".into(),
         "-ar".into(), "48000".into(),
@@ -244,6 +278,50 @@ pub async fn pipe_start(
             return Err(msg);
         }
     };
+
+    // Wrap ffmpeg_child so both the bridge task (for stdin writes) and
+    // pipe_stop (for kill) can share it. Only the URL path uses this; for
+    // file mode, we skip the bridge and stash the child directly.
+    let ffmpeg_arc: Arc<TokioMutex<Option<CommandChild>>> =
+        Arc::new(TokioMutex::new(Some(ffmpeg_child)));
+
+    // Bridge task: yt-dlp stdout → ffmpeg stdin; stderr → log.
+    if let Some(mut yt_rx) = yt_rx_for_bridge {
+        let ffmpeg_for_bridge = ffmpeg_arc.clone();
+        let app_for_bridge = app.clone();
+        tokio::spawn(async move {
+            let mut bytes_piped: u64 = 0;
+            while let Some(ev) = yt_rx.recv().await {
+                match ev {
+                    CommandEvent::Stdout(chunk) => {
+                        bytes_piped += chunk.len() as u64;
+                        let mut guard = ffmpeg_for_bridge.lock().await;
+                        if let Some(ref mut child) = *guard {
+                            if let Err(e) = child.write(&chunk) {
+                                log(&app_for_bridge, "bridge", format!("ffmpeg stdin write failed after {bytes_piped} bytes: {e}"));
+                                break;
+                            }
+                        } else {
+                            break; // ffmpeg gone
+                        }
+                    }
+                    CommandEvent::Stderr(b) => {
+                        log(&app_for_bridge, "yt-dlp", String::from_utf8_lossy(&b).into_owned());
+                    }
+                    CommandEvent::Terminated(t) => {
+                        log(&app_for_bridge, "yt-dlp", format!("stream exit: {:?} ({bytes_piped} bytes piped)", t.code));
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+            // yt-dlp ended: closing ffmpeg's stdin signals EOS so it flushes.
+            // CommandChild doesn't expose close-stdin directly, so we drop our
+            // write guard and let ffmpeg observe EOF naturally when it next reads.
+            // (Dropping the bridge arc is enough; when pipe_stop kills ffmpeg
+            // the child is torn down anyway.)
+        });
+    }
 
     // PCM frames channel (cache for poor uplink: ~20 s)
     let (frame_tx, mut frame_rx) = mpsc::channel::<Vec<u8>>(RING_FRAMES);
@@ -398,8 +476,12 @@ pub async fn pipe_start(
         if let Some(state) = app_for_uploader.try_state::<PipeState>() {
             let mut guard = state.0.lock().await;
             if let Some(mut active) = guard.take() {
-                if let Some(child) = active.child.take() {
-                    let _ = child.kill();
+                if let Some(child_arc) = active.child.take() {
+                    let mut c = child_arc.lock().await;
+                    if let Some(child) = c.take() { let _ = child.kill(); }
+                }
+                if let Some(yt) = active.ytdlp_child.take() {
+                    let _ = yt.kill();
                 }
             }
         }
@@ -410,7 +492,8 @@ pub async fn pipe_start(
         let mut guard = state.0.lock().await;
         // Replace the reservation placeholder with the real handles.
         *guard = Some(ActivePipe {
-            child: Some(ffmpeg_child),
+            child: Some(ffmpeg_arc.clone()),
+            ytdlp_child: yt_child_for_stop,
             stop: Some(stop_tx),
         });
     }
@@ -433,8 +516,12 @@ pub async fn pipe_stop(
         if let Some(tx) = active.stop.take() {
             let _ = tx.send(()).await;
         }
-        if let Some(child) = active.child.take() {
-            let _ = child.kill();
+        if let Some(yt) = active.ytdlp_child.take() {
+            let _ = yt.kill();
+        }
+        if let Some(child_arc) = active.child.take() {
+            let mut c = child_arc.lock().await;
+            if let Some(child) = c.take() { let _ = child.kill(); }
         }
     }
     Ok(())
@@ -468,8 +555,12 @@ pub fn force_stop_blocking(app: &AppHandle) {
             if let Some(tx) = active.stop.take() {
                 let _ = tx.send(()).await;
             }
-            if let Some(child) = active.child.take() {
-                let _ = child.kill();
+            if let Some(yt) = active.ytdlp_child.take() {
+                let _ = yt.kill();
+            }
+            if let Some(child_arc) = active.child.take() {
+                let mut c = child_arc.lock().await;
+                if let Some(child) = c.take() { let _ = child.kill(); }
             }
         }
     });
