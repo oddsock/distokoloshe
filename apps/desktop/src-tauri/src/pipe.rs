@@ -236,7 +236,10 @@ pub async fn pipe_start(
                 release(&state).await;
                 return Err(msg);
             }
-        }.args(yt_stream_args);
+        }
+            .env("PYTHONIOENCODING", "utf-8")
+            .env("PYTHONUNBUFFERED", "1")
+            .args(yt_stream_args);
         let (yt_rx, yt_child) = match yt_cmd.spawn() {
             Ok(pair) => pair,
             Err(e) => {
