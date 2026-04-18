@@ -216,10 +216,14 @@ pub async fn pipe_start(
             }
         }
 
+        // Format selector prefers pipeable containers: webm/opus writes a
+        // streamable container, m4a/AAC has moov at end-of-file which fails
+        // when written to a pipe. Fall through to any audio if preferences
+        // aren't available.
         let yt_stream_args: Vec<String> = vec![
             "--no-playlist".into(),
-            "-f".into(), "bestaudio/best".into(),
-            "--no-warnings".into(),
+            "-f".into(), "bestaudio[ext=webm]/bestaudio[acodec=opus]/bestaudio/best".into(),
+            "-v".into(), // verbose stderr so failures are visible in devtools
             "-o".into(), "-".into(),
             source.clone(),
         ];
