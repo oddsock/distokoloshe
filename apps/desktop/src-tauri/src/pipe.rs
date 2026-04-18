@@ -117,6 +117,7 @@ async fn resolve_url(app: &AppHandle, url: &str) -> Result<(String, String), Str
             _ => {}
         }
     }
+    log(app, "yt-dlp", format!("stdout: {}", String::from_utf8_lossy(&stdout).trim()));
     let text = String::from_utf8_lossy(&stdout);
     let line = text
         .lines()
@@ -205,6 +206,20 @@ pub async fn pipe_start(
     };
 
     // Spawn ffmpeg → s16le 48k stereo PCM on stdout.
+    let ffmpeg_args: Vec<String> = vec![
+        "-nostdin".into(),
+        "-loglevel".into(), "info".into(),
+        "-reconnect".into(), "1".into(),
+        "-reconnect_streamed".into(), "1".into(),
+        "-reconnect_delay_max".into(), "5".into(),
+        "-i".into(), input.clone(),
+        "-vn".into(),
+        "-ac".into(), "2".into(),
+        "-ar".into(), "48000".into(),
+        "-f".into(), "s16le".into(),
+        "pipe:1".into(),
+    ];
+    log(&app, "ffmpeg", format!("spawning ffmpeg {}", ffmpeg_args.join(" ")));
     let cmd = match app.shell().sidecar("ffmpeg") {
         Ok(c) => c,
         Err(e) => {
@@ -214,18 +229,7 @@ pub async fn pipe_start(
             return Err(msg);
         }
     }
-        .args([
-            "-loglevel", "info",
-            "-reconnect", "1",
-            "-reconnect_streamed", "1",
-            "-reconnect_delay_max", "5",
-            "-i", &input,
-            "-vn",
-            "-ac", "2",
-            "-ar", "48000",
-            "-f", "s16le",
-            "pipe:1",
-        ]);
+        .args(ffmpeg_args);
     let (mut ffmpeg_rx, ffmpeg_child) = match cmd.spawn() {
         Ok(pair) => pair,
         Err(e) => {
