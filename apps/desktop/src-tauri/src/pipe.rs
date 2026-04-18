@@ -16,9 +16,6 @@ use tokio::sync::{mpsc, Mutex as TokioMutex};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::protocol::Message;
 
-#[cfg(windows)]
-const DETACHED_PROCESS: u32 = 0x0000_0008;
-
 pub const PCM_FRAME_BYTES: usize = 3840; // 48000 * 2ch * 2B * 0.02s
 const RING_FRAMES: usize = 1000; // ~20s of pre-buffered PCM upload-side
 
@@ -65,21 +62,18 @@ fn resolve_sidecar(name: &str) -> Result<std::path::PathBuf, String> {
     Ok(path)
 }
 
-/// Build a tokio::process::Command for a sidecar with the flags that avoid the
-/// tauri-plugin-shell CREATE_NO_WINDOW + PyInstaller stdio bug on Windows.
-/// DETACHED_PROCESS tells Windows "don't attach a console", which still hides
-/// the window but keeps the child's piped stdio working for sustained writes.
+/// Build a tokio::process::Command for a sidecar with piped stdio.
+/// Deliberately DOES NOT set CREATE_NO_WINDOW (breaks PyInstaller + sustained
+/// pipes — plugins-workspace#2135 / pyinstaller#8426) or DETACHED_PROCESS
+/// (PyInstaller bootloader needs at least a minimal console to initialise).
+/// Accept a brief console flash on Windows in exchange for working stdio.
+/// A nicer fix via STARTUPINFOW + SW_HIDE can come later once piping works.
 fn sidecar_command(path: &std::path::Path) -> TokioCommand {
     let mut cmd = TokioCommand::new(path);
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(DETACHED_PROCESS);
-    }
     cmd
 }
 
