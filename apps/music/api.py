@@ -92,6 +92,7 @@ def create_routes(player: Player) -> web.RouteTableDef:
         await ws.prepare(request)
 
         session_id: str | None = None
+        exit_reason = "loop-completed"
         try:
             async for msg in ws:
                 if msg.type == WSMsgType.TEXT:
@@ -114,15 +115,19 @@ def create_routes(player: Player) -> web.RouteTableDef:
                         if not ok:
                             await ws.send_json({"type": "busy"})
                             await ws.close(code=4009, message=b"busy")
+                            exit_reason = "busy-rejected"
                             break
                         session_id = new_id
+                        print(f"[api] external ws started session={new_id}")
                         await ws.send_json({"type": "started", "sessionId": new_id})
                     elif ctype == "end":
+                        print(f"[api] external ws got explicit end for session={session_id}")
                         if session_id:
                             await player.end_external(session_id)
                             await ws.send_json({"type": "ended"})
                             session_id = None
                         await ws.close()
+                        exit_reason = "explicit-end-message"
                         break
                     else:
                         await ws.send_json({"type": "error", "message": "unknown type"})
@@ -135,8 +140,13 @@ def create_routes(player: Player) -> web.RouteTableDef:
                     await player.feed_external(session_id, msg.data)
                 elif msg.type == WSMsgType.ERROR:
                     print(f"[api] external ws error: {ws.exception()}")
+                    exit_reason = f"ws-error: {ws.exception()}"
                     break
         finally:
+            print(
+                f"[api] external ws finalize: reason={exit_reason} "
+                f"session_still_held={session_id is not None} ws_closed={ws.closed}"
+            )
             if session_id:
                 # Client vanished (disconnect, heartbeat timeout, error) — let
                 # the radio resume. Safe no-op if the session was already torn down.

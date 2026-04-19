@@ -202,6 +202,12 @@ class Player:
             return False
         if session_id is not None and session_id != self._external_session["id"]:
             return False
+        qsize_on_entry = self._external_queue.qsize() if self._external_queue is not None else -1
+        print(
+            f"[player] end_external entry: session={session_id} "
+            f"active={self._external_session['id']} qsize={qsize_on_entry} "
+            f"eof_already={self._external_eof}"
+        )
         self._external_eof = True
         if self._external_queue is not None:
             # Push EOS sentinel via blocking put so the read loop sees it
@@ -216,7 +222,13 @@ class Player:
             # delays a deliberate stop by a few seconds at most.
             try:
                 await asyncio.wait_for(self._external_task, timeout=10)
+                print("[player] end_external: read loop drained cleanly")
             except asyncio.TimeoutError:
+                qsize_at_cancel = self._external_queue.qsize() if self._external_queue is not None else -1
+                print(
+                    f"[player] end_external: drain TIMEOUT after 10s — "
+                    f"cancelling read loop (qsize={qsize_at_cancel})"
+                )
                 self._external_task.cancel()
                 try:
                     await self._external_task
@@ -240,6 +252,10 @@ class Player:
         buffered: list[bytes] = []
         prebuffering = True
         next_frame_time = 0.0
+        frames_played = 0
+        stat_last_log = _time.monotonic()
+        stat_last_frames = 0
+        break_reason: Optional[str] = None
         try:
             while (
                 self._mode == "external"
@@ -253,8 +269,10 @@ class Player:
                         )
                     except asyncio.TimeoutError:
                         # Streamer never delivered enough audio — give up.
+                        break_reason = "prebuffer-timeout-10s"
                         break
                     if chunk == b"":
+                        break_reason = "eos-sentinel-during-prebuffer"
                         break  # EOS before prebuffer reached
                     buffered.append(chunk)
                     if len(buffered) >= prebuf_frames:
@@ -273,8 +291,10 @@ class Player:
                         )
                     except asyncio.TimeoutError:
                         # Streamer stalled past tolerance — treat as EOS
+                        break_reason = "stall-timeout-5s"
                         break
                 if frame == b"":
+                    break_reason = "eos-sentinel"
                     break
 
                 now = _time.monotonic()
@@ -287,12 +307,39 @@ class Player:
 
                 if self._on_frame:
                     await self._on_frame(frame)
+                frames_played += 1
+
+                # Every ~5s of wall time, print cadence + queue depth so we
+                # can see starvation approaching before the stall timer fires.
+                if now - stat_last_log >= 5.0:
+                    elapsed = now - stat_last_log
+                    fps = (frames_played - stat_last_frames) / elapsed if elapsed > 0 else 0
+                    qsize = self._external_queue.qsize()
+                    print(
+                        f"[player] external frames: {frames_played} "
+                        f"({fps:.1f}/s) qsize={qsize} prebuf={len(buffered)}"
+                    )
+                    stat_last_log = now
+                    stat_last_frames = frames_played
+            else:
+                # While-loop condition became false — session was swapped out
+                # under us by a newer start_external.
+                if break_reason is None:
+                    break_reason = "session-mismatch-or-mode-change"
         except asyncio.CancelledError:
             raise
         except Exception as e:
+            break_reason = f"exception: {e}"
             print(f"[player] external_read_loop error: {e}")
         finally:
-            print(f"[player] External session {session_id} ended")
+            seconds_played = frames_played * frame_duration
+            qsize_final = self._external_queue.qsize() if self._external_queue is not None else -1
+            print(
+                f"[player] External session {session_id} ended "
+                f"reason={break_reason or 'unknown'} "
+                f"frames_played={frames_played} seconds_played={seconds_played:.1f} "
+                f"qsize_final={qsize_final}"
+            )
             # If we're still the active session (e.g. loop exited due to stall
             # rather than explicit end_external), schedule a self-clean so
             # radio resumes. Use a task because this runs inside the task we

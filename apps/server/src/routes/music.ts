@@ -199,10 +199,24 @@ function runPipeRelay(client: WebSocket, user: AuthUser): void {
 
   let started = false;
   let closed = false;
+  let framesForwarded = 0;
+  const bufStatTimer = setInterval(() => {
+    if (closed) return;
+    console.log(
+      `[music-relay] session=${sessionId} frames=${framesForwarded} ` +
+      `upstream.buffered=${upstream.bufferedAmount} ` +
+      `client.buffered=${client.bufferedAmount}`,
+    );
+  }, 5000);
 
   const close = (code = 1000, reason = ''): void => {
     if (closed) return;
     closed = true;
+    clearInterval(bufStatTimer);
+    console.log(
+      `[music-relay] close session=${sessionId} code=${code} reason=${reason || '-'} ` +
+      `frames=${framesForwarded} upstream.buffered=${upstream.bufferedAmount}`,
+    );
     try { client.close(code, reason); } catch { /* ignore */ }
     try { upstream.close(code, reason); } catch { /* ignore */ }
     if (pipeLock?.sessionId === sessionId) {
@@ -232,8 +246,17 @@ function runPipeRelay(client: WebSocket, user: AuthUser): void {
     try { client.send(text); } catch { /* ignore */ }
   });
 
-  upstream.on('close', () => close());
-  upstream.on('error', () => close(1011, 'upstream error'));
+  upstream.on('close', () => {
+    console.log(
+      `[music-relay] upstream closed first session=${sessionId} ` +
+      `frames=${framesForwarded} upstream.buffered=${upstream.bufferedAmount}`,
+    );
+    close();
+  });
+  upstream.on('error', (err) => {
+    console.log(`[music-relay] upstream error session=${sessionId}: ${err?.message ?? err}`);
+    close(1011, 'upstream error');
+  });
 
   client.on('message', (data: RawData, isBinary) => {
     if (closed) return;
@@ -242,7 +265,10 @@ function runPipeRelay(client: WebSocket, user: AuthUser): void {
       const buf = data as Buffer;
       if (buf.length !== PCM_FRAME_BYTES) return;
       if (upstream.readyState === WebSocket.OPEN) {
-        try { upstream.send(buf, { binary: true }); } catch { /* ignore */ }
+        try {
+          upstream.send(buf, { binary: true });
+          framesForwarded += 1;
+        } catch { /* ignore */ }
       }
       return;
     }
@@ -268,6 +294,10 @@ function runPipeRelay(client: WebSocket, user: AuthUser): void {
   });
 
   client.on('close', () => {
+    console.log(
+      `[music-relay] client closed first session=${sessionId} started=${started} ` +
+      `frames=${framesForwarded} upstream.buffered=${upstream.bufferedAmount}`,
+    );
     if (started && pipeLock?.sessionId === sessionId) {
       try {
         upstream.send(JSON.stringify({ type: 'end', sessionId }));
@@ -275,7 +305,10 @@ function runPipeRelay(client: WebSocket, user: AuthUser): void {
     }
     close();
   });
-  client.on('error', () => close(1011, 'client error'));
+  client.on('error', (err) => {
+    console.log(`[music-relay] client error session=${sessionId}: ${err?.message ?? err}`);
+    close(1011, 'client error');
+  });
 }
 
 export default router;
