@@ -155,6 +155,14 @@ async function fetchStatus(): Promise<Record<string, unknown>> {
 
 const pipeWss = new WebSocketServer({ noServer: true, maxPayload: PCM_FRAME_BYTES * 4 });
 
+// Backpressure thresholds on the relay→bot outgoing buffer.
+// Without these, the desktop uploads the whole track in seconds (LAN speed),
+// Node-ws buffers it all, and the close handshake discards the tail when the
+// client hangs up before it drains. Pausing the client socket above HWM makes
+// the whole chain realtime-paced end-to-end.
+const RELAY_BP_HIGH = PCM_FRAME_BYTES * 200; // ~4s of PCM
+const RELAY_BP_LOW = PCM_FRAME_BYTES * 50;   // ~1s of PCM
+
 export function handlePipeUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
   const url = new URL(req.url ?? '', 'http://localhost');
   if (url.pathname !== '/api/music/pipe') {
@@ -200,12 +208,36 @@ function runPipeRelay(client: WebSocket, user: AuthUser): void {
   let started = false;
   let closed = false;
   let framesForwarded = 0;
+  let clientPaused = false;
+
+  // Underlying Duplex socket behind the ws client — used for pause/resume
+  // since the WebSocket class itself doesn't expose flow control.
+  const clientSocket = (client as unknown as { _socket?: Duplex })._socket;
+
+  const pauseClient = (): void => {
+    if (clientPaused || closed) return;
+    clientSocket?.pause();
+    clientPaused = true;
+  };
+  const resumeClient = (): void => {
+    if (!clientPaused || closed) return;
+    clientSocket?.resume();
+    clientPaused = false;
+  };
+
+  const bpTimer = setInterval(() => {
+    if (closed) return;
+    if (clientPaused && upstream.bufferedAmount <= RELAY_BP_LOW) {
+      resumeClient();
+    }
+  }, 50);
+
   const bufStatTimer = setInterval(() => {
     if (closed) return;
     console.log(
       `[music-relay] session=${sessionId} frames=${framesForwarded} ` +
       `upstream.buffered=${upstream.bufferedAmount} ` +
-      `client.buffered=${client.bufferedAmount}`,
+      `client.buffered=${client.bufferedAmount} paused=${clientPaused}`,
     );
   }, 5000);
 
@@ -213,6 +245,8 @@ function runPipeRelay(client: WebSocket, user: AuthUser): void {
     if (closed) return;
     closed = true;
     clearInterval(bufStatTimer);
+    clearInterval(bpTimer);
+    if (clientPaused) clientSocket?.resume();
     console.log(
       `[music-relay] close session=${sessionId} code=${code} reason=${reason || '-'} ` +
       `frames=${framesForwarded} upstream.buffered=${upstream.bufferedAmount}`,
@@ -269,6 +303,9 @@ function runPipeRelay(client: WebSocket, user: AuthUser): void {
           upstream.send(buf, { binary: true });
           framesForwarded += 1;
         } catch { /* ignore */ }
+      }
+      if (upstream.bufferedAmount >= RELAY_BP_HIGH) {
+        pauseClient();
       }
       return;
     }
