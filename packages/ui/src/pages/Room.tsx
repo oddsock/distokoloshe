@@ -45,6 +45,12 @@ function formatCountdown(secs: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+/** Music room radio bot + any non-Music ephemeral pipe bot. Used to
+ *  suppress soundbite capture, human-only UI chrome, etc. */
+function isMusicOrPipeBot(identity: string): boolean {
+  return identity === '__music-bot__' || identity.startsWith('__pipe-');
+}
+
 export function RoomPage({ user, onLogout }: RoomPageProps) {
   const [rooms, setRooms] = useState<api.Room[]>([]);
   const [users, setUsers] = useState<api.UserListItem[]>([]);
@@ -141,7 +147,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
   }, [deafened, setDeafened]);
   const handleCaptureSoundbites = useCallback(() => {
     const participants = remoteParticipants
-      .filter((p) => p.identity !== '__music-bot__')
+      .filter((p) => !isMusicOrPipeBot(p.identity))
       .map((p) => ({ identity: p.identity, displayName: p.name || p.identity }));
     captureAllSoundbites(participants);
   }, [remoteParticipants, captureAllSoundbites]);
@@ -1572,6 +1578,15 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                             </p>
                           </div>
                         </div>
+                      ) : p.identity.startsWith('__pipe-') ? (
+                        <div className="flex flex-col items-center justify-center gap-1 px-3 w-full">
+                          <Music size={20} className="text-indigo-400 shrink-0" />
+                          <div className="w-full overflow-hidden">
+                            <p className="text-xs text-zinc-600 dark:text-zinc-300 whitespace-nowrap truncate text-center">
+                              {p.name || 'Streaming'}
+                            </p>
+                          </div>
+                        </div>
                       ) : (
                         <div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold text-white transition-shadow ${
                           isMyWhisperSource ? 'bg-purple-600' : 'bg-indigo-600'
@@ -1666,7 +1681,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                             )}
                           </div>
                         )}
-                        {p.identity !== '__music-bot__' && !soundbiteOptOut && (
+                        {!isMusicOrPipeBot(p.identity) && !soundbiteOptOut && (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();

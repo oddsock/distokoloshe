@@ -12,6 +12,16 @@ const VOLUMES_KEY = 'distokoloshe_volumes';
 const MUSIC_BOT_IDENTITY = '__music-bot__';
 const MUSIC_BOT_DEFAULT_VOLUME = 0.05;
 
+/** Ephemeral per-room pipe bots use identities like `__pipe-{uid}-{sid}__`.
+ * They play the same kind of content as DJ Tokoloshe, so the user's saved
+ * music volume should apply to both — normalise to the music-bot storage
+ * key whenever we read/write localStorage or compute the default. */
+function normalizeVolumeKey(identity: string): string {
+  if (identity === MUSIC_BOT_IDENTITY) return MUSIC_BOT_IDENTITY;
+  if (identity.startsWith('__pipe-')) return MUSIC_BOT_IDENTITY;
+  return identity;
+}
+
 function loadSavedVolumes(): Record<string, number> {
   try {
     return JSON.parse(localStorage.getItem(VOLUMES_KEY) || '{}');
@@ -59,8 +69,9 @@ export function useAudioMixer() {
 
       // Apply saved per-user volume (0–1), respecting deafen state
       const saved = loadSavedVolumes();
-      const defaultVol = identity === MUSIC_BOT_IDENTITY ? MUSIC_BOT_DEFAULT_VOLUME : 1.0;
-      const volume = Math.max(0, Math.min(1, saved[identity] ?? defaultVol));
+      const volKey = normalizeVolumeKey(identity);
+      const defaultVol = volKey === MUSIC_BOT_IDENTITY ? MUSIC_BOT_DEFAULT_VOLUME : 1.0;
+      const volume = Math.max(0, Math.min(1, saved[volKey] ?? defaultVol));
       const deaf = deafenedRef.current;
       el.volume = deaf ? 0 : volume;
 
@@ -111,9 +122,13 @@ export function useAudioMixer() {
 
   const setVolume = useCallback((identity: string, volume: number) => {
     const clamped = Math.max(0, Math.min(1, volume));
-    // Apply to all sources for this identity
+    const volKey = normalizeVolumeKey(identity);
+    // Apply to all nodes that share the same storage key — in the music
+    // room this means both the radio and any pipe bot currently playing
+    // get the same level from one slider move.
     for (const [key, node] of nodesRef.current.entries()) {
-      if (key.startsWith(identity + ':')) {
+      const nodeIdentity = key.split(':')[0];
+      if (normalizeVolumeKey(nodeIdentity) === volKey) {
         node.volume = clamped;
         if (!node.muted) {
           node.element.volume = clamped;
@@ -121,18 +136,20 @@ export function useAudioMixer() {
       }
     }
     const saved = loadSavedVolumes();
-    saved[identity] = clamped;
+    saved[volKey] = clamped;
     saveVolumes(saved);
   }, []);
 
   const getVolume = useCallback((identity: string): number => {
-    // Check any source for this identity
+    const volKey = normalizeVolumeKey(identity);
+    // Check any attached node whose identity normalises to the same key.
     for (const [key, node] of nodesRef.current.entries()) {
-      if (key.startsWith(identity + ':')) return node.volume;
+      const nodeIdentity = key.split(':')[0];
+      if (normalizeVolumeKey(nodeIdentity) === volKey) return node.volume;
     }
     const saved = loadSavedVolumes();
-    const defaultVol = identity === MUSIC_BOT_IDENTITY ? MUSIC_BOT_DEFAULT_VOLUME : 1.0;
-    return Math.min(1, saved[identity] ?? defaultVol);
+    const defaultVol = volKey === MUSIC_BOT_IDENTITY ? MUSIC_BOT_DEFAULT_VOLUME : 1.0;
+    return Math.min(1, saved[volKey] ?? defaultVol);
   }, []);
 
   const setMuted = useCallback((identity: string, muted: boolean) => {

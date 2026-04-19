@@ -9,6 +9,10 @@ const BUFFER_SECONDS = 10;
 const PROCESSOR_BUFFER_SIZE = 4096;
 const MUSIC_BOT_IDENTITY = '__music-bot__';
 
+function isBotIdentity(identity: string): boolean {
+  return identity === MUSIC_BOT_IDENTITY || identity.startsWith('__pipe-');
+}
+
 interface ParticipantRecording {
   source: MediaStreamAudioSourceNode;
   processor: ScriptProcessorNode;
@@ -23,7 +27,7 @@ export function useSoundbiteRecorder() {
 
   const startRecording = useCallback((identity: string, publication: RemoteTrackPublication) => {
     if (publication.source !== Track.Source.Microphone) return;
-    if (identity === MUSIC_BOT_IDENTITY) return;
+    if (isBotIdentity(identity)) return;
     if (recordingsRef.current.has(identity)) return;
 
     const track = publication.track;
