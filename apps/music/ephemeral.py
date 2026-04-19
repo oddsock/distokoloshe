@@ -14,7 +14,7 @@ soft-end) and the AudioSource FFI setup from bot.py (echo/noise/AGC off).
 import asyncio
 import json
 import time as _time
-from typing import Dict, Optional
+from typing import Awaitable, Callable, Dict, Optional
 
 from livekit import rtc
 from livekit.rtc._ffi_client import FfiHandle, FfiClient
@@ -58,6 +58,11 @@ class EphemeralSession:
         self._eof = False
         self._connected = False
         self._closed = False
+        # Callback invoked once the read loop exits on its own (stall timeout,
+        # error, EOS received outside of an explicit end() call). Lets the
+        # pool reap the dead session so its LK connection and the pool slot
+        # are released instead of leaking.
+        self._on_self_end: Optional[Callable[[str], Awaitable[None]]] = None
 
     async def start(self) -> None:
         """Connect to LiveKit + publish AudioSource track. Raises on failure."""
@@ -270,6 +275,14 @@ class EphemeralSession:
                 f"reason={break_reason or 'unknown'} "
                 f"frames_played={frames_played} seconds_played={seconds_played:.1f}"
             )
+            # If the loop exited on its own (stall, error, EOS) the pool
+            # still has this session listed — fire the self-end callback so
+            # the LK connection gets torn down and the pool slot is freed.
+            # Using a detached task because end() awaits this very task via
+            # wait_for; awaiting it here would deadlock on explicit end().
+            if not self._closed and self._on_self_end is not None:
+                cb = self._on_self_end
+                asyncio.create_task(cb(self.session_id))
 
 
 class EphemeralPool:
@@ -301,6 +314,7 @@ class EphemeralPool:
                 display_name=display_name,
                 title=title,
             )
+            session._on_self_end = self._reap_self_ended
             try:
                 await session.start()
             except Exception:
@@ -308,6 +322,19 @@ class EphemeralPool:
                 raise
             self._sessions[session_id] = session
             return session
+
+    async def _reap_self_ended(self, session_id: str) -> None:
+        """Invoked by a session whose read loop exited on its own (stall,
+        error, EOS received). Disconnects LiveKit + removes from the pool
+        so the memory and the LK participant slot are freed."""
+        async with self._lock:
+            session = self._sessions.pop(session_id, None)
+        if session is None:
+            return
+        try:
+            await session.force_close()
+        except Exception as e:
+            print(f"[ephemeral] session={session_id} self-reap failed: {e}")
 
     def get(self, session_id: str) -> Optional[EphemeralSession]:
         return self._sessions.get(session_id)

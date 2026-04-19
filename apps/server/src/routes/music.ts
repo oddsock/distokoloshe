@@ -163,11 +163,23 @@ export async function cleanupExternalOnBot(sessionId?: string): Promise<void> {
   }
 }
 
-/** Best-effort cleanup for an ephemeral session (no dedicated HTTP endpoint —
- * the bot tears it down on WS close, so this is only a local map cleanup). */
-async function cleanupEphemeralOnBot(_sessionId: string): Promise<void> {
-  // The bot reaps the EphemeralSession when the /ephemeral WS closes. Nothing
-  // explicit to do here beyond clearing our local lock (already done by caller).
+/** Explicitly tear down an ephemeral session on the bot. Used when a user
+ *  leaves the room or goes offline mid-stream — the /ephemeral WS may still
+ *  be wedged open on a half-dead TCP connection, so we POST to disconnect
+ *  the LiveKit bot directly rather than wait for it to notice. */
+async function cleanupEphemeralOnBot(sessionId: string): Promise<void> {
+  try {
+    await fetch(`${MUSIC_URL}/ephemeral/end`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Internal-Key': process.env.LIVEKIT_API_KEY ?? '',
+      },
+      body: JSON.stringify({ sessionId }),
+    });
+  } catch {
+    // Bot unavailable — best-effort.
+  }
 }
 
 async function fetchStatus(): Promise<Record<string, unknown>> {

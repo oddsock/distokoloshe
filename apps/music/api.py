@@ -157,6 +157,17 @@ def create_routes(player: Player, pool: EphemeralPool) -> web.RouteTableDef:
 
     # ── Ephemeral per-room pipe ──────────────────────────
 
+    @routes.post("/ephemeral/end")
+    async def ephemeral_end(request):
+        if not _internal_key_ok(request):
+            return web.json_response({"error": "Forbidden"}, status=403)
+        body = await request.json() if request.can_read_body else {}
+        session_id = body.get("sessionId") if isinstance(body, dict) else None
+        if not session_id:
+            return web.json_response({"error": "sessionId required"}, status=400)
+        ended = await pool.end(str(session_id))
+        return web.json_response({"ok": ended})
+
     @routes.get("/ephemeral")
     async def ephemeral_ws(request):
         """PCM pipe for non-Music rooms. The API relay hands us the LiveKit
