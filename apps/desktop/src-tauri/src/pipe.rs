@@ -74,10 +74,7 @@ fn sidecar_command(path: &std::path::Path) -> TokioCommand {
         .stderr(Stdio::piped())
         .kill_on_drop(true);
     #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(CREATE_NO_WINDOW);
-    }
+    cmd.creation_flags(CREATE_NO_WINDOW);
     cmd
 }
 
