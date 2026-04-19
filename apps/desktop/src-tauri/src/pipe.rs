@@ -130,6 +130,7 @@ pub async fn pipe_start(
     state: tauri::State<'_, PipeState>,
     server_url: String,
     token: String,
+    room_id: i64,
     kind: String,        // "url" | "file"
     source: String,      // URL or absolute file path
     title_hint: Option<String>,
@@ -398,7 +399,7 @@ pub async fn pipe_start(
 
 
     // Build the WebSocket URL
-    let ws_url = match build_ws_url(&server_url, &token) {
+    let ws_url = match build_ws_url(&server_url, &token, room_id) {
         Ok(u) => u,
         Err(e) => {
             emit(&app, "error", None, Some(e.clone()));
@@ -530,7 +531,7 @@ pub async fn pipe_stop(
     Ok(())
 }
 
-fn build_ws_url(server_url: &str, token: &str) -> Result<String, String> {
+fn build_ws_url(server_url: &str, token: &str, room_id: i64) -> Result<String, String> {
     let parsed = url::Url::parse(server_url).map_err(|e| format!("server url: {e}"))?;
     let scheme = match parsed.scheme() {
         "https" => "wss",
@@ -545,7 +546,9 @@ fn build_ws_url(server_url: &str, token: &str) -> Result<String, String> {
         .map(|p| format!(":{p}"))
         .unwrap_or_default();
     let token_enc = url::form_urlencoded::byte_serialize(token.as_bytes()).collect::<String>();
-    Ok(format!("{scheme}://{host}{port}/api/music/pipe?token={token_enc}"))
+    Ok(format!(
+        "{scheme}://{host}{port}/api/music/pipe?token={token_enc}&roomId={room_id}"
+    ))
 }
 
 /// Best-effort synchronous teardown for app shutdown / window close paths.

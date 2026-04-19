@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import json
 import os
 import uuid
@@ -7,6 +8,7 @@ from aiohttp import web, WSMsgType
 
 from player import Player, BYTES_PER_FRAME
 from stations import get_station
+from ephemeral import EphemeralPool
 
 
 def _internal_key_ok(request: web.Request) -> bool:
@@ -14,7 +16,7 @@ def _internal_key_ok(request: web.Request) -> bool:
     return bool(expected) and request.headers.get("X-Internal-Key") == expected
 
 
-def create_routes(player: Player) -> web.RouteTableDef:
+def create_routes(player: Player, pool: EphemeralPool) -> web.RouteTableDef:
     routes = web.RouteTableDef()
 
     @routes.get("/status")
@@ -151,6 +153,101 @@ def create_routes(player: Player) -> web.RouteTableDef:
                 # Client vanished (disconnect, heartbeat timeout, error) — let
                 # the radio resume. Safe no-op if the session was already torn down.
                 await player.end_external(session_id)
+
+        return ws
+
+    # ── Ephemeral per-room pipe ──────────────────────────
+
+    @routes.get("/ephemeral")
+    async def ephemeral_ws(request):
+        """PCM pipe for non-Music rooms. The API relay hands us the LiveKit
+        connection details in the `start` control frame, we spin up a fresh
+        EphemeralSession, feed frames until end/close, then tear it down."""
+        if not _internal_key_ok(request):
+            return web.Response(status=403, text="Forbidden")
+        ws = web.WebSocketResponse(
+            heartbeat=5.0,
+            max_msg_size=BYTES_PER_FRAME * 4,
+        )
+        await ws.prepare(request)
+
+        session_id: str | None = None
+        exit_reason = "loop-completed"
+        try:
+            async for msg in ws:
+                if msg.type == WSMsgType.TEXT:
+                    try:
+                        data = json.loads(msg.data)
+                    except json.JSONDecodeError:
+                        await ws.send_json({"type": "error", "message": "bad json"})
+                        continue
+                    ctype = data.get("type")
+                    if ctype == "start":
+                        if session_id is not None:
+                            await ws.send_json({"type": "error", "message": "already started"})
+                            continue
+                        new_id = str(data.get("sessionId") or uuid.uuid4())
+                        room_name = str(data.get("roomName") or "").strip()
+                        lk_token = str(data.get("lkToken") or "")
+                        e2ee_b64 = data.get("e2eeKey")
+                        identity = str(data.get("identity") or "").strip()
+                        display_name = str(data.get("displayName") or "").strip()
+                        if not room_name or not lk_token or not identity:
+                            await ws.send_json({"type": "error", "message": "missing fields"})
+                            await ws.close(code=4400, message=b"missing fields")
+                            exit_reason = "bad-start"
+                            break
+                        e2ee_key = base64.b64decode(e2ee_b64) if e2ee_b64 else None
+                        livekit_url = os.environ.get("LIVEKIT_URL", "ws://127.0.0.1:7881")
+                        try:
+                            await pool.create(
+                                session_id=new_id,
+                                livekit_url=livekit_url,
+                                room_name=room_name,
+                                lk_token=lk_token,
+                                e2ee_key=e2ee_key,
+                                identity=identity,
+                                display_name=display_name,
+                            )
+                        except Exception as e:
+                            print(f"[api] ephemeral start failed: {e}")
+                            await ws.send_json({"type": "error", "message": f"start failed: {e}"})
+                            await ws.close(code=4500, message=b"start failed")
+                            exit_reason = f"start-failed: {e}"
+                            break
+                        session_id = new_id
+                        print(f"[api] ephemeral ws started session={new_id} room={room_name}")
+                        await ws.send_json({"type": "started", "sessionId": new_id})
+                    elif ctype == "end":
+                        print(f"[api] ephemeral ws got explicit end for session={session_id}")
+                        if session_id:
+                            await pool.end(session_id)
+                            await ws.send_json({"type": "ended"})
+                            session_id = None
+                        await ws.close()
+                        exit_reason = "explicit-end-message"
+                        break
+                    else:
+                        await ws.send_json({"type": "error", "message": "unknown type"})
+                elif msg.type == WSMsgType.BINARY:
+                    if not session_id:
+                        continue
+                    if len(msg.data) != BYTES_PER_FRAME:
+                        continue
+                    session = pool.get(session_id)
+                    if session is not None:
+                        await session.feed(msg.data)
+                elif msg.type == WSMsgType.ERROR:
+                    print(f"[api] ephemeral ws error: {ws.exception()}")
+                    exit_reason = f"ws-error: {ws.exception()}"
+                    break
+        finally:
+            print(
+                f"[api] ephemeral ws finalize: reason={exit_reason} "
+                f"session_still_held={session_id is not None} ws_closed={ws.closed}"
+            )
+            if session_id:
+                await pool.end(session_id)
 
         return ws
 

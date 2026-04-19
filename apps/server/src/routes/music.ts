@@ -5,15 +5,24 @@ import { randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
 import { requireAuth } from '../middleware/auth.js';
-import { broadcast } from '../events.js';
+import { broadcast, isUserInRoom } from '../events.js';
 import type { AuthUser } from '../middleware/auth.js';
+import db from '../db.js';
+import { generateRoomToken, deriveRoomE2EEKey } from '../livekit.js';
 
 const router = Router();
 
 // Music container runs on host networking, reachable via host.docker.internal
 const MUSIC_URL = 'http://host.docker.internal:3001';
 const MUSIC_WS_URL = 'ws://host.docker.internal:3001/external';
+const EPHEMERAL_WS_URL = 'ws://host.docker.internal:3001/ephemeral';
+const MUSIC_ROOM_NAME = process.env.MUSIC_ROOM_NAME || 'Music';
 const PCM_FRAME_BYTES = 3840; // s16le * 48kHz * 20ms * 2ch
+
+interface RoomRow {
+  id: number;
+  name: string;
+}
 
 /** Fetch current status from music bot and broadcast to all SSE clients. */
 async function broadcastMusicStatus(): Promise<void> {
@@ -114,17 +123,27 @@ interface PipeLock {
   userId: number;
   displayName: string;
   sessionId: string;
+  roomId: number;
+  roomName: string;
+  ephemeral: boolean;
   startedAt: number;
 }
 
-let pipeLock: PipeLock | null = null;
+// One lock per room id. Different rooms can stream concurrently; only one
+// streamer at a time per room.
+const pipeLocks = new Map<number, PipeLock>();
 
-/** Release the active pipe if it belongs to the given user (e.g. on leave/disconnect). */
+/** Release any pipe held by the given user (e.g. on leave/disconnect). */
 export async function releasePipeIfOwnedBy(userId: number): Promise<void> {
-  if (!pipeLock || pipeLock.userId !== userId) return;
-  const sessionId = pipeLock.sessionId;
-  pipeLock = null;
-  await cleanupExternalOnBot(sessionId);
+  for (const [roomId, lock] of pipeLocks.entries()) {
+    if (lock.userId !== userId) continue;
+    pipeLocks.delete(roomId);
+    if (lock.ephemeral) {
+      await cleanupEphemeralOnBot(lock.sessionId);
+    } else {
+      await cleanupExternalOnBot(lock.sessionId);
+    }
+  }
 }
 
 /** Clear any stuck external session on boot so a prior crash doesn't leave the bot stuck. */
@@ -142,6 +161,13 @@ export async function cleanupExternalOnBot(sessionId?: string): Promise<void> {
   } catch {
     // Bot unavailable — nothing to clean up.
   }
+}
+
+/** Best-effort cleanup for an ephemeral session (no dedicated HTTP endpoint —
+ * the bot tears it down on WS close, so this is only a local map cleanup). */
+async function cleanupEphemeralOnBot(_sessionId: string): Promise<void> {
+  // The bot reaps the EphemeralSession when the /ephemeral WS closes. Nothing
+  // explicit to do here beyond clearing our local lock (already done by caller).
 }
 
 async function fetchStatus(): Promise<Record<string, unknown>> {
@@ -179,28 +205,79 @@ export function handlePipeUpgrade(req: IncomingMessage, socket: Duplex, head: Bu
     return;
   }
 
-  if (pipeLock && pipeLock.userId !== user.sub) {
+  const roomIdParam = url.searchParams.get('roomId');
+  const roomId = roomIdParam ? parseInt(roomIdParam, 10) : NaN;
+  if (!Number.isFinite(roomId)) {
+    socket.write('HTTP/1.1 400 Bad Request\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+  const room = db.prepare('SELECT id, name FROM rooms WHERE id = ?').get(roomId) as RoomRow | undefined;
+  if (!room) {
+    socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+  if (!isUserInRoom(user.sub, roomId)) {
+    socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+
+  const existing = pipeLocks.get(roomId);
+  if (existing && existing.userId !== user.sub) {
     socket.write('HTTP/1.1 409 Conflict\r\n\r\n');
     socket.destroy();
     return;
   }
 
   pipeWss.handleUpgrade(req, socket, head, (client) => {
-    runPipeRelay(client, user);
+    void runPipeRelay(client, user, room);
   });
 }
 
-function runPipeRelay(client: WebSocket, user: AuthUser): void {
-  // If the same user reconnects mid-session, tear down the old lock first.
-  if (pipeLock && pipeLock.userId === user.sub) {
-    const stale = pipeLock.sessionId;
-    pipeLock = null;
-    void cleanupExternalOnBot(stale);
+async function runPipeRelay(client: WebSocket, user: AuthUser, room: RoomRow): Promise<void> {
+  // If the same user reconnects mid-session in the same room, tear down the
+  // old lock first. (Different room for the same user is allowed concurrently.)
+  const stalePrev = pipeLocks.get(room.id);
+  if (stalePrev && stalePrev.userId === user.sub) {
+    pipeLocks.delete(room.id);
+    if (stalePrev.ephemeral) {
+      void cleanupEphemeralOnBot(stalePrev.sessionId);
+    } else {
+      void cleanupExternalOnBot(stalePrev.sessionId);
+    }
   }
 
   const sessionId = randomUUID();
   const internalKey = process.env.LIVEKIT_API_KEY ?? '';
-  const upstream = new WebSocket(MUSIC_WS_URL, {
+  const ephemeral = room.name !== MUSIC_ROOM_NAME;
+
+  // Pre-compute LK credentials for the ephemeral path so the start control
+  // frame can carry them to the bot.
+  let ephemeralLkToken = '';
+  let ephemeralE2eeKey = '';
+  let ephemeralIdentity = '';
+  let ephemeralDisplayName = '';
+  if (ephemeral) {
+    ephemeralIdentity = `__pipe-${user.sub}-${sessionId}__`;
+    ephemeralDisplayName = `${user.display_name}'s stream`;
+    try {
+      ephemeralLkToken = await generateRoomToken(
+        ephemeralIdentity,
+        ephemeralDisplayName,
+        room.name,
+        user.sub,
+      );
+      ephemeralE2eeKey = deriveRoomE2EEKey(room.name);
+    } catch (err) {
+      console.error('[music-relay] token mint failed:', err);
+      try { client.close(1011, 'token mint failed'); } catch { /* ignore */ }
+      return;
+    }
+  }
+
+  const upstream = new WebSocket(ephemeral ? EPHEMERAL_WS_URL : MUSIC_WS_URL, {
     headers: { 'X-Internal-Key': internalKey },
     maxPayload: PCM_FRAME_BYTES * 4,
   });
@@ -248,15 +325,19 @@ function runPipeRelay(client: WebSocket, user: AuthUser): void {
     clearInterval(bpTimer);
     if (clientPaused) clientSocket?.resume();
     console.log(
-      `[music-relay] close session=${sessionId} code=${code} reason=${reason || '-'} ` +
-      `frames=${framesForwarded} upstream.buffered=${upstream.bufferedAmount}`,
+      `[music-relay] close session=${sessionId} room=${room.name} ephemeral=${ephemeral} ` +
+      `code=${code} reason=${reason || '-'} frames=${framesForwarded} ` +
+      `upstream.buffered=${upstream.bufferedAmount}`,
     );
     try { client.close(code, reason); } catch { /* ignore */ }
     try { upstream.close(code, reason); } catch { /* ignore */ }
-    if (pipeLock?.sessionId === sessionId) {
-      pipeLock = null;
+    const current = pipeLocks.get(room.id);
+    if (current?.sessionId === sessionId) {
+      pipeLocks.delete(room.id);
     }
-    void fetchStatus().then((s) => broadcast('music:status', s));
+    if (!ephemeral) {
+      void fetchStatus().then((s) => broadcast('music:status', s));
+    }
   };
 
   upstream.on('open', () => {
@@ -271,7 +352,15 @@ function runPipeRelay(client: WebSocket, user: AuthUser): void {
       const parsed = JSON.parse(text);
       if (parsed?.type === 'started') {
         started = true;
-        pipeLock = { userId: user.sub, displayName: user.display_name, sessionId, startedAt: Date.now() };
+        pipeLocks.set(room.id, {
+          userId: user.sub,
+          displayName: user.display_name,
+          sessionId,
+          roomId: room.id,
+          roomName: room.name,
+          ephemeral,
+          startedAt: Date.now(),
+        });
       } else if (parsed?.type === 'busy') {
         close(4009, 'busy');
         return;
@@ -319,6 +408,13 @@ function runPipeRelay(client: WebSocket, user: AuthUser): void {
     if (parsed.type === 'start') {
       parsed.sessionId = sessionId;
       parsed.addedBy = user.display_name;
+      if (ephemeral) {
+        parsed.roomName = room.name;
+        parsed.lkToken = ephemeralLkToken;
+        parsed.e2eeKey = ephemeralE2eeKey;
+        parsed.identity = ephemeralIdentity;
+        parsed.displayName = ephemeralDisplayName;
+      }
     }
     const payload = JSON.stringify(parsed);
     if (upstream.readyState === WebSocket.OPEN) {
@@ -332,10 +428,10 @@ function runPipeRelay(client: WebSocket, user: AuthUser): void {
 
   client.on('close', () => {
     console.log(
-      `[music-relay] client closed first session=${sessionId} started=${started} ` +
-      `frames=${framesForwarded} upstream.buffered=${upstream.bufferedAmount}`,
+      `[music-relay] client closed first session=${sessionId} room=${room.name} ` +
+      `started=${started} frames=${framesForwarded} upstream.buffered=${upstream.bufferedAmount}`,
     );
-    if (started && pipeLock?.sessionId === sessionId) {
+    if (started && pipeLocks.get(room.id)?.sessionId === sessionId) {
       try {
         upstream.send(JSON.stringify({ type: 'end', sessionId }));
       } catch { /* ignore */ }

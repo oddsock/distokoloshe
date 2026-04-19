@@ -14,9 +14,10 @@ interface MusicControlsProps {
   status: MusicStatus | null;
   onRefresh: () => void;
   pipe: PipeController;
+  roomId: number;
 }
 
-export function MusicControls({ isMobile, status, onRefresh, pipe }: MusicControlsProps) {
+export function MusicControls({ isMobile, status, onRefresh, pipe, roomId }: MusicControlsProps) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -107,7 +108,7 @@ export function MusicControls({ isMobile, status, onRefresh, pipe }: MusicContro
         )}
       </div>
 
-      <PipePanel pipe={pipe} />
+      <PipePanel pipe={pipe} roomId={roomId} />
 
       {/* Radio Station */}
       <div className="mb-3">

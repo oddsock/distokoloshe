@@ -21,8 +21,8 @@ export interface PipeController {
   state: PipeState;
   title: string | null;
   error: string | null;
-  startUrl(url: string, titleHint?: string): Promise<void>;
-  startFile(): Promise<void>;
+  startUrl(roomId: number, url: string, titleHint?: string): Promise<void>;
+  startFile(roomId: number): Promise<void>;
   stop(): Promise<void>;
 }
 
@@ -71,7 +71,7 @@ export function usePipePlayer(): PipeController {
     };
   }, []);
 
-  const startUrl = useCallback(async (url: string, titleHint?: string) => {
+  const startUrl = useCallback(async (roomId: number, url: string, titleHint?: string) => {
     if (!isTauri()) throw new Error('Not running in desktop client');
     const token = getStoredToken();
     if (!token) throw new Error('Not signed in');
@@ -84,6 +84,7 @@ export function usePipePlayer(): PipeController {
       const resolved = await invoke<string>('pipe_start', {
         serverUrl,
         token,
+        roomId,
         kind: 'url',
         source: url,
         titleHint: titleHint ?? null,
@@ -96,7 +97,7 @@ export function usePipePlayer(): PipeController {
     }
   }, []);
 
-  const startFile = useCallback(async () => {
+  const startFile = useCallback(async (roomId: number) => {
     if (!isTauri()) throw new Error('Not running in desktop client');
     const token = getStoredToken();
     if (!token) throw new Error('Not signed in');
@@ -116,6 +117,7 @@ export function usePipePlayer(): PipeController {
       await invoke<string>('pipe_start', {
         serverUrl,
         token,
+        roomId,
         kind: 'file',
         source: picked,
         titleHint: fileName,

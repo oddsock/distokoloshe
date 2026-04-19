@@ -3,15 +3,17 @@ import type { PipeController } from '../hooks/usePipePlayer';
 
 interface PipePanelProps {
   pipe: PipeController;
+  roomId: number;
 }
 
 /**
- * Inline pipe controller embedded inside MusicControls (desktop only).
- * Lets the streamer paste a URL or pick a local file, then play / stop.
- * The audio is decoded by the bundled ffmpeg/yt-dlp sidecars and uploaded
- * to the music bot, so everyone in the room hears it on the DJ track.
+ * Inline pipe controller (desktop only). Lets the streamer paste a URL or
+ * pick a local file, then play / stop. The audio is decoded by the bundled
+ * ffmpeg/yt-dlp sidecars and uploaded to the server; in the Music room the
+ * existing music bot takes over, in any other room an ephemeral per-room
+ * bot joins, plays, and disconnects.
  */
-export function PipePanel({ pipe }: PipePanelProps) {
+export function PipePanel({ pipe, roomId }: PipePanelProps) {
   const [url, setUrl] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -23,7 +25,7 @@ export function PipePanel({ pipe }: PipePanelProps) {
     if (!url.trim() || busy) return;
     setBusy(true);
     try {
-      await pipe.startUrl(url.trim());
+      await pipe.startUrl(roomId, url.trim());
       setUrl('');
     } catch {
       /* error surfaced via pipe.error */
@@ -35,7 +37,7 @@ export function PipePanel({ pipe }: PipePanelProps) {
     if (busy) return;
     setBusy(true);
     try {
-      await pipe.startFile();
+      await pipe.startFile(roomId);
     } catch {
       /* error surfaced via pipe.error */
     }

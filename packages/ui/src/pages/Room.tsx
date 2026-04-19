@@ -13,6 +13,7 @@ import { UserList } from '../components/UserList';
 import { SignalStrength } from '../components/SignalStrength';
 import { Soundboard } from '../components/Soundboard';
 import { MusicControls } from '../components/MusicControls';
+import { PipePanel } from '../components/PipePanel';
 import { usePipePlayer } from '../hooks/usePipePlayer';
 import { useSoundboard } from '../hooks/useSoundboard';
 import { useConnectionStats } from '../hooks/useConnectionStats';
@@ -55,6 +56,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
   const [showVolumes, setShowVolumes] = useState(false);
   const [showSoundboard, setShowSoundboard] = useState(false);
   const [showMusic, setShowMusic] = useState(false);
+  const [showPipe, setShowPipe] = useState(false);
   const [theme, setThemeState] = useState<'dark' | 'light'>(getTheme);
 
   // Vote state
@@ -710,6 +712,17 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
       document.removeEventListener('click', close);
     };
   }, [showMusic]);
+
+  // Close pipe popover on outside click
+  useEffect(() => {
+    if (!showPipe) return;
+    const close = () => setShowPipe(false);
+    const id = setTimeout(() => document.addEventListener('click', close), 0);
+    return () => {
+      clearTimeout(id);
+      document.removeEventListener('click', close);
+    };
+  }, [showPipe]);
 
   // Close duration picker on outside click
   useEffect(() => {
@@ -1886,7 +1899,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
               )}
             </div>}
 
-            {remoteParticipants.some((p) => p.identity === '__music-bot__') && (
+            {remoteParticipants.some((p) => p.identity === '__music-bot__') && currentRoom && (
             <div className="relative">
               <button
                 onClick={() => setShowMusic(!showMusic)}
@@ -1896,8 +1909,38 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
               >
                 <Music size={18} />
               </button>
-              {showMusic && <MusicControls isMobile={isMobile} status={musicStatus} onRefresh={refreshMusicStatus} pipe={pipe} />}
+              {showMusic && <MusicControls isMobile={isMobile} status={musicStatus} onRefresh={refreshMusicStatus} pipe={pipe} roomId={currentRoom.id} />}
             </div>
+            )}
+
+            {/* Pipe-only popover for non-Music rooms (desktop only).
+                In the Music room the pipe panel already renders inside
+                MusicControls alongside the radio/queue UI. */}
+            {pipe.available
+              && currentRoom
+              && !remoteParticipants.some((p) => p.identity === '__music-bot__')
+              && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowPipe(!showPipe)}
+                  className="p-2.5 rounded-lg bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors focus-visible:ring-2 focus-visible:ring-indigo-500"
+                  aria-label="Pipe audio to this room"
+                  data-tooltip="Pipe audio"
+                >
+                  <Music size={18} />
+                </button>
+                {showPipe && (
+                  <div
+                    className={isMobile
+                      ? 'fixed bottom-16 left-2 right-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-xl shadow-2xl p-4 z-50'
+                      : 'absolute bottom-full mb-2 right-0 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-xl shadow-2xl p-4 w-[340px] z-50'}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <h3 className="text-sm font-semibold text-zinc-900 dark:text-white mb-2">Pipe audio to {currentRoom.name}</h3>
+                    <PipePanel pipe={pipe} roomId={currentRoom.id} />
+                  </div>
+                )}
+              </div>
             )}
 
             <div className="relative">

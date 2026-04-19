@@ -6,6 +6,7 @@ from aiohttp import web
 from player import Player
 from bot import MusicBot
 from api import create_routes
+from ephemeral import EphemeralPool
 
 
 async def main():
@@ -31,6 +32,7 @@ async def main():
 
     player = Player()
     bot = MusicBot()
+    pool = EphemeralPool()
 
     # Wire player frames to bot (async callback)
     player.set_frame_callback(bot.handle_frame)
@@ -45,7 +47,7 @@ async def main():
 
     # Start HTTP API
     app = web.Application()
-    app.add_routes(create_routes(player))
+    app.add_routes(create_routes(player, pool))
 
     runner = web.AppRunner(app)
     await runner.setup()
