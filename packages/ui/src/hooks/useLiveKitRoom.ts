@@ -122,6 +122,7 @@ export function useLiveKitRoom() {
 
       room.on(RoomEvent.ParticipantConnected, updateParticipants);
       room.on(RoomEvent.ParticipantDisconnected, updateParticipants);
+      room.on(RoomEvent.ParticipantMetadataChanged, updateParticipants);
       room.on(RoomEvent.TrackSubscribed, updateParticipants);
       room.on(RoomEvent.TrackUnsubscribed, updateParticipants);
       room.on(RoomEvent.LocalTrackPublished, updateParticipants);

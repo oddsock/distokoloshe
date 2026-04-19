@@ -12,6 +12,7 @@ soft-end) and the AudioSource FFI setup from bot.py (echo/noise/AGC off).
 """
 
 import asyncio
+import json
 import time as _time
 from typing import Dict, Optional
 
@@ -39,6 +40,7 @@ class EphemeralSession:
         e2ee_key: Optional[bytes],
         identity: str,
         display_name: str,
+        title: str = "",
     ):
         self.session_id = session_id
         self._livekit_url = livekit_url
@@ -47,6 +49,7 @@ class EphemeralSession:
         self._e2ee_key = e2ee_key
         self._identity = identity
         self._display_name = display_name
+        self._title = title
 
         self._room: Optional[rtc.Room] = None
         self._audio_source: Optional[rtc.AudioSource] = None
@@ -99,10 +102,33 @@ class EphemeralSession:
         options.audio_encoding.max_bitrate = 510_000
         await self._room.local_participant.publish_track(track, options)
 
+        # Surface the current track title to the room via participant metadata
+        # so the client UI can render a marquee (mirrors what DJ Tokoloshe's
+        # /status feed gives the Music room).
+        if self._title:
+            try:
+                meta = json.dumps({"pipeTitle": self._title})
+                set_meta = getattr(
+                    self._room.local_participant,
+                    "set_metadata",
+                    None,
+                ) or getattr(
+                    self._room.local_participant,
+                    "update_metadata",
+                    None,
+                )
+                if set_meta is not None:
+                    res = set_meta(meta)
+                    if asyncio.iscoroutine(res):
+                        await res
+            except Exception as e:
+                print(f"[ephemeral] session={self.session_id} set_metadata failed: {e}")
+
         self._task = asyncio.create_task(self._read_loop())
         print(
             f"[ephemeral] session={self.session_id} connected room={self._room_name} "
-            f"identity={self._identity} name={self._display_name!r}"
+            f"identity={self._identity} name={self._display_name!r} "
+            f"title={self._title!r}"
         )
 
     async def feed(self, pcm: bytes) -> None:
@@ -260,6 +286,7 @@ class EphemeralPool:
         e2ee_key: Optional[bytes],
         identity: str,
         display_name: str,
+        title: str = "",
     ) -> EphemeralSession:
         async with self._lock:
             if session_id in self._sessions:
@@ -272,6 +299,7 @@ class EphemeralPool:
                 e2ee_key=e2ee_key,
                 identity=identity,
                 display_name=display_name,
+                title=title,
             )
             try:
                 await session.start()

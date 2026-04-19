@@ -51,6 +51,19 @@ function isMusicOrPipeBot(identity: string): boolean {
   return identity === '__music-bot__' || identity.startsWith('__pipe-');
 }
 
+/** Pipe bot publishes the current track title as JSON in its LK metadata
+ *  (`{"pipeTitle": "…"}`). Null when absent or malformed. */
+function getPipeTitle(metadata?: string | null): string | null {
+  if (!metadata) return null;
+  try {
+    const parsed = JSON.parse(metadata);
+    const title = parsed?.pipeTitle;
+    return typeof title === 'string' && title.length > 0 ? title : null;
+  } catch {
+    return null;
+  }
+}
+
 export function RoomPage({ user, onLogout }: RoomPageProps) {
   const [rooms, setRooms] = useState<api.Room[]>([]);
   const [users, setUsers] = useState<api.UserListItem[]>([]);
@@ -1582,8 +1595,8 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                         <div className="flex flex-col items-center justify-center gap-1 px-3 w-full">
                           <Music size={20} className="text-indigo-400 shrink-0" />
                           <div className="w-full overflow-hidden">
-                            <p className="text-xs text-zinc-600 dark:text-zinc-300 whitespace-nowrap truncate text-center">
-                              {p.name || 'Streaming'}
+                            <p className="text-xs text-zinc-600 dark:text-zinc-300 whitespace-nowrap animate-[marquee_12s_linear_infinite]">
+                              {getPipeTitle(p.metadata) ?? p.name ?? 'Streaming'}
                             </p>
                           </div>
                         </div>

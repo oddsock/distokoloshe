@@ -1,5 +1,4 @@
 import asyncio
-import base64
 import json
 import os
 import uuid
@@ -192,12 +191,16 @@ def create_routes(player: Player, pool: EphemeralPool) -> web.RouteTableDef:
                         e2ee_b64 = data.get("e2eeKey")
                         identity = str(data.get("identity") or "").strip()
                         display_name = str(data.get("displayName") or "").strip()
+                        title = str(data.get("title") or "").strip()[:200]
                         if not room_name or not lk_token or not identity:
                             await ws.send_json({"type": "error", "message": "missing fields"})
                             await ws.close(code=4400, message=b"missing fields")
                             exit_reason = "bad-start"
                             break
-                        e2ee_key = base64.b64decode(e2ee_b64) if e2ee_b64 else None
+                        # LiveKit's Python shared_key expects the base64 string
+                        # encoded as UTF-8 bytes (the key material is the ASCII
+                        # text, not the raw digest). Mirrors MusicBot._connect.
+                        e2ee_key = e2ee_b64.encode() if e2ee_b64 else None
                         livekit_url = os.environ.get("LIVEKIT_URL", "ws://127.0.0.1:7881")
                         try:
                             await pool.create(
@@ -208,6 +211,7 @@ def create_routes(player: Player, pool: EphemeralPool) -> web.RouteTableDef:
                                 e2ee_key=e2ee_key,
                                 identity=identity,
                                 display_name=display_name,
+                                title=title,
                             )
                         except Exception as e:
                             print(f"[api] ephemeral start failed: {e}")
