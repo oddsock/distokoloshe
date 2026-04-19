@@ -207,6 +207,12 @@ pub async fn pipe_start(
             "--no-playlist",
             "-f", "bestaudio[ext=webm]/bestaudio[acodec=opus]/bestaudio/best",
             "--no-warnings",
+            // Realtime backpressure from ffmpeg means yt-dlp's upstream
+            // HTTP socket sits idle between reads; YouTube's CDN drops
+            // idle sockets so yt-dlp range-resumes. Default retries=10
+            // would cap a long track mid-way.
+            "--retries", "infinite",
+            "--fragment-retries", "infinite",
             "-o", "-",
             &source,
         ];
