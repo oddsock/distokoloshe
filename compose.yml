@@ -116,11 +116,9 @@ services:
       retries: 3
       start_period: 15s
 
-  # ── Certbot (Let's Encrypt cert issuance + renewal) ─────
-  # Used by init-certs.sh for initial issuance, and by
-  # infra/scripts/renew-cert.sh (host cron) for renewal.
-  # Cron entry (as root on the host):
-  #   0 3 * * * /home/debian/distokoloshe/infra/scripts/renew-cert.sh 2>&1 | logger -t certbot-renew
+  # ── Certbot (Let's Encrypt cert renewal) ────────────────
+  # Only needed in production. Renews certs every 12 hours.
+  # nginx detects the updated cert and reloads itself automatically.
   certbot:
     image: certbot/certbot:latest
     container_name: distokoloshe_certbot
@@ -128,7 +126,7 @@ services:
     volumes:
       - ./data/certs:/etc/letsencrypt
       - ./data/certbot/www:/var/www/certbot
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do sleep 24h & wait $${!}; done'"
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done'"
     profiles:
       - production
     networks:
