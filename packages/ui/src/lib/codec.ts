@@ -32,8 +32,15 @@ function detectEngine(): 'firefox' | 'chromium' | 'safari' | 'unknown' {
 // LiveKit backupCodec only accepts 'vp8' or 'h264'
 export type BackupCodec = 'vp8' | 'h264';
 
-export function getScreenShareCodec(wantAV1: boolean): { codec: VideoCodecChoice; backup: BackupCodec | false } {
+export function getScreenShareCodec(wantAV1: boolean, e2eeActive: boolean): { codec: VideoCodecChoice; backup: BackupCodec | false } {
   const engine = detectEngine();
+
+  // livekit-client disables backup-codec publishing when E2EE is active,
+  // so a VP9/AV1 primary would be the only stream — undecodable on Safari
+  // receivers (black/missing share). Publish universally-decodable VP8.
+  if (e2eeActive) {
+    return { codec: 'vp8', backup: false };
+  }
 
   // Firefox: AV1 if requested + hardware available, otherwise VP9
   if (engine === 'firefox') {
