@@ -44,7 +44,7 @@ export const QUALITY_PRESETS: Record<ShareQuality, QualityPreset> = {
   ultra: {
     label: 'Ultra (Native 120fps)',
     resolution: { width: 4096, height: 2160, frameRate: 120 },
-    bitrate: 8_000_000,
+    bitrate: 20_000_000,
     contentHint: 'motion',
     scalabilityMode: 'L1T3',
     preferAV1: true,

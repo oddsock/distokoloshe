@@ -153,9 +153,12 @@ export function useAudioMixer() {
   }, []);
 
   const setMuted = useCallback((identity: string, muted: boolean) => {
-    // Mute/unmute all sources for this identity
+    // Mute/unmute this identity's voice. Screen-share audio is deliberately
+    // excluded — it has its own control (setTrackMuted) with separate UI
+    // state, and this function is re-run by the whispers effect on every
+    // track event, which would silently stomp the stream-audio mute.
     for (const [key, node] of nodesRef.current.entries()) {
-      if (key.startsWith(identity + ':')) {
+      if (key.startsWith(identity + ':') && !key.endsWith(':' + Track.Source.ScreenShareAudio)) {
         node.muted = muted;
         node.element.volume = muted ? 0 : node.volume;
       }
@@ -164,7 +167,9 @@ export function useAudioMixer() {
 
   const isMuted = useCallback((identity: string): boolean => {
     for (const [key, node] of nodesRef.current.entries()) {
-      if (key.startsWith(identity + ':')) return node.muted;
+      if (key.startsWith(identity + ':') && !key.endsWith(':' + Track.Source.ScreenShareAudio)) {
+        return node.muted;
+      }
     }
     return false;
   }, []);

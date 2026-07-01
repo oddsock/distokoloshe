@@ -69,15 +69,19 @@ export function ScreenShareView({ publication, participantName, compact, hasAudi
           <span>{compact ? participantName : participantName === 'You' ? 'You are sharing your screen' : `${participantName} is sharing their screen`}</span>
         </div>
       </div>
-      {/* Video + overlay controls */}
-      <div className="relative">
-        <div className={`${isFullscreen ? '' : 'rounded-b-xl'} overflow-hidden`}>
+      {/* Video + overlay controls. In fullscreen the wrapper takes the
+          remaining viewport height and the video letterboxes inside it —
+          otherwise a share with a taller aspect ratio than the viewer's
+          screen overflows below the viewport, pushing the bottom-anchored
+          controls out of reach. */}
+      <div className={`relative ${isFullscreen ? 'flex-1 min-h-0' : ''}`}>
+        <div className={`overflow-hidden ${isFullscreen ? 'h-full' : 'rounded-b-xl'}`}>
           <video
             ref={videoRef}
             autoPlay
             playsInline
             className={`w-full object-contain ${
-              isFullscreen ? 'flex-1 min-h-0' : compact ? '' : 'max-h-[70vh]'
+              isFullscreen ? 'h-full' : compact ? '' : 'max-h-[70vh]'
             }`}
           />
         </div>

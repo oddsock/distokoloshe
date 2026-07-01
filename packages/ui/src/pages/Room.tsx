@@ -765,7 +765,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     ) => {
       if (publication.kind === Track.Kind.Audio) {
         attachTrack(participant, publication);
-        const meta = participant.metadata ? JSON.parse(participant.metadata) : {};
+        const meta = (() => { try { return JSON.parse(participant.metadata || '{}'); } catch { return {}; } })();
         if (!meta.soundbiteOptOut) startRecording(participant.identity, publication);
         setAudioTrackVersion((v) => v + 1);
       }
@@ -784,7 +784,12 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     ) => {
       if (publication.kind === Track.Kind.Audio) {
         detachTrack(participant, publication.source ?? Track.Source.Microphone);
-        stopRecording(participant.identity);
+        // Only a mic unsubscribe ends the soundbite recording — a stream-audio
+        // unsubscribe (user stops sharing) must not kill the mic ring buffer,
+        // since recording only restarts on a mic TrackSubscribed event.
+        if (publication.source === Track.Source.Microphone) {
+          stopRecording(participant.identity);
+        }
         setAudioTrackVersion((v) => v + 1);
       }
       if (publication.kind === Track.Kind.Video) {
@@ -802,7 +807,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
       for (const pub of p.trackPublications.values()) {
         if (pub.kind === Track.Kind.Audio && pub.isSubscribed && pub.track) {
           attachTrack(p, pub as RemoteTrackPublication);
-          const meta = p.metadata ? JSON.parse(p.metadata) : {};
+          const meta = (() => { try { return JSON.parse(p.metadata || '{}'); } catch { return {}; } })();
           if (!meta.soundbiteOptOut) startRecording(p.identity, pub as RemoteTrackPublication);
         }
       }
@@ -876,6 +881,15 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
       }
     }
   }, [isWhispersMode, whisperChain, remoteParticipants, audioTrackVersion, user.id, setMuted, mutedUsers]);
+
+  // Re-apply stream-audio mutes after tracks (re)subscribe — attachTrack
+  // creates nodes unmuted, so a re-subscribed ScreenShareAudio track would
+  // otherwise come back audible while the UI still shows it muted.
+  useEffect(() => {
+    for (const identity of mutedStreamAudio) {
+      setTrackMuted(identity, Track.Source.ScreenShareAudio, true);
+    }
+  }, [audioTrackVersion, mutedStreamAudio, setTrackMuted]);
 
   // Auto-join last room OR jail room (waits for punishment check)
   useEffect(() => {

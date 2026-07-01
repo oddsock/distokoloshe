@@ -29,6 +29,11 @@ import { startUpdateSync } from './updater.js';
 
 const app = express();
 
+// Trust the single nginx hop so req.ip reflects the real client address
+// (from X-Forwarded-For) — without this every request shares the nginx
+// container IP and the auth rate limiters become one global bucket.
+app.set('trust proxy', 1);
+
 // ── CORS — lock down to same origin (nginx proxy) ──────────
 app.use(cors({
   origin: false, // Disallow cross-origin — all API calls come via nginx reverse proxy on same origin
