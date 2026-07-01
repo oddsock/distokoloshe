@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.2.1 — Bugfix Patch
+
+- Muting a screen share's audio now sticks — it no longer silently unmutes when other track events fire (e.g. someone toggling their mic), and survives track re-subscribes
+- Fullscreen screen-share now letterboxes within the viewport, keeping the overlay controls reachable when the shared resolution/aspect ratio differs from the viewer's screen
+- Stopping a screen share no longer permanently breaks soundbite capture for that user
+- Login/registration rate limits now apply per client IP instead of one shared bucket behind the nginx proxy
+- Ultra screen-share preset bitrate raised from 8 to 20 Mbps
+
 ## 2.2.0 — Client-Piped URL Playback
 
 - Desktop client can now decode any yt-dlp supported URL (YouTube, SoundCloud, Bandcamp, …) or local audio file and pipe the PCM to the music bot. Audio still appears to come from DJ Tokoloshe for everyone in the room.
