@@ -90,7 +90,7 @@ export function useScreenShare(room: Room | null) {
 
     const effectiveQuality = quality ?? shareQuality;
     const preset = QUALITY_PRESETS[effectiveQuality];
-    const { codec, backup } = getScreenShareCodec(preset.preferAV1, room.isE2EEEnabled);
+    const { codec, backup } = getScreenShareCodec(preset.preferAV1);
 
     try {
       await room.localParticipant.setScreenShareEnabled(true, {
