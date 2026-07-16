@@ -8,10 +8,12 @@ Includes code cleanup found during review.
 Scope is frontend-only (`packages/ui`) — no server or protocol changes
 (except the possible popout presence flag in Phase 6).
 
-**Workflow**: one phase at a time. Each phase ends with commit + push, then **STOP** —
-the user pulls onto their dev server and tests there. Do **not** build locally
-(no `docker compose build`, no `npm run build`); desktop releases go through the
-GitHub Actions tag+release flow. Next phase starts only after the user confirms.
+**Workflow**: one phase at a time. Each phase ends with a version bump (package.json,
+tauri.conf.json, Cargo.toml, Cargo.lock + CHANGELOG entry), commit + push, and a `v*`
+tag so GitHub Actions builds the desktop client for testing — then **STOP** while the
+user pulls onto their dev server / installs the client build and tests. Do **not**
+build locally (no `docker compose build`, no `npm run build`). Next phase starts only
+after the user confirms.
 
 ---
 
