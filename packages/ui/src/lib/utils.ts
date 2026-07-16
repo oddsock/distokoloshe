@@ -9,6 +9,17 @@ export function getRoomInitials(name: string): string {
     .slice(0, 2);
 }
 
+/** Parse a participant's LiveKit metadata JSON. Returns {} when absent or malformed. */
+export function parseParticipantMetadata(metadata?: string | null): Record<string, unknown> {
+  if (!metadata) return {};
+  try {
+    const parsed = JSON.parse(metadata);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 /** Toggle dark/light theme */
 export function toggleTheme(): 'dark' | 'light' {
   const current = document.documentElement.classList.contains('dark') ? 'dark' : 'light';

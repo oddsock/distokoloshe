@@ -9,6 +9,8 @@ import { DeviceSettings } from '../components/DeviceSettings';
 import { VolumeSlider } from '../components/VolumeSlider';
 import { ScreenShareView } from '../components/ScreenShareView';
 import { VideoTrackView } from '../components/VideoTrackView';
+import { ParticipantTile } from '../components/ParticipantTile';
+import type { ChatLine, ChatMsg } from '../components/ChatBubbles';
 import { UserList } from '../components/UserList';
 import { SignalStrength } from '../components/SignalStrength';
 import { Soundboard } from '../components/Soundboard';
@@ -22,10 +24,10 @@ import { useMutedMicDetector } from '../hooks/useMutedMicDetector';
 import { useSoundbiteRecorder } from '../hooks/useSoundbiteRecorder';
 import { useNoiseCancellation } from '../hooks/useNoiseCancellation';
 import { useAutoUpdate } from '../hooks/useAutoUpdate';
-import { getRoomInitials, toggleTheme, getTheme } from '../lib/utils';
+import { getRoomInitials, toggleTheme, getTheme, parseParticipantMetadata } from '../lib/utils';
 import * as api from '../lib/api';
 import { playSound } from '../lib/sounds';
-import { Mic, MicOff, Camera, CameraOff, Ear, EarOff, Monitor, MonitorOff, Volume2, VolumeX, Settings, Sun, Moon, LogOut, AudioLines, Music, X, MessageCircle, Download, Scissors, Lock, ShieldAlert, RefreshCw } from 'lucide-react';
+import { Mic, MicOff, Camera, CameraOff, Ear, EarOff, Monitor, MonitorOff, Volume2, VolumeX, Settings, Sun, Moon, LogOut, AudioLines, Music, X, Download, Scissors, Lock, ShieldAlert, RefreshCw } from 'lucide-react';
 
 interface RoomPageProps {
   user: api.User;
@@ -54,15 +56,15 @@ function isMusicOrPipeBot(identity: string): boolean {
 /** Pipe bot publishes the current track title as JSON in its LK metadata
  *  (`{"pipeTitle": "…"}`). Null when absent or malformed. */
 function getPipeTitle(metadata?: string | null): string | null {
-  if (!metadata) return null;
-  try {
-    const parsed = JSON.parse(metadata);
-    const title = parsed?.pipeTitle;
-    return typeof title === 'string' && title.length > 0 ? title : null;
-  } catch {
-    return null;
-  }
+  const title = parseParticipantMetadata(metadata).pipeTitle;
+  return typeof title === 'string' && title.length > 0 ? title : null;
 }
+
+/** All floating popovers anchored to the control bar / tiles. Only one can be
+ *  open at a time; any document click outside closes it. */
+type Popover =
+  | 'settings' | 'volumes' | 'soundboard' | 'music' | 'pipe' | 'quality' | 'stopShare'
+  | { durationPickerFor: number };
 
 export function RoomPage({ user, onLogout }: RoomPageProps) {
   const [rooms, setRooms] = useState<api.Room[]>([]);
@@ -71,18 +73,13 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
   const [currentRoom, setCurrentRoom] = useState<api.Room | null>(null);
   const [error, setError] = useState<{ msg: string; roomId?: number } | null>(null);
   const [errorFading, setErrorFading] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
-  const [showVolumes, setShowVolumes] = useState(false);
-  const [showSoundboard, setShowSoundboard] = useState(false);
-  const [showMusic, setShowMusic] = useState(false);
-  const [showPipe, setShowPipe] = useState(false);
+  const [openPopover, setOpenPopover] = useState<Popover | null>(null);
   const [theme, setThemeState] = useState<'dark' | 'light'>(getTheme);
 
   // Vote state
   const [activeVote, setActiveVote] = useState<(api.Vote & { yesCount: number; noCount: number }) | null>(null);
   const [myBallot, setMyBallot] = useState<boolean | null>(null);
   const [voteCountdown, setVoteCountdown] = useState(0);
-  const [showDurationPicker, setShowDurationPicker] = useState<number | null>(null);
   const [voteResult, setVoteResult] = useState<{ passed: boolean; targetDisplayName: string } | null>(null);
 
   // Punishment state
@@ -127,8 +124,6 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
   const [soundboardPlaying, setSoundboardPlaying] = useState<{ username: string; clipName: string } | null>(null);
   const soundboardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Chat speech bubbles (ephemeral)
-  type ChatLine = { text?: string; imageUrl?: string };
-  type ChatMsg = { id: number; lines: ChatLine[]; ts: number };
   const [chatBubbles, setChatBubbles] = useState<Map<string, ChatMsg[]>>(new Map());
   const chatIdRef = useRef(0);
   const chatTimersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
@@ -136,8 +131,6 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
   const [chatPendingImage, setChatPendingImage] = useState<Blob | null>(null);
   const [chatImagePreview, setChatImagePreview] = useState<string | null>(null);
 
-  const [showQualityMenu, setShowQualityMenu] = useState(false);
-  const [showStopShareConfirm, setShowStopShareConfirm] = useState(false);
   const isSafari = /Safari\//.test(navigator.userAgent) && !/Chrome\//.test(navigator.userAgent);
   const [safariWarnDismissed, setSafariWarnDismissed] = useState(() => localStorage.getItem('safariCodecWarnDismissed') === '1');
   const [spotlight, setSpotlight] = useState<{ identity: string; source: 'screen_share' | 'camera' } | null>(null);
@@ -652,66 +645,28 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     };
   }, [pipe.stop]);
 
-  // Close quality menu on outside click
+  // Close the open popover on any outside click. Panels that must survive
+  // inner clicks call stopPropagation themselves. The setTimeout defers the
+  // listener so the click that opened the popover doesn't immediately close it.
   useEffect(() => {
-    if (!showQualityMenu) return;
-    const close = () => setShowQualityMenu(false);
+    if (openPopover === null) return;
+    const close = () => setOpenPopover(null);
     const id = setTimeout(() => document.addEventListener('click', close), 0);
     return () => {
       clearTimeout(id);
       document.removeEventListener('click', close);
     };
-  }, [showQualityMenu]);
-
-  // Close stop-share confirm on outside click
-  useEffect(() => {
-    if (!showStopShareConfirm) return;
-    const close = () => setShowStopShareConfirm(false);
-    const id = setTimeout(() => document.addEventListener('click', close), 0);
-    return () => {
-      clearTimeout(id);
-      document.removeEventListener('click', close);
-    };
-  }, [showStopShareConfirm]);
-
-  // Close settings popover on outside click
-  useEffect(() => {
-    if (!showSettings) return;
-    const close = () => setShowSettings(false);
-    const id = setTimeout(() => document.addEventListener('click', close), 0);
-    return () => {
-      clearTimeout(id);
-      document.removeEventListener('click', close);
-    };
-  }, [showSettings]);
-
-  // Close volumes popover on outside click
-  useEffect(() => {
-    if (!showVolumes) return;
-    const close = () => setShowVolumes(false);
-    const id = setTimeout(() => document.addEventListener('click', close), 0);
-    return () => {
-      clearTimeout(id);
-      document.removeEventListener('click', close);
-    };
-  }, [showVolumes]);
-
-  // Close soundboard popover on outside click
-  useEffect(() => {
-    if (!showSoundboard) return;
-    const close = () => setShowSoundboard(false);
-    const id = setTimeout(() => document.addEventListener('click', close), 0);
-    return () => {
-      clearTimeout(id);
-      document.removeEventListener('click', close);
-    };
-  }, [showSoundboard]);
+  }, [openPopover]);
 
   // Music bot state — driven by SSE, no polling
   const hasMusicBot = remoteParticipants.some((p) => p.identity === '__music-bot__');
   const [musicStatus, setMusicStatus] = useState<api.MusicStatus | null>(null);
   useEffect(() => {
-    if (!hasMusicBot) { setShowMusic(false); setMusicStatus(null); return; }
+    if (!hasMusicBot) {
+      setOpenPopover((p) => (p === 'music' ? null : p));
+      setMusicStatus(null);
+      return;
+    }
     api.getMusicStatus().then(setMusicStatus).catch(() => {});
   }, [hasMusicBot]);
   const musicNowPlaying = musicStatus
@@ -720,39 +675,6 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
   const refreshMusicStatus = useCallback(() => {
     api.getMusicStatus().then(setMusicStatus).catch(() => {});
   }, []);
-
-  // Close music popover on outside click
-  useEffect(() => {
-    if (!showMusic) return;
-    const close = () => setShowMusic(false);
-    const id = setTimeout(() => document.addEventListener('click', close), 0);
-    return () => {
-      clearTimeout(id);
-      document.removeEventListener('click', close);
-    };
-  }, [showMusic]);
-
-  // Close pipe popover on outside click
-  useEffect(() => {
-    if (!showPipe) return;
-    const close = () => setShowPipe(false);
-    const id = setTimeout(() => document.addEventListener('click', close), 0);
-    return () => {
-      clearTimeout(id);
-      document.removeEventListener('click', close);
-    };
-  }, [showPipe]);
-
-  // Close duration picker on outside click
-  useEffect(() => {
-    if (showDurationPicker === null) return;
-    const close = () => setShowDurationPicker(null);
-    const id = setTimeout(() => document.addEventListener('click', close), 0);
-    return () => {
-      clearTimeout(id);
-      document.removeEventListener('click', close);
-    };
-  }, [showDurationPicker]);
 
   // Attach audio tracks for per-user volume control
   useEffect(() => {
@@ -765,8 +687,9 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     ) => {
       if (publication.kind === Track.Kind.Audio) {
         attachTrack(participant, publication);
-        const meta = (() => { try { return JSON.parse(participant.metadata || '{}'); } catch { return {}; } })();
-        if (!meta.soundbiteOptOut) startRecording(participant.identity, publication);
+        if (!parseParticipantMetadata(participant.metadata).soundbiteOptOut) {
+          startRecording(participant.identity, publication);
+        }
         setAudioTrackVersion((v) => v + 1);
       }
       if (publication.kind === Track.Kind.Video) {
@@ -807,8 +730,9 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
       for (const pub of p.trackPublications.values()) {
         if (pub.kind === Track.Kind.Audio && pub.isSubscribed && pub.track) {
           attachTrack(p, pub as RemoteTrackPublication);
-          const meta = (() => { try { return JSON.parse(p.metadata || '{}'); } catch { return {}; } })();
-          if (!meta.soundbiteOptOut) startRecording(p.identity, pub as RemoteTrackPublication);
+          if (!parseParticipantMetadata(p.metadata).soundbiteOptOut) {
+            startRecording(p.identity, pub as RemoteTrackPublication);
+          }
         }
       }
     }
@@ -1021,7 +945,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
   // Vote actions
   const handleStartVote = useCallback(async (targetUserId: number, durationSecs: number) => {
     try {
-      setShowDurationPicker(null);
+      setOpenPopover(null);
       await api.startVote(targetUserId, durationSecs);
     } catch (err) {
       const msg = err instanceof api.ApiError ? err.message : 'Failed to start vote';
@@ -1472,70 +1396,23 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                 const localCameraPub = Array.from(localParticipant.trackPublications.values()).find(
                   (pub) => pub.source === Track.Source.Camera && pub.track && !pub.isMuted,
                 );
-                const hasScreenShare = !!localScreenShare;
                 return (
-                  <div className="relative">
-                    {/* Speech bubbles — overlaid on card, centered, above username */}
-                    {(chatBubbles.get(localParticipant.identity) || []).length > 0 && (
-                      <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-40 flex flex-col-reverse items-center gap-1.5 pointer-events-auto">
-                        {(chatBubbles.get(localParticipant.identity) || []).map((msg) => (
-                          <div key={msg.id} className="animate-[fadeSlideIn_0.2s_ease-out]">
-                            <div className="max-w-[220px] px-3 py-1.5 rounded-xl bg-blue-500 text-white text-xs shadow-lg break-all select-text cursor-text">
-                              {msg.lines.map((line, li) => (
-                                <div key={li} className={li > 0 ? 'mt-1' : ''}>
-                                  {line.imageUrl && <a href={line.imageUrl} target="_blank" rel="noopener noreferrer"><img src={line.imageUrl} className="max-w-full max-h-32 rounded mb-1 cursor-pointer" alt="" /></a>}
-                                  {line.text}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  <div className={`bg-white dark:bg-zinc-800 rounded-xl p-4 border border-zinc-200 dark:border-zinc-700 ring-2 transition-shadow ${
-                    localSpeaking ? 'ring-blue-400 shadow-[0_0_12px_rgba(96,165,250,0.5)]' : 'ring-indigo-500/30'
-                  }`}>
-                    {/* Main video area: camera > screen share > avatar */}
-                    <div
-                      className={`aspect-video bg-zinc-200 dark:bg-zinc-700 rounded-lg mb-3 flex items-center justify-center overflow-hidden ${
-                        hasScreenShare && !localCameraPub ? 'cursor-pointer ring-1 ring-zinc-600 hover:ring-indigo-500 transition-all' : ''
-                      }`}
-                      onClick={hasScreenShare && !localCameraPub ? () => setSpotlight({ identity: localParticipant.identity, source: 'screen_share' }) : undefined}
-                    >
-                      {localCameraPub ? (
-                        <VideoTrackView publication={localCameraPub} mirror />
-                      ) : hasScreenShare ? (
-                        <VideoTrackView publication={localScreenShare!} fit="contain" />
-                      ) : (
-                        <div className={`w-16 h-16 rounded-full bg-indigo-600 flex items-center justify-center text-2xl font-bold text-white transition-shadow ${
-                          localSpeaking ? 'shadow-[0_0_16px_rgba(96,165,250,0.6)]' : ''
-                        }`}>
-                          {(localParticipant.name || localParticipant.identity).charAt(0).toUpperCase()}
-                        </div>
-                      )}
-                    </div>
-                    {/* Screen share thumbnail — only shown when camera is ON (otherwise it's in the main area) */}
-                    {hasScreenShare && localCameraPub && (
-                      <button
-                        onClick={() => setSpotlight({ identity: localParticipant.identity, source: 'screen_share' })}
-                        className="w-full rounded-lg overflow-hidden border-2 transition-colors mb-3 border-zinc-600 hover:border-indigo-500 bg-black"
-                      >
-                        <div className="aspect-video flex items-center justify-center">
-                          <VideoTrackView publication={localScreenShare!} fit="contain" />
-                        </div>
-                      </button>
-                    )}
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium truncate">
-                        {localParticipant.name || localParticipant.identity} (You)
-                      </span>
-                      <div className="flex items-center gap-1">
+                  <ParticipantTile
+                    displayName={localParticipant.name || localParticipant.identity}
+                    isLocal
+                    speakingGlow={localSpeaking}
+                    cameraPub={localCameraPub}
+                    screenSharePub={localScreenShare}
+                    onSpotlightScreenShare={() => setSpotlight({ identity: localParticipant.identity, source: 'screen_share' })}
+                    chatMessages={chatBubbles.get(localParticipant.identity) || []}
+                    chatColor="blue"
+                    footer={
+                      <>
                         {deafened && <span className="text-red-400" data-tooltip="Deafened"><EarOff size={14} /></span>}
                         <span>{micMuted ? <MicOff size={14} className="text-red-400" /> : <Mic size={14} />}</span>
-                      </div>
-                    </div>
-                  </div>
-                  </div>
+                      </>
+                    }
+                  />
                 );
               })()}
 
@@ -1547,8 +1424,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                 const memberEntry = currentRoom ? roomMembers[currentRoom.id]?.find((m) => m.username === p.identity) : null;
                 const isMyWhisperSource = whisperSource?.username === p.identity;
                 const whisperDimmed = isWhispersMode && !isMyWhisperSource;
-                const participantMeta = (() => { try { return JSON.parse(p.metadata || '{}'); } catch { return {}; } })();
-                const soundbiteOptOut = !!participantMeta.soundbiteOptOut;
+                const soundbiteOptOut = !!parseParticipantMetadata(p.metadata).soundbiteOptOut;
                 const cameraPub = Array.from(p.trackPublications.values()).find(
                   (pub) => pub.source === Track.Source.Camera && pub.isSubscribed && pub.track && !pub.isMuted,
                 );
@@ -1559,140 +1435,51 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                   (pub) => pub.source === Track.Source.ScreenShareAudio && pub.isSubscribed && pub.track,
                 );
                 const streamAudioMuted = hasStreamAudio && mutedStreamAudio.has(p.identity);
+                const botLabel = p.identity === '__music-bot__'
+                  ? musicNowPlaying
+                  : p.identity.startsWith('__pipe-')
+                    ? (getPipeTitle(p.metadata) ?? p.name ?? 'Streaming')
+                    : null;
+                const durationPickerOpen = typeof openPopover === 'object' && openPopover !== null
+                  && memberEntry != null && openPopover.durationPickerFor === memberEntry.id;
 
                 return (
-                  <div key={p.identity} className="relative">
-                    {/* Speech bubbles — overlaid on card, centered, above username */}
-                    {(chatBubbles.get(p.identity) || []).length > 0 && (
-                      <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-40 flex flex-col-reverse items-center gap-1.5 pointer-events-auto">
-                        {(chatBubbles.get(p.identity) || []).map((msg) => (
-                          <div key={msg.id} className="animate-[fadeSlideIn_0.2s_ease-out]">
-                            <div className="max-w-[220px] px-3 py-1.5 rounded-xl bg-green-600 text-white text-xs shadow-lg break-all select-text cursor-text">
-                              {msg.lines.map((line, li) => (
-                                <div key={li} className={li > 0 ? 'mt-1' : ''}>
-                                  {line.imageUrl && <a href={line.imageUrl} target="_blank" rel="noopener noreferrer"><img src={line.imageUrl} className="max-w-full max-h-32 rounded mb-1 cursor-pointer" alt="" /></a>}
-                                  {line.text}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  <div
-                    className={`group bg-white dark:bg-zinc-800 rounded-xl p-4 border border-zinc-200 dark:border-zinc-700 ring-2 transition-all ${
-                      (speaking || playingSB) && !userMuted && !whisperDimmed ? 'ring-blue-400 shadow-[0_0_12px_rgba(96,165,250,0.5)]'
-                      : 'ring-transparent'
-                    } ${whisperDimmed ? 'opacity-40' : ''}`}
-                  >
-                    {/* Main video area: camera > screen share > avatar */}
-                    <div
-                      className={`aspect-video bg-zinc-200 dark:bg-zinc-700 rounded-lg mb-3 flex items-center justify-center relative overflow-hidden ${
-                        (cameraPub || screenSharePub) ? 'cursor-pointer ring-1 ring-zinc-600 hover:ring-indigo-500 transition-all' : ''
-                      }`}
-                      onClick={cameraPub ? () => setSpotlight({ identity: p.identity, source: 'camera' }) : screenSharePub ? () => setSpotlight({ identity: p.identity, source: 'screen_share' }) : undefined}
-                    >
-                      {cameraPub ? (
-                        <VideoTrackView publication={cameraPub} />
-                      ) : screenSharePub ? (
-                        <VideoTrackView publication={screenSharePub} fit="contain" />
-                      ) : p.identity === '__music-bot__' && musicNowPlaying ? (
-                        <div className="flex flex-col items-center justify-center gap-1 px-3 w-full">
-                          <Music size={20} className="text-indigo-400 shrink-0" />
-                          <div className="w-full overflow-hidden">
-                            <p className="text-xs text-zinc-600 dark:text-zinc-300 whitespace-nowrap animate-[marquee_12s_linear_infinite]">
-                              {musicNowPlaying}
-                            </p>
-                          </div>
-                        </div>
-                      ) : p.identity.startsWith('__pipe-') ? (
-                        <div className="flex flex-col items-center justify-center gap-1 px-3 w-full">
-                          <Music size={20} className="text-indigo-400 shrink-0" />
-                          <div className="w-full overflow-hidden">
-                            <p className="text-xs text-zinc-600 dark:text-zinc-300 whitespace-nowrap animate-[marquee_12s_linear_infinite]">
-                              {getPipeTitle(p.metadata) ?? p.name ?? 'Streaming'}
-                            </p>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold text-white transition-shadow ${
-                          isMyWhisperSource ? 'bg-purple-600' : 'bg-indigo-600'
-                        } ${(speaking || playingSB) && !userMuted && !whisperDimmed ? 'shadow-[0_0_16px_rgba(96,165,250,0.6)]' : ''}`}>
-                          {(p.name || p.identity).charAt(0).toUpperCase()}
-                        </div>
-                      )}
-                      {isMyWhisperSource && (
-                        <span className="absolute top-1 right-1 text-[10px] bg-purple-500/30 text-purple-300 px-1.5 py-0.5 rounded z-10">
-                          Your source
-                        </span>
-                      )}
-                      {/* Stream audio mute — shown on main area when screen share is primary (no camera) */}
-                      {screenSharePub && !cameraPub && hasStreamAudio && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); toggleStreamAudioMute(p.identity); }}
-                          className={`absolute bottom-1 right-1 z-10 p-1 rounded transition-colors ${
-                            streamAudioMuted
-                              ? 'bg-red-500/80 text-white hover:bg-red-500'
-                              : 'bg-black/50 text-white hover:bg-black/70'
-                          }`}
-                          data-tooltip={streamAudioMuted ? 'Unmute stream audio' : 'Mute stream audio'}
-                        >
-                          {streamAudioMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
-                        </button>
-                      )}
-                    </div>
-                    {/* Screen share thumbnail — only shown when camera is ON */}
-                    {screenSharePub && cameraPub && (
-                      <div className="relative mb-3">
-                        <button
-                          onClick={() => setSpotlight({ identity: p.identity, source: 'screen_share' })}
-                          className="w-full rounded-lg overflow-hidden border-2 transition-colors border-zinc-600 hover:border-indigo-500 bg-black"
-                        >
-                          <div className="aspect-video flex items-center justify-center">
-                            <VideoTrackView publication={screenSharePub} fit="contain" />
-                          </div>
-                        </button>
-                        {/* Stream audio mute — shown on thumbnail when camera is primary */}
-                        {hasStreamAudio && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); toggleStreamAudioMute(p.identity); }}
-                            className={`absolute bottom-1 right-1 z-10 p-1 rounded transition-colors ${
-                              streamAudioMuted
-                                ? 'bg-red-500/80 text-white hover:bg-red-500'
-                                : 'bg-black/50 text-white hover:bg-black/70'
-                            }`}
-                            data-tooltip={streamAudioMuted ? 'Unmute stream audio' : 'Mute stream audio'}
-                          >
-                            {streamAudioMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
-                          </button>
-                        )}
-                      </div>
-                    )}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <span className="text-sm font-medium truncate">
-                          {p.name || p.identity}
-                        </span>
-                        {playingSB && (
-                          <span className="text-[10px] text-amber-500 dark:text-amber-400 truncate shrink-0">
-                            🔊 {soundboardPlaying.clipName}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1.5">
+                  <ParticipantTile
+                    key={p.identity}
+                    displayName={p.name || p.identity}
+                    speakingGlow={(speaking || playingSB) && !userMuted && !whisperDimmed}
+                    dimmed={whisperDimmed}
+                    isMyWhisperSource={isMyWhisperSource}
+                    cameraPub={cameraPub}
+                    screenSharePub={screenSharePub}
+                    botLabel={botLabel}
+                    hasStreamAudio={hasStreamAudio}
+                    streamAudioMuted={streamAudioMuted}
+                    onToggleStreamAudio={() => toggleStreamAudioMute(p.identity)}
+                    onSpotlightCamera={() => setSpotlight({ identity: p.identity, source: 'camera' })}
+                    onSpotlightScreenShare={() => setSpotlight({ identity: p.identity, source: 'screen_share' })}
+                    chatMessages={chatBubbles.get(p.identity) || []}
+                    chatColor="green"
+                    nameSuffix={playingSB ? (
+                      <span className="text-[10px] text-amber-500 dark:text-amber-400 truncate shrink-0">
+                        🔊 {soundboardPlaying.clipName}
+                      </span>
+                    ) : undefined}
+                    footer={
+                      <>
                         {!activeVote && !currentRoom?.is_jail && memberEntry && (
                           <div className="relative">
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setShowDurationPicker(showDurationPicker === memberEntry.id ? null : memberEntry.id);
+                                setOpenPopover(durationPickerOpen ? null : { durationPickerFor: memberEntry.id });
                               }}
                               className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors opacity-100 md:opacity-0 md:group-hover:opacity-100"
                               title="Vote to punish"
                             >
                               Vote
                             </button>
-                            {showDurationPicker === memberEntry.id && (
+                            {durationPickerOpen && (
                               <div className="absolute bottom-full mb-1 right-0 bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg py-1 min-w-[140px] z-50">
                                 <div className="px-2 py-1 text-[10px] text-zinc-500 uppercase">Punishment</div>
                                 {DURATION_OPTIONS.map((opt) => (
@@ -1734,10 +1521,9 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                         <span>
                           {p.isMicrophoneEnabled ? <Mic size={14} /> : <MicOff size={14} className="text-red-400" />}
                         </span>
-                      </div>
-                    </div>
-                  </div>
-                  </div>
+                      </>
+                    }
+                  />
                 );
               })}
             </div>
@@ -1794,7 +1580,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
             {/* Icon buttons */}
             <div className="flex flex-wrap items-center justify-center gap-2 md:gap-3">
             <button
-              onClick={() => { const willMute = room.localParticipant.isMicrophoneEnabled; room.localParticipant.setMicrophoneEnabled(!willMute); playSound(willMute ? 'mute' : 'unmute'); }}
+              onClick={handleToggleMute}
               className={`p-2.5 rounded-lg transition-colors focus-visible:ring-2 focus-visible:ring-indigo-500 ${
                 micMuted
                   ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
@@ -1837,9 +1623,9 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
               <button
                 onClick={() => {
                   if (isSharing) {
-                    setShowStopShareConfirm(!showStopShareConfirm);
+                    setOpenPopover(openPopover === 'stopShare' ? null : 'stopShare');
                   } else {
-                    setShowQualityMenu(!showQualityMenu);
+                    setOpenPopover(openPopover === 'quality' ? null : 'quality');
                   }
                 }}
                 className={`p-2.5 rounded-lg transition-colors focus-visible:ring-2 focus-visible:ring-indigo-500 ${
@@ -1852,18 +1638,18 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
               >
                 {isSharing ? <Monitor size={18} /> : <MonitorOff size={18} />}
               </button>
-              {showStopShareConfirm && isSharing && (
+              {openPopover === 'stopShare' && isSharing && (
                 <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg p-3 min-w-[160px] z-50">
                   <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-2 text-center">Stop sharing?</p>
                   <div className="flex gap-2">
                     <button
-                      onClick={() => setShowStopShareConfirm(false)}
+                      onClick={() => setOpenPopover(null)}
                       className="flex-1 px-2 py-1.5 text-xs rounded bg-zinc-200 dark:bg-zinc-600 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-300 dark:hover:bg-zinc-500 transition-colors"
                     >
                       Cancel
                     </button>
                     <button
-                      onClick={() => { setShowStopShareConfirm(false); stopScreenShare(); }}
+                      onClick={() => { setOpenPopover(null); stopScreenShare(); }}
                       className="flex-1 px-2 py-1.5 text-xs rounded bg-red-500 text-white hover:bg-red-600 transition-colors"
                     >
                       Stop
@@ -1871,14 +1657,14 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                   </div>
                 </div>
               )}
-              {showQualityMenu && !isSharing && (
+              {openPopover === 'quality' && !isSharing && (
                 <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg py-1 min-w-[180px] z-50">
                   {(Object.entries(QUALITY_PRESETS) as [ShareQuality, (typeof QUALITY_PRESETS)[ShareQuality]][]).map(
                     ([key, preset]) => (
                       <button
                         key={key}
                         onClick={() => {
-                          setShowQualityMenu(false);
+                          setOpenPopover(null);
                           startScreenShare(key);
                         }}
                         className={`w-full text-left px-3 py-1.5 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-600 transition-colors ${
@@ -1914,14 +1700,14 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
 
             {!isMobile && <div className="relative">
               <button
-                onClick={() => setShowVolumes(!showVolumes)}
+                onClick={() => setOpenPopover(openPopover === 'volumes' ? null : 'volumes')}
                 className="p-2.5 rounded-lg bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors focus-visible:ring-2 focus-visible:ring-indigo-500"
                 aria-label="Adjust participant volumes"
                 data-tooltip="Volumes"
               >
                 <Volume2 size={18} />
               </button>
-              {showVolumes && (
+              {openPopover === 'volumes' && (
                 <div className="absolute bottom-full mb-2 right-0 bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg py-2 px-3 min-w-[200px] z-50" onClick={(e) => e.stopPropagation()}>
                   <span className="text-xs font-semibold uppercase text-zinc-500 block mb-2">Volume</span>
                   {remoteParticipants.length === 0 ? (
@@ -1944,14 +1730,14 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
             {remoteParticipants.some((p) => p.identity === '__music-bot__') && currentRoom && (
             <div className="relative">
               <button
-                onClick={() => setShowMusic(!showMusic)}
+                onClick={() => setOpenPopover(openPopover === 'music' ? null : 'music')}
                 className="p-2.5 rounded-lg bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors focus-visible:ring-2 focus-visible:ring-indigo-500"
                 aria-label="Open music controls"
                 data-tooltip="Music"
               >
                 <Music size={18} />
               </button>
-              {showMusic && <MusicControls isMobile={isMobile} status={musicStatus} onRefresh={refreshMusicStatus} pipe={pipe} roomId={currentRoom.id} />}
+              {openPopover === 'music' && <MusicControls isMobile={isMobile} status={musicStatus} onRefresh={refreshMusicStatus} pipe={pipe} roomId={currentRoom.id} />}
             </div>
             )}
 
@@ -1964,14 +1750,14 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
               && (
               <div className="relative">
                 <button
-                  onClick={() => setShowPipe(!showPipe)}
+                  onClick={() => setOpenPopover(openPopover === 'pipe' ? null : 'pipe')}
                   className="p-2.5 rounded-lg bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors focus-visible:ring-2 focus-visible:ring-indigo-500"
                   aria-label="Pipe audio to this room"
                   data-tooltip="Pipe audio"
                 >
                   <Music size={18} />
                 </button>
-                {showPipe && (
+                {openPopover === 'pipe' && (
                   <div
                     className={isMobile
                       ? 'fixed bottom-16 left-2 right-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-xl shadow-2xl p-4 z-50'
@@ -1987,14 +1773,14 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
 
             <div className="relative">
               <button
-                onClick={() => setShowSoundboard(!showSoundboard)}
+                onClick={() => setOpenPopover(openPopover === 'soundboard' ? null : 'soundboard')}
                 className="p-2.5 rounded-lg bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors focus-visible:ring-2 focus-visible:ring-indigo-500"
                 aria-label="Open soundboard"
                 data-tooltip="Soundboard"
               >
                 <AudioLines size={18} />
               </button>
-              {showSoundboard && room && (
+              {openPopover === 'soundboard' && room && (
                 <Soundboard
                   clips={clips}
                   playingId={playingId}
@@ -2013,14 +1799,14 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
 
             <div className="relative">
               <button
-                onClick={() => setShowSettings(!showSettings)}
+                onClick={() => setOpenPopover(openPopover === 'settings' ? null : 'settings')}
                 className="p-2.5 rounded-lg bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors focus-visible:ring-2 focus-visible:ring-indigo-500"
                 aria-label="Open settings"
                 data-tooltip="Settings"
               >
                 <Settings size={18} />
               </button>
-              {showSettings && room && (
+              {openPopover === 'settings' && room && (
                 <DeviceSettings room={room} hotkeyBindings={hotkeyBindings} onHotkeyChange={setHotkeyBindings} isMobile={isMobile} noiseCancellation={{ enabled: ncEnabled, setEnabled: setNcEnabled, engine: ncEngine, setEngine: setNcEngine, supported: ncSupported }} autoUpdate={autoUpdate} />
               )}
             </div>
