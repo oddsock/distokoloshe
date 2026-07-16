@@ -2,7 +2,7 @@
   "name": "distokoloshe-desktop",
   "private": true,
   "license": "MIT",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "type": "module",
   "scripts": {
     "dev": "vite",

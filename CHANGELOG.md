@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.2.2 — Internal Refactor (UI redesign phase 1)
+
+- No intended behavior changes — groundwork for the upcoming theater-mode/multiview UI (see PLAN.md)
+- Participant tiles, chat speech bubbles, and the stream-audio mute button extracted into shared components; the duplicated local/remote tile markup is now one `ParticipantTile`
+- Control-bar popovers (settings, volumes, soundboard, music, pipe, share quality, stop-share confirm, vote duration picker) share one open/close state — only one can be open at a time
+- Removed dead code in the screen-share hook and an unused icon import
+
 ## 2.2.1 — Bugfix Patch
 
 - Muting a screen share's audio now sticks — it no longer silently unmutes when other track events fire (e.g. someone toggling their mic), and survives track re-subscribes
