@@ -54,16 +54,16 @@ Optional (nice-to-have, not blocking):
 
 ## Phase 2 — Encoding: drop resolution, not frames (tiny, independent)
 
-- [ ] In `useScreenShare.ts` `QUALITY_PRESETS`, change `scalabilityMode` for
+- [x] In `useScreenShare.ts` `QUALITY_PRESETS`, change `scalabilityMode` for
       **high** and **ultra** from `'L1T3'` → `'L2T3_KEY'`. Low/medium already use
       `L3T3_KEY`. This gives every preset ≥2 spatial layers so `adaptiveStream`
       can serve small panes a lower resolution instead of only dropping fps.
 - [ ] Sanity-check encoder cost on the sharing machine at ultra (4K120 + one extra
       spatial layer). If CPU is a problem on real hardware, fall back to `L2T2_KEY`
-      for ultra only.
-- [ ] Known limitation (document in CHANGELOG, no code): Safari publishes VP8
+      for ultra only. **(pending user's hardware test — see stop note below)**
+- [x] Known limitation (document in CHANGELOG, no code): Safari publishes VP8
       (no spatial SVC) — viewers of a Safari share still adapt by framerate only.
-- [ ] Known interaction: the `lockStreamQuality` setting disables `adaptiveStream`
+- [x] Known interaction: the `lockStreamQuality` setting disables `adaptiveStream`
       entirely (useLiveKitRoom.ts ~90), so locked viewers pull every pane at full
       res. Leave behavior as-is for now; stretch goal below.
 - [ ] Commit + push, STOP. User verifies on dev server: share at High from Chrome,

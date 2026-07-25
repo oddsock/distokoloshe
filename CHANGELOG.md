@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.2.3 — Screen Share: Adaptive Resolution (UI redesign phase 2)
+
+- High and Ultra screen-share presets now publish 2 spatial layers (`L2T3_KEY`, up from `L1T3`) so viewers watching a small/non-spotlighted tile receive a lower **resolution** stream instead of just a lower framerate — meaningful bandwidth savings once multiple shares or a grid of small tiles are on screen. Low/Medium already published 3 spatial layers and are unchanged.
+- Known limitation: Safari can only publish VP8 for screen share, which has no spatial-layer support — viewers of a Safari share still adapt by framerate only, not resolution.
+- Known interaction: enabling "Lock stream quality" in settings disables adaptive streaming entirely, so a locked viewer pulls every tile at full resolution regardless of size.
+
 ## 2.2.2 — Internal Refactor (UI redesign phase 1)
 
 - No intended behavior changes — groundwork for the upcoming theater-mode/multiview UI (see PLAN.md)

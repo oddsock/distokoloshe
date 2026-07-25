@@ -38,7 +38,9 @@ export const QUALITY_PRESETS: Record<ShareQuality, QualityPreset> = {
     resolution: { width: 1920, height: 1080, frameRate: 60 },
     bitrate: 5_000_000,
     contentHint: 'motion',
-    scalabilityMode: 'L1T3',
+    // 2 spatial layers (was L1T3) so adaptiveStream can drop resolution for
+    // small/non-spotlighted viewers instead of only dropping framerate.
+    scalabilityMode: 'L2T3_KEY',
     preferAV1: false,
   },
   ultra: {
@@ -46,7 +48,10 @@ export const QUALITY_PRESETS: Record<ShareQuality, QualityPreset> = {
     resolution: { width: 4096, height: 2160, frameRate: 120 },
     bitrate: 20_000_000,
     contentHint: 'motion',
-    scalabilityMode: 'L1T3',
+    // Same spatial-layer reasoning as `high`. Encodes one extra lower-res
+    // layer on top of native 4K120 — if that's too much load on the sharer's
+    // CPU/GPU in practice, drop to 'L2T2_KEY' here (fewer temporal layers).
+    scalabilityMode: 'L2T3_KEY',
     preferAV1: true,
   },
 };
