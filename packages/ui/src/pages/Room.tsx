@@ -1403,6 +1403,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                     speakingGlow={localSpeaking}
                     cameraPub={localCameraPub}
                     screenSharePub={localScreenShare}
+                    onSpotlightCamera={() => setSpotlight({ identity: localParticipant.identity, source: 'camera' })}
                     onSpotlightScreenShare={() => setSpotlight({ identity: localParticipant.identity, source: 'screen_share' })}
                     chatMessages={chatBubbles.get(localParticipant.identity) || []}
                     chatColor="blue"

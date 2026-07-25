@@ -58,31 +58,32 @@ Optional (nice-to-have, not blocking):
       **high** and **ultra** from `'L1T3'` → `'L2T3_KEY'`. Low/medium already use
       `L3T3_KEY`. This gives every preset ≥2 spatial layers so `adaptiveStream`
       can serve small panes a lower resolution instead of only dropping fps.
-- [ ] Sanity-check encoder cost on the sharing machine at ultra (4K120 + one extra
-      spatial layer). If CPU is a problem on real hardware, fall back to `L2T2_KEY`
-      for ultra only. **(pending user's hardware test — see stop note below)**
+- [x] Sanity-check encoder cost on the sharing machine at ultra (4K120 + one extra
+      spatial layer). **Confirmed fine on user's hardware 2026-07-25.**
 - [x] Known limitation (document in CHANGELOG, no code): Safari publishes VP8
       (no spatial SVC) — viewers of a Safari share still adapt by framerate only.
 - [x] Known interaction: the `lockStreamQuality` setting disables `adaptiveStream`
       entirely (useLiveKitRoom.ts ~90), so locked viewers pull every pane at full
       res. Leave behavior as-is for now; stretch goal below.
-- [ ] Commit + push, STOP. User verifies on dev server: share at High from Chrome,
+- [x] Commit + push, STOP. User verifies on dev server: share at High from Chrome,
       view in a second Chrome profile with the tile small vs spotlighted —
       `chrome://webrtc-internals` should show the received resolution
-      (not just framerate) drop when small.
+      (not just framerate) drop when small. **Confirmed 2026-07-25.**
 
 ## Phase 3 — Participant tile: share-first with camera PIP
 
 Current problem: camera wins the tile's main area and the share drops to a stacked
 thumbnail below it (Room.tsx 1588–1670), making the share tiny and tile heights ragged.
 
-- [ ] In `ParticipantTile`: **screen share always takes the main area**; camera
-      renders as a small PIP overlay (e.g. bottom-right, ~1/4 width) inside the same
+- [x] In `ParticipantTile`: **screen share always takes the main area**; camera
+      renders as a small PIP overlay (bottom-left, ~1/4 width) inside the same
       aspect-video box. No more stacked thumbnail → constant tile height.
-- [ ] Click main area → spotlight the share. Click camera PIP → spotlight the camera.
-- [ ] Single `StreamAudioMuteButton` placement (main area corner) — the two
+- [x] Click main area → spotlight the share. Click camera PIP → spotlight the camera.
+- [x] Single `StreamAudioMuteButton` placement (main area corner) — the two
       conditional variants go away.
-- [ ] Apply the same logic to the local tile (self-preview).
+- [x] Apply the same logic to the local tile (self-preview) — also wired up
+      `onSpotlightCamera` for the local tile, which previously had no camera
+      spotlight click target at all (camera always filled the main area).
 - [ ] Commit + push, STOP. User verifies on dev server: one user with camera+share
       on — grid rows stay aligned, PIP swap works, stream-audio mute reachable.
 

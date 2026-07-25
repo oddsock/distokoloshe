@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.2.4 — Screen-Share-First Tiles (UI redesign phase 3)
+
+- Participant tiles now show the screen share in the main area at all times; a participant's camera (if also on) shrinks to a small picture-in-picture overlay in the corner instead of pushing a second thumbnail below the tile. Click the PIP to spotlight the camera, click the main area to spotlight the share.
+- Tile height no longer changes when someone has both camera and screen share on — grid rows stay aligned.
+- Your own camera can now be spotlighted the same way when you're sharing with your camera on (previously only your screen share was clickable).
+
 ## 2.2.3 — Screen Share: Adaptive Resolution (UI redesign phase 2)
 
 - High and Ultra screen-share presets now publish 2 spatial layers (`L2T3_KEY`, up from `L1T3`) so viewers watching a small/non-spotlighted tile receive a lower **resolution** stream instead of just a lower framerate — meaningful bandwidth savings once multiple shares or a grid of small tiles are on screen. Low/Medium already published 3 spatial layers and are unchanged.

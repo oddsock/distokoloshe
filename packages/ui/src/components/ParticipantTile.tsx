@@ -64,10 +64,12 @@ export function ParticipantTile({
   footer,
   nameSuffix,
 }: ParticipantTileProps) {
-  // Main-area click spotlights whatever occupies it. The local camera has no
-  // spotlight handler, so a local camera+share tile keeps its main area inert
-  // (the share is reachable via the thumbnail below).
-  const mainClick = cameraPub ? onSpotlightCamera : screenSharePub ? onSpotlightScreenShare : undefined;
+  // Screen share always wins the main area — it's the thing worth watching.
+  // The camera (if also on) becomes a small PIP overlay instead of a second,
+  // tile-height-inflating thumbnail. Main-area click spotlights whichever
+  // source occupies it; the PIP has its own click to spotlight the camera.
+  const hasBoth = !!screenSharePub && !!cameraPub;
+  const mainClick = screenSharePub ? onSpotlightScreenShare : cameraPub ? onSpotlightCamera : undefined;
 
   return (
     <div className="relative">
@@ -79,17 +81,17 @@ export function ParticipantTile({
             : isLocal ? 'ring-indigo-500/30' : 'ring-transparent'
         } ${dimmed ? 'opacity-40' : ''}`}
       >
-        {/* Main video area: camera > screen share > bot marquee > avatar */}
+        {/* Main video area: screen share > camera > bot marquee > avatar */}
         <div
           className={`aspect-video bg-zinc-200 dark:bg-zinc-700 rounded-lg mb-3 flex items-center justify-center relative overflow-hidden ${
             mainClick ? 'cursor-pointer ring-1 ring-zinc-600 hover:ring-indigo-500 transition-all' : ''
           }`}
           onClick={mainClick}
         >
-          {cameraPub ? (
-            <VideoTrackView publication={cameraPub} mirror={isLocal} />
-          ) : screenSharePub ? (
+          {screenSharePub ? (
             <VideoTrackView publication={screenSharePub} fit="contain" />
+          ) : cameraPub ? (
+            <VideoTrackView publication={cameraPub} mirror={isLocal} />
           ) : botLabel ? (
             <div className="flex flex-col items-center justify-center gap-1 px-3 w-full">
               <Music size={20} className="text-indigo-400 shrink-0" />
@@ -111,27 +113,21 @@ export function ParticipantTile({
               Your source
             </span>
           )}
-          {/* Stream audio mute — on the main area when the share is primary */}
-          {screenSharePub && !cameraPub && hasStreamAudio && onToggleStreamAudio && (
+          {/* Camera PIP — only when a share is also occupying the main area */}
+          {hasBoth && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onSpotlightCamera?.(); }}
+              className="absolute bottom-1.5 left-1.5 w-1/4 min-w-[3.5rem] aspect-video rounded-md overflow-hidden border-2 border-zinc-500 hover:border-indigo-500 transition-colors shadow-lg bg-black z-10"
+              data-tooltip="Switch to camera"
+            >
+              <VideoTrackView publication={cameraPub!} mirror={isLocal} />
+            </button>
+          )}
+          {/* Stream audio mute — always in the main area corner, share is always primary now */}
+          {screenSharePub && hasStreamAudio && onToggleStreamAudio && (
             <StreamAudioMuteButton muted={!!streamAudioMuted} onToggle={onToggleStreamAudio} />
           )}
         </div>
-        {/* Screen share thumbnail — only when the camera occupies the main area */}
-        {screenSharePub && cameraPub && (
-          <div className="relative mb-3">
-            <button
-              onClick={onSpotlightScreenShare}
-              className="w-full rounded-lg overflow-hidden border-2 transition-colors border-zinc-600 hover:border-indigo-500 bg-black"
-            >
-              <div className="aspect-video flex items-center justify-center">
-                <VideoTrackView publication={screenSharePub} fit="contain" />
-              </div>
-            </button>
-            {hasStreamAudio && onToggleStreamAudio && (
-              <StreamAudioMuteButton muted={!!streamAudioMuted} onToggle={onToggleStreamAudio} />
-            )}
-          </div>
-        )}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5 min-w-0">
             <span className="text-sm font-medium truncate">
