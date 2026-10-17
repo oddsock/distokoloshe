@@ -2,12 +2,12 @@ import { Router, Request, Response } from 'express';
 import db from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 import {
-  addClient, removeClient, broadcast, broadcastToRoom,
+  addClient, removeClient, broadcast,
   isUserOnline, isUserInRoom, canAddClient,
   scheduleDisconnect, cancelPendingDisconnect, setUserRoom, getUserRoomId,
   updateHeartbeat,
 } from '../events.js';
-import { removeFromChain } from '../whispers.js';
+import { broadcastRoomLeave } from '../presence.js';
 import { releasePipeIfOwnedBy } from './music.js';
 
 const router = Router();
@@ -76,16 +76,7 @@ router.get('/', requireAuth, (req: Request, res: Response) => {
     // If user still has other active SSE connections, handle immediately (no grace needed)
     if (isUserOnline(userId)) {
       if (removed?.roomId && !isUserInRoom(userId, removed.roomId)) {
-        const user = db.prepare(
-          'SELECT id, username, display_name FROM users WHERE id = ?',
-        ).get(userId) as { id: number; username: string; display_name: string };
-        broadcast('user:room_leave', { user, roomId: removed.roomId });
-
-        const room = db.prepare('SELECT mode FROM rooms WHERE id = ?').get(removed.roomId) as { mode: string } | undefined;
-        if (room?.mode === 'whispers') {
-          const chain = removeFromChain(removed.roomId, userId);
-          broadcastToRoom(removed.roomId, 'whispers:chain_updated', { roomId: removed.roomId, chain, reason: 'user_left' });
-        }
+        broadcastRoomLeave(userId, removed.roomId);
       }
       return;
     }
@@ -96,16 +87,7 @@ router.get('/', requireAuth, (req: Request, res: Response) => {
     scheduleDisconnect(userId, roomId, () => {
       // Grace period expired — user did NOT reconnect in time
       if (roomId && !isUserInRoom(userId, roomId)) {
-        const user = db.prepare(
-          'SELECT id, username, display_name FROM users WHERE id = ?',
-        ).get(userId) as { id: number; username: string; display_name: string };
-        broadcast('user:room_leave', { user, roomId });
-
-        const room = db.prepare('SELECT mode FROM rooms WHERE id = ?').get(roomId) as { mode: string } | undefined;
-        if (room?.mode === 'whispers') {
-          const chain = removeFromChain(roomId, userId);
-          broadcastToRoom(roomId, 'whispers:chain_updated', { roomId, chain, reason: 'user_left' });
-        }
+        broadcastRoomLeave(userId, roomId);
       }
 
       if (!isUserOnline(userId)) {
@@ -139,16 +121,7 @@ router.post('/leave', requireAuth, (req: Request, res: Response) => {
     setUserRoom(userId, null);
 
     if (!isUserInRoom(userId, roomId)) {
-      const user = db.prepare(
-        'SELECT id, username, display_name FROM users WHERE id = ?',
-      ).get(userId) as { id: number; username: string; display_name: string };
-      broadcast('user:room_leave', { user, roomId });
-
-      const room = db.prepare('SELECT mode FROM rooms WHERE id = ?').get(roomId) as { mode: string } | undefined;
-      if (room?.mode === 'whispers') {
-        const chain = removeFromChain(roomId, userId);
-        broadcastToRoom(roomId, 'whispers:chain_updated', { roomId, chain, reason: 'user_left' });
-      }
+      broadcastRoomLeave(userId, roomId);
     }
   }
 

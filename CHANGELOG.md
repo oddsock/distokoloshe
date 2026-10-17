@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Jail credentials (the jailed user's LiveKit token and room key) are now sent only to the jailed user — previously every connected client received them
+- Active jail sentences and votes survive an API restart (a timestamp comparison bug treated anything expiring later the same UTC day as already expired)
+- Rooms that have ever had a vote can be deleted again (previously a 500); their jail room is removed with them. Deleting is refused while a vote or jail sentence is active
+- Switching rooms (or being jailed) now removes you from the old room's Whispers chain
+
 ## 2.2.4 — Screen-Share-First Tiles (UI redesign phase 3)
 
 - Participant tiles now show the screen share in the main area at all times; a participant's camera (if also on) shrinks to a small picture-in-picture overlay in the corner instead of pushing a second thumbnail below the tile. Click the PIP to spotlight the camera, click the main area to spotlight the share.

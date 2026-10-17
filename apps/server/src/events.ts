@@ -157,10 +157,11 @@ export function cancelPendingDisconnect(userId: number): { roomId: number | null
   return null;
 }
 
-export function broadcast(event: EventType, data: unknown): void {
+function sendWhere(filter: (client: SSEClient) => boolean, event: EventType, data: unknown): void {
   const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
   const dead: Response[] = [];
   for (const client of clients) {
+    if (!filter(client)) continue;
     try {
       if (client.res.writableEnded) {
         dead.push(client.res);
@@ -176,23 +177,19 @@ export function broadcast(event: EventType, data: unknown): void {
   }
 }
 
+export function broadcast(event: EventType, data: unknown): void {
+  sendWhere(() => true, event, data);
+}
+
 export function broadcastToRoom(roomId: number, event: EventType, data: unknown): void {
-  const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-  const dead: Response[] = [];
-  for (const client of clients) {
-    if (client.roomId === roomId) {
-      try {
-        if (client.res.writableEnded) {
-          dead.push(client.res);
-        } else {
-          client.res.write(message);
-        }
-      } catch {
-        dead.push(client.res);
-      }
-    }
-  }
-  for (const res of dead) {
-    removeClient(res);
-  }
+  sendWhere((c) => c.roomId === roomId, event, data);
+}
+
+/** Send only to one user's connections — for payloads meant for them alone (e.g. room credentials). */
+export function sendToUser(userId: number, event: EventType, data: unknown): void {
+  sendWhere((c) => c.userId === userId, event, data);
+}
+
+export function broadcastExceptUser(userId: number, event: EventType, data: unknown): void {
+  sendWhere((c) => c.userId !== userId, event, data);
 }

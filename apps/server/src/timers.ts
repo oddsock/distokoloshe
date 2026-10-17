@@ -133,49 +133,41 @@ function expirePunishment(punishmentId: number): void {
 
 // ── Restore timers on startup ──
 
-export function restoreTimers(): void {
-  const now = new Date().toISOString();
+/** Parse SQLite datetime('now') text ("YYYY-MM-DD HH:MM:SS", UTC) to epoch ms. */
+function sqliteUtcToMs(value: string): number {
+  return new Date(`${value.replace(' ', 'T')}Z`).getTime();
+}
 
-  // Restore active vote timers
-  const activeVotes = db.prepare(
-    "SELECT * FROM votes WHERE resolved = 0 AND expires_at > ?",
-  ).all(now) as VoteRow[];
-  for (const vote of activeVotes) {
-    const remaining = new Date(vote.expires_at + 'Z').getTime() - Date.now();
+export function restoreTimers(): void {
+  const now = Date.now();
+  let restoredVotes = 0;
+  let restoredPunishments = 0;
+
+  // Votes still open: re-arm the timer, or void the vote if its window closed while
+  // the server was down (a vote that reached a majority would already be resolved).
+  const openVotes = db.prepare('SELECT * FROM votes WHERE resolved = 0').all() as VoteRow[];
+  for (const vote of openVotes) {
+    const remaining = sqliteUtcToMs(vote.expires_at) - now;
     if (remaining > 0) {
       startVoteTimer(vote.id, remaining);
+      restoredVotes++;
     } else {
-      resolveVote(vote.id);
+      db.prepare('UPDATE votes SET resolved = 1 WHERE id = ?').run(vote.id);
     }
   }
 
-  // Restore active punishment timers
-  const activePunishments = db.prepare(
-    "SELECT * FROM punishments WHERE active = 1 AND expires_at > ?",
-  ).all(now) as PunishmentRow[];
+  // Active punishments: re-arm the timer, or expire now (with broadcast) if overdue.
+  const activePunishments = db.prepare('SELECT * FROM punishments WHERE active = 1').all() as PunishmentRow[];
   for (const p of activePunishments) {
-    const remaining = new Date(p.expires_at + 'Z').getTime() - Date.now();
+    const remaining = sqliteUtcToMs(p.expires_at) - now;
     if (remaining > 0) {
       startPunishmentTimer(p.id, remaining);
+      restoredPunishments++;
     } else {
       expirePunishment(p.id);
     }
   }
 
-  // Expire any that passed their deadline while server was down
-  db.prepare(
-    "UPDATE punishments SET active = 0 WHERE active = 1 AND expires_at <= ?",
-  ).run(now);
-  db.prepare(
-    "UPDATE votes SET resolved = 1 WHERE resolved = 0 AND expires_at <= ?",
-  ).run(now);
-
-  const restoredVotes = activeVotes.filter(
-    (v) => new Date(v.expires_at + 'Z').getTime() > Date.now(),
-  ).length;
-  const restoredPunishments = activePunishments.filter(
-    (p) => new Date(p.expires_at + 'Z').getTime() > Date.now(),
-  ).length;
   if (restoredVotes > 0 || restoredPunishments > 0) {
     console.log(`Restored ${restoredVotes} vote timer(s) and ${restoredPunishments} punishment timer(s)`);
   }

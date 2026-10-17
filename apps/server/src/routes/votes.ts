@@ -1,7 +1,11 @@
 import { Router, Request, Response } from 'express';
 import db from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
-import { broadcast, broadcastToRoom, getUserRoomId, getRoomMembers, setUserRoom } from '../events.js';
+import {
+  broadcast, broadcastToRoom, broadcastExceptUser, sendToUser,
+  getUserRoomId, getRoomMembers, setUserRoom,
+} from '../events.js';
+import { broadcastRoomLeave } from '../presence.js';
 import { generateRoomToken, deriveRoomE2EEKey, removeParticipant } from '../livekit.js';
 import {
   startVoteTimer,
@@ -276,24 +280,27 @@ setVotePassedHandler(async (vote) => {
 
   // Update room membership tracking
   setUserRoom(vote.target_user_id, jailRoom.id);
-  broadcast('user:room_leave', { user: targetUser, roomId: vote.source_room_id });
+  broadcastRoomLeave(vote.target_user_id, vote.source_room_id);
   broadcast('user:room_join', { user: targetUser, roomId: jailRoom.id });
 
-  // Broadcast punishment started
-  broadcast('punishment:started', {
-    punishment: {
-      id: punishmentId,
-      targetUserId: vote.target_user_id,
-      targetUsername: targetUser.username,
-      targetDisplayName: targetUser.display_name,
-      sourceRoomId: vote.source_room_id,
-      sourceRoomName: sourceRoom.name,
-      jailRoomId: jailRoom.id,
-      jailRoomName: jailRoom.name,
-      durationSecs: vote.duration_secs,
-      expiresAt: punishment.expires_at,
-    },
-    // Connection details for the punished user's client
+  const punishmentInfo = {
+    id: punishmentId,
+    targetUserId: vote.target_user_id,
+    targetUsername: targetUser.username,
+    targetDisplayName: targetUser.display_name,
+    sourceRoomId: vote.source_room_id,
+    sourceRoomName: sourceRoom.name,
+    jailRoomId: jailRoom.id,
+    jailRoomName: jailRoom.name,
+    durationSecs: vote.duration_secs,
+    expiresAt: punishment.expires_at,
+  };
+
+  // Everyone else sees the punishment; only the target receives the jail room
+  // credentials (the token is a valid LiveKit login as them).
+  broadcastExceptUser(vote.target_user_id, 'punishment:started', { punishment: punishmentInfo });
+  sendToUser(vote.target_user_id, 'punishment:started', {
+    punishment: punishmentInfo,
     jailConnection: {
       token,
       e2eeKey,

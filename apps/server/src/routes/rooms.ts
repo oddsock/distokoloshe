@@ -4,6 +4,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { generateRoomToken, deriveRoomE2EEKey } from '../livekit.js';
 import { broadcast, broadcastToRoom, setUserRoom, getUserRoomId, getRoomMembers, isUserInRoom } from '../events.js';
 import { getChain, shuffleChain, addToChain, clearChain } from '../whispers.js';
+import { broadcastRoomLeave } from '../presence.js';
 
 const router = Router();
 
@@ -128,10 +129,7 @@ router.post('/:id/join', requireAuth, async (req: Request, res: Response) => {
   const previousRoomId = getUserRoomId(req.user!.sub);
   if (previousRoomId !== null && previousRoomId !== roomId) {
     setUserRoom(req.user!.sub, null);
-    const leaveUser = db.prepare(
-      'SELECT id, username, display_name FROM users WHERE id = ?',
-    ).get(req.user!.sub) as UserRow;
-    broadcast('user:room_leave', { user: leaveUser, roomId: previousRoomId });
+    broadcastRoomLeave(req.user!.sub, previousRoomId);
   }
 
   // Join new room
@@ -196,10 +194,7 @@ router.post('/:id/sync', requireAuth, (req: Request, res: Response) => {
   const previousRoomId = getUserRoomId(req.user!.sub);
   if (previousRoomId !== null && previousRoomId !== roomId) {
     setUserRoom(req.user!.sub, null);
-    const leaveUser = db.prepare(
-      'SELECT id, username, display_name FROM users WHERE id = ?',
-    ).get(req.user!.sub) as UserRow;
-    broadcast('user:room_leave', { user: leaveUser, roomId: previousRoomId });
+    broadcastRoomLeave(req.user!.sub, previousRoomId);
   }
 
   if (previousRoomId !== roomId) {
@@ -319,6 +314,21 @@ router.get('/:id/chain', requireAuth, (req: Request, res: Response) => {
   res.json({ chain });
 });
 
+/** Delete a room, its jail rooms, and the vote/punishment/whisper rows that reference them. */
+const deleteRoomCascade = db.transaction((roomId: number, jailRoomIds: number[]) => {
+  for (const id of [...jailRoomIds, roomId]) {
+    db.prepare('DELETE FROM vote_ballots WHERE vote_id IN (SELECT id FROM votes WHERE source_room_id = ?)').run(id);
+    db.prepare('DELETE FROM votes WHERE source_room_id = ?').run(id);
+    db.prepare('DELETE FROM punishments WHERE source_room_id = ? OR jail_room_id = ?').run(id, id);
+    db.prepare('DELETE FROM whisper_chains WHERE room_id = ?').run(id);
+  }
+  // Jail rooms point at the source via jail_source_room_id, so they go first.
+  for (const id of jailRoomIds) {
+    db.prepare('DELETE FROM rooms WHERE id = ?').run(id);
+  }
+  db.prepare('DELETE FROM rooms WHERE id = ?').run(roomId);
+});
+
 // DELETE /api/rooms/:id — delete a room
 router.delete('/:id', requireAuth, (req: Request, res: Response) => {
   const roomId = parseInt(req.params.id, 10);
@@ -339,8 +349,24 @@ router.delete('/:id', requireAuth, (req: Request, res: Response) => {
     return;
   }
 
-  db.prepare('DELETE FROM rooms WHERE id = ?').run(roomId);
+  // History rows reference the room without ON DELETE actions, so they're cleared
+  // explicitly below — but never while a vote or jail sentence is still running.
+  const busy = db.prepare(`
+    SELECT
+      EXISTS(SELECT 1 FROM votes WHERE source_room_id = @id AND resolved = 0) AS activeVote,
+      EXISTS(SELECT 1 FROM punishments WHERE source_room_id = @id AND active = 1 AND expires_at > datetime('now')) AS activePunishment
+  `).get({ id: roomId }) as { activeVote: number; activePunishment: number };
+  if (busy.activeVote || busy.activePunishment) {
+    res.status(409).json({ error: 'Cannot delete a room during an active vote or punishment' });
+    return;
+  }
 
+  const jailRooms = db.prepare('SELECT * FROM rooms WHERE jail_source_room_id = ?').all(roomId) as RoomRow[];
+  deleteRoomCascade(roomId, jailRooms.map((j) => j.id));
+
+  for (const jailRoom of jailRooms) {
+    broadcast('room:deleted', { room: jailRoom });
+  }
   broadcast('room:deleted', { room });
 
   res.json({ deleted: true });
