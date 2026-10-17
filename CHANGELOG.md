@@ -6,6 +6,9 @@
 - Active jail sentences and votes survive an API restart (a timestamp comparison bug treated anything expiring later the same UTC day as already expired)
 - Rooms that have ever had a vote can be deleted again (previously a 500); their jail room is removed with them. Deleting is refused while a vote or jail sentence is active
 - Switching rooms (or being jailed) now removes you from the old room's Whispers chain
+- Music bot control API (`:3001`) now rejects anything not from the API server — previously queue/skip/pause/station needed no auth and the bot listens on the host network
+- The API↔music-bot shared key is now derived from `LIVEKIT_API_SECRET` instead of reusing `LIVEKIT_API_KEY`, which every client could read from its LiveKit token (and use to push fake now-playing updates to everyone)
+- The music bot refuses to queue or stream URLs that point at private, loopback or link-local addresses
 
 ## 2.2.4 — Screen-Share-First Tiles (UI redesign phase 3)
 

@@ -4,9 +4,11 @@ Fixes from the October 2026 project review. Numbers (`#N`) match the review list
 Out of scope for now: #14 (admin role / registration / soundboard ownership — needs a
 design decision) and #22 (test suite + CI checks).
 
-**Workflow**: one slice per branch (`fix/NN-name`, cut from `main`). Each slice ends with
-a pushed branch, then **STOP** — the user pulls the branch onto the dev server and tests.
-Once the user confirms, the branch is merged into `main` and the next slice starts from it.
+**Workflow**: one slice per branch (`fix/NN-name`), each branch stacked on the previous
+slice's branch — `main` stays untouched until the end. After each slice is pushed the
+user does a quick build check on the dev server (catches compile errors early; nothing is
+compiled on this machine). Functional testing happens once at the end, on the last
+branch, using the test steps listed per slice; then the chain is merged into `main`.
 No local builds (this machine has no Node). Every slice adds notes under `## Unreleased`
 in CHANGELOG.md; server-only slices need no version bump. For slices that touch
 `packages/ui` or `apps/desktop`, desktop test builds come from a `workflow_dispatch` run
@@ -30,7 +32,8 @@ merge so unmerged code never auto-updates clients.
 - [x] **#12** Switching rooms via `/join` or `/sync` (and being jailed) didn't remove
       the user from the old room's whisper chain. All room-leave paths now share
       `broadcastRoomLeave()` (presence.ts).
-- [ ] Push, STOP. Test on dev server:
+- [x] Pushed. End-pass tests (one person can do these with 3 accounts in separate
+      browser profiles, mics muted):
   - 3 users in a room, vote one into jail → only the jailed user's browser moves to the
     jail room; others see the jail notice; DevTools → Network → `/api/events` stream on a
     non-target shows no `jailConnection`.
@@ -42,16 +45,21 @@ merge so unmerged code never auto-updates clients.
 
 ## Slice 2 — Music bot lockdown (`fix/02-music-bot`)
 
-- [ ] **#2** Every bot endpoint except `/health` requires the internal key.
-- [ ] **#3** Internal key is no longer `LIVEKIT_API_KEY` (leaked as the `iss` of every
-      client LiveKit token). Derive it on both sides as
+- [x] **#2** Every bot endpoint except `/health` requires the internal key (one aiohttp
+      middleware instead of per-route checks).
+- [x] **#3** Internal key is no longer `LIVEKIT_API_KEY` (leaked as the `iss` of every
+      client LiveKit token). Derived on both sides as
       `HMAC-SHA256(LIVEKIT_API_SECRET, "distokoloshe-internal")` — no new env var, the
-      secret never leaves the server. Constant-time compare.
-- [ ] **#18** Bot rejects queue URLs (and yt-dlp-resolved stream URLs) whose host
-      resolves to loopback/private/link-local addresses.
-- [ ] Push, STOP. Test: radio, queue, skip, pause, station change, desktop pipe into
-      Music and into another room all still work; `curl -X POST <host>:3001/skip` → 403;
-      `/api/music/notify` with the old key → 403; queueing `http://127.0.0.1:3000/` fails.
+      secret never leaves the server. Constant-time compare. API and bot must be
+      rebuilt together.
+- [x] **#18** Bot rejects queue URLs (and yt-dlp-resolved stream URLs) whose host
+      resolves to a non-public address. Residual: DNS rebinding and HLS segment URLs
+      aren't covered (yt-dlp/ffmpeg resolve on their own).
+- [x] Pushed. End-pass tests: radio, queue a YouTube link, skip, pause, station change,
+      desktop pipe into Music and into another room all still work;
+      `curl -s -X POST http://<server-ip>:3001/skip` → 403 `Forbidden`;
+      `curl -s http://<server-ip>:3001/health` → ok; queueing `http://127.0.0.1:3000/`
+      in the music panel → "url must point to a public host".
 
 ## Slice 3 — API/web hardening (`fix/03-web-hardening`)
 

@@ -5,7 +5,7 @@ import aiohttp
 from aiohttp import web
 from player import Player
 from bot import MusicBot
-from api import create_routes
+from api import create_routes, internal_key, require_internal_key
 from ephemeral import EphemeralPool
 
 
@@ -16,7 +16,7 @@ async def main():
             sys.exit(1)
 
     api_url = os.environ.get("API_URL", "http://127.0.0.1:3000")
-    api_key = os.environ.get("LIVEKIT_API_KEY", "")
+    api_key = internal_key()
 
     async def notify_status_change(state: dict):
         try:
@@ -46,7 +46,7 @@ async def main():
     asyncio.create_task(bot.start())
 
     # Start HTTP API
-    app = web.Application()
+    app = web.Application(middlewares=[require_internal_key])
     app.add_routes(create_routes(player, pool))
 
     runner = web.AppRunner(app)

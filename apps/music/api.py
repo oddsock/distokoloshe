@@ -1,18 +1,34 @@
 import asyncio
+import hashlib
+import hmac
 import json
 import os
 import uuid
 
 from aiohttp import web, WSMsgType
 
-from player import Player, BYTES_PER_FRAME
+from player import Player, BYTES_PER_FRAME, is_public_url
 from stations import get_station
 from ephemeral import EphemeralPool
 
 
-def _internal_key_ok(request: web.Request) -> bool:
-    expected = os.environ.get("LIVEKIT_API_KEY", "")
-    return bool(expected) and request.headers.get("X-Internal-Key") == expected
+def internal_key() -> str:
+    """Shared API<->bot secret, derived from LIVEKIT_API_SECRET so it never leaves
+    the server. (LIVEKIT_API_KEY can't be used: it's the `iss` claim of every
+    LiveKit token handed to clients.) Must match apps/server/src/routes/music.ts."""
+    secret = os.environ.get("LIVEKIT_API_SECRET", "")
+    return hmac.new(secret.encode(), b"distokoloshe-internal", hashlib.sha256).hexdigest()
+
+
+@web.middleware
+async def require_internal_key(request: web.Request, handler):
+    """Every endpoint except /health is for the API server only — the bot runs on
+    host networking, so :3001 may be reachable from outside."""
+    if request.path != "/health":
+        provided = request.headers.get("X-Internal-Key", "")
+        if not hmac.compare_digest(provided.encode(), internal_key().encode()):
+            return web.json_response({"error": "Forbidden"}, status=403)
+    return await handler(request)
 
 
 def create_routes(player: Player, pool: EphemeralPool) -> web.RouteTableDef:
@@ -37,6 +53,8 @@ def create_routes(player: Player, pool: EphemeralPool) -> web.RouteTableDef:
             return web.json_response({"error": "url must be a valid HTTP(S) URL"}, status=400)
         if len(url) > 2048:
             return web.json_response({"error": "url too long"}, status=400)
+        if not await is_public_url(url):
+            return web.json_response({"error": "url must point to a public host"}, status=400)
         state = player.get_state()
         if len(state["queue"]) >= 50:
             return web.json_response({"error": "Queue is full (max 50)"}, status=400)
@@ -75,8 +93,6 @@ def create_routes(player: Player, pool: EphemeralPool) -> web.RouteTableDef:
 
     @routes.post("/external/end")
     async def external_end(request):
-        if not _internal_key_ok(request):
-            return web.json_response({"error": "Forbidden"}, status=403)
         body = await request.json() if request.can_read_body else {}
         session_id = body.get("sessionId") if isinstance(body, dict) else None
         ended = await player.end_external(session_id)
@@ -84,8 +100,6 @@ def create_routes(player: Player, pool: EphemeralPool) -> web.RouteTableDef:
 
     @routes.get("/external")
     async def external_ws(request):
-        if not _internal_key_ok(request):
-            return web.Response(status=403, text="Forbidden")
         ws = web.WebSocketResponse(
             heartbeat=5.0,  # aiohttp pings every 5s, closes on no pong
             max_msg_size=BYTES_PER_FRAME * 4,
@@ -159,8 +173,6 @@ def create_routes(player: Player, pool: EphemeralPool) -> web.RouteTableDef:
 
     @routes.post("/ephemeral/end")
     async def ephemeral_end(request):
-        if not _internal_key_ok(request):
-            return web.json_response({"error": "Forbidden"}, status=403)
         body = await request.json() if request.can_read_body else {}
         session_id = body.get("sessionId") if isinstance(body, dict) else None
         if not session_id:
@@ -173,8 +185,6 @@ def create_routes(player: Player, pool: EphemeralPool) -> web.RouteTableDef:
         """PCM pipe for non-Music rooms. The API relay hands us the LiveKit
         connection details in the `start` control frame, we spin up a fresh
         EphemeralSession, feed frames until end/close, then tear it down."""
-        if not _internal_key_ok(request):
-            return web.Response(status=403, text="Forbidden")
         ws = web.WebSocketResponse(
             heartbeat=5.0,
             max_msg_size=BYTES_PER_FRAME * 4,

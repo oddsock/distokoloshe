@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
-import { randomUUID } from 'node:crypto';
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
 import { requireAuth } from '../middleware/auth.js';
@@ -24,10 +24,35 @@ interface RoomRow {
   name: string;
 }
 
+/** Shared API↔bot secret, derived from LIVEKIT_API_SECRET so it never leaves the
+ *  server. (LIVEKIT_API_KEY can't be used: it's the `iss` claim of every LiveKit
+ *  token handed to clients.) Must match internal_key() in apps/music/api.py. */
+const INTERNAL_KEY = createHmac('sha256', process.env.LIVEKIT_API_SECRET ?? '')
+  .update('distokoloshe-internal')
+  .digest('hex');
+
+function isInternalKey(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  const provided = Buffer.from(value);
+  const expected = Buffer.from(INTERNAL_KEY);
+  return provided.length === expected.length && timingSafeEqual(provided, expected);
+}
+
+/** Call the music bot with the internal key: GET without a body, POST JSON with one. */
+function botFetch(path: string, body?: unknown) {
+  return fetch(`${MUSIC_URL}${path}`, body === undefined
+    ? { headers: { 'X-Internal-Key': INTERNAL_KEY } }
+    : {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Internal-Key': INTERNAL_KEY },
+        body: JSON.stringify(body),
+      });
+}
+
 /** Fetch current status from music bot and broadcast to all SSE clients. */
 async function broadcastMusicStatus(): Promise<void> {
   try {
-    const resp = await fetch(`${MUSIC_URL}/status`);
+    const resp = await botFetch('/status');
     const data = await resp.json();
     broadcast('music:status', data);
   } catch {
@@ -36,10 +61,8 @@ async function broadcastMusicStatus(): Promise<void> {
 }
 
 // POST /notify — internal only, called by music bot on spontaneous state changes
-// Authenticated by LIVEKIT_API_KEY header (shared secret between API and music bot)
 router.post('/notify', async (req: Request, res: Response) => {
-  const key = req.headers['x-internal-key'];
-  if (!key || key !== process.env.LIVEKIT_API_KEY) {
+  if (!isInternalKey(req.headers['x-internal-key'])) {
     res.status(403).json({ error: 'Forbidden' });
     return;
   }
@@ -53,7 +76,7 @@ router.use(requireAuth);
 // GET /api/music/status
 router.get('/status', async (_req: Request, res: Response) => {
   try {
-    const resp = await fetch(`${MUSIC_URL}/status`);
+    const resp = await botFetch('/status');
     const data = await resp.json();
     res.json(data);
   } catch {
@@ -64,14 +87,10 @@ router.get('/status', async (_req: Request, res: Response) => {
 // POST /api/music/queue — inject addedBy from JWT
 router.post('/queue', async (req: Request, res: Response) => {
   try {
-    const resp = await fetch(`${MUSIC_URL}/queue`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        url: req.body.url,
-        title: req.body.title,
-        addedBy: req.user!.display_name,
-      }),
+    const resp = await botFetch('/queue', {
+      url: req.body.url,
+      title: req.body.title,
+      addedBy: req.user!.display_name,
     });
     const data = await resp.json();
     res.status(resp.status).json(data);
@@ -84,11 +103,7 @@ router.post('/queue', async (req: Request, res: Response) => {
 // POST /api/music/remove
 router.post('/remove', async (req: Request, res: Response) => {
   try {
-    const resp = await fetch(`${MUSIC_URL}/remove`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: req.body.id }),
-    });
+    const resp = await botFetch('/remove', { id: req.body.id });
     const data = await resp.json();
     res.status(resp.status).json(data);
     if (resp.ok) broadcastMusicStatus();
@@ -100,11 +115,7 @@ router.post('/remove', async (req: Request, res: Response) => {
 // Simple forward for POST endpoints
 async function forward(path: string, body: unknown, res: Response): Promise<void> {
   try {
-    const resp = await fetch(`${MUSIC_URL}${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body ?? {}),
-    });
+    const resp = await botFetch(path, body ?? {});
     const data = await resp.json();
     res.status(resp.status).json(data);
     if (resp.ok) broadcastMusicStatus();
@@ -149,14 +160,7 @@ export async function releasePipeIfOwnedBy(userId: number): Promise<void> {
 /** Clear any stuck external session on boot so a prior crash doesn't leave the bot stuck. */
 export async function cleanupExternalOnBot(sessionId?: string): Promise<void> {
   try {
-    await fetch(`${MUSIC_URL}/external/end`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Internal-Key': process.env.LIVEKIT_API_KEY ?? '',
-      },
-      body: JSON.stringify(sessionId ? { sessionId } : {}),
-    });
+    await botFetch('/external/end', sessionId ? { sessionId } : {});
     broadcast('music:status', { ...(await fetchStatus()) });
   } catch {
     // Bot unavailable — nothing to clean up.
@@ -169,14 +173,7 @@ export async function cleanupExternalOnBot(sessionId?: string): Promise<void> {
  *  the LiveKit bot directly rather than wait for it to notice. */
 async function cleanupEphemeralOnBot(sessionId: string): Promise<void> {
   try {
-    await fetch(`${MUSIC_URL}/ephemeral/end`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Internal-Key': process.env.LIVEKIT_API_KEY ?? '',
-      },
-      body: JSON.stringify({ sessionId }),
-    });
+    await botFetch('/ephemeral/end', { sessionId });
   } catch {
     // Bot unavailable — best-effort.
   }
@@ -184,7 +181,7 @@ async function cleanupEphemeralOnBot(sessionId: string): Promise<void> {
 
 async function fetchStatus(): Promise<Record<string, unknown>> {
   try {
-    const resp = await fetch(`${MUSIC_URL}/status`);
+    const resp = await botFetch('/status');
     return await resp.json();
   } catch {
     return {};
@@ -262,7 +259,6 @@ async function runPipeRelay(client: WebSocket, user: AuthUser, room: RoomRow): P
   }
 
   const sessionId = randomUUID();
-  const internalKey = process.env.LIVEKIT_API_KEY ?? '';
   const ephemeral = room.name !== MUSIC_ROOM_NAME;
 
   // Pre-compute LK credentials for the ephemeral path so the start control
@@ -290,7 +286,7 @@ async function runPipeRelay(client: WebSocket, user: AuthUser, room: RoomRow): P
   }
 
   const upstream = new WebSocket(ephemeral ? EPHEMERAL_WS_URL : MUSIC_WS_URL, {
-    headers: { 'X-Internal-Key': internalKey },
+    headers: { 'X-Internal-Key': INTERNAL_KEY },
     maxPayload: PCM_FRAME_BYTES * 4,
   });
 

@@ -1,4 +1,5 @@
 import asyncio
+import ipaddress
 import signal
 import re
 import struct
@@ -32,6 +33,21 @@ SAMPLES_PER_FRAME = SAMPLE_RATE * FRAME_MS // 1000  # 960
 BYTES_PER_FRAME = SAMPLES_PER_FRAME * CHANNELS * 2  # 3840 (int16 = 2 bytes/sample)
 
 FrameCallback = Callable[[bytes], Awaitable[None]]
+
+
+async def is_public_url(url: str) -> bool:
+    """True if the URL is http(s) and every address its host resolves to is
+    publicly routable. The bot runs on host networking, so user-queued URLs must
+    not reach loopback/private/link-local services. (yt-dlp/ffmpeg resolve again
+    themselves, so this doesn't stop DNS rebinding — it closes the direct path.)"""
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            return False
+        infos = await asyncio.get_running_loop().getaddrinfo(parsed.hostname, parsed.port or None)
+        return bool(infos) and all(ipaddress.ip_address(info[4][0]).is_global for info in infos)
+    except (OSError, ValueError):
+        return False
 
 
 class Player:
@@ -385,12 +401,24 @@ class Player:
         await self._stop_ffmpeg()
         gen = self._ffmpeg_generation
 
+        # Queue entries are user-supplied (stations are trusted): refuse private
+        # targets both before yt-dlp fetches them and after it resolves them.
+        user_url = self._mode == "queue"
+        if user_url and not await is_public_url(url):
+            print(f"[player] Refusing non-public URL: {url[:120]}")
+            await self._play_next_from_queue()
+            return
+
         # Resolve YouTube / yt-dlp-supported URLs to direct stream URLs
         stream_url = await self._resolve_url(url)
         if stream_url is None:
             print(f"[player] Failed to resolve URL: {url}")
             if self._mode == "queue":
                 await self._play_next_from_queue()
+            return
+        if user_url and stream_url != url and not await is_public_url(stream_url):
+            print(f"[player] Refusing non-public stream URL for: {url[:120]}")
+            await self._play_next_from_queue()
             return
 
         # Loudness normalization (EBU R128) + high-quality resampling.
