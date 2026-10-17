@@ -41,10 +41,14 @@ function isRateLimited(userId: number): boolean {
 // Clients re-encode to ≤4MB WebP/JPEG (max 3840px) before upload. Images live for
 // 60s, so the store cap bounds memory: worst case ~128MB.
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+// Bubble-sized preview sent alongside (older clients don't send one)
+const MAX_THUMB_BYTES = 256 * 1024;
 const MAX_IMAGE_STORE_BYTES = 128 * 1024 * 1024;
 // Raster formats only — SVG can carry script and is served from our origin.
 const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
-const imageStore = new Map<string, { data: Buffer; mime: string }>();
+
+interface StoredImage { data: Buffer; mime: string }
+const imageStore = new Map<string, { full: StoredImage; thumb?: StoredImage }>();
 let imageStoreBytes = 0;
 
 const imageUpload = multer({
@@ -66,7 +70,7 @@ const imageUploadLimiter = rateLimit({
 
 // POST /api/chat/image — upload ephemeral image
 router.post('/image', requireAuth, imageUploadLimiter, (req: Request, res: Response) => {
-  imageUpload.single('image')(req, res, (err) => {
+  imageUpload.fields([{ name: 'image', maxCount: 1 }, { name: 'thumb', maxCount: 1 }])(req, res, (err) => {
     if (err) {
       if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
         res.status(413).json({ error: 'Image too large (max 4MB)' });
@@ -76,30 +80,45 @@ router.post('/image', requireAuth, imageUploadLimiter, (req: Request, res: Respo
       return;
     }
 
-    const file = req.file;
+    const files = req.files as Record<string, Express.Multer.File[]> | undefined;
+    const file = files?.image?.[0];
     if (!file) {
       res.status(400).json({ error: 'No image provided (PNG, JPEG, WebP or GIF)' });
       return;
     }
+    // An oversized thumbnail is ignored; /thumb then falls back to the full image.
+    const thumbFile = files?.thumb?.[0];
+    const thumb = thumbFile && thumbFile.size <= MAX_THUMB_BYTES ? thumbFile : undefined;
+    const bytes = file.size + (thumb?.size ?? 0);
 
-    if (imageStoreBytes + file.size > MAX_IMAGE_STORE_BYTES) {
+    if (imageStoreBytes + bytes > MAX_IMAGE_STORE_BYTES) {
       res.status(429).json({ error: 'Image store full, try again shortly' });
       return;
     }
 
     const imageId = crypto.randomUUID();
-    imageStore.set(imageId, { data: file.buffer, mime: file.mimetype });
-    imageStoreBytes += file.size;
+    imageStore.set(imageId, {
+      full: { data: file.buffer, mime: file.mimetype },
+      thumb: thumb && { data: thumb.buffer, mime: thumb.mimetype },
+    });
+    imageStoreBytes += bytes;
 
     // Auto-cleanup after 60 seconds
     setTimeout(() => {
       imageStore.delete(imageId);
-      imageStoreBytes -= file.size;
+      imageStoreBytes -= bytes;
     }, 60_000);
 
     res.json({ imageId });
   });
 });
+
+function sendImage(res: Response, image: StoredImage): void {
+  res.set('Content-Type', image.mime);
+  res.set('Content-Length', String(image.data.length));
+  res.set('Cache-Control', 'private, max-age=60');
+  res.send(image.data);
+}
 
 // GET /api/chat/image/:id — serve ephemeral image (no auth — <img> tags can't send JWT)
 router.get('/image/:id', (req: Request, res: Response) => {
@@ -108,10 +127,17 @@ router.get('/image/:id', (req: Request, res: Response) => {
     res.status(404).json({ error: 'Image not found or expired' });
     return;
   }
-  res.set('Content-Type', entry.mime);
-  res.set('Content-Length', String(entry.data.length));
-  res.set('Cache-Control', 'private, max-age=60');
-  res.send(entry.data);
+  sendImage(res, entry.full);
+});
+
+// GET /api/chat/image/:id/thumb — bubble preview (full image if none was uploaded)
+router.get('/image/:id/thumb', (req: Request, res: Response) => {
+  const entry = imageStore.get(req.params.id);
+  if (!entry) {
+    res.status(404).json({ error: 'Image not found or expired' });
+    return;
+  }
+  sendImage(res, entry.thumb ?? entry.full);
 });
 
 // POST /api/chat/send — send ephemeral chat message

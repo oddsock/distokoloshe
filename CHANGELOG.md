@@ -12,6 +12,9 @@
 - Custom radio stations can live in `apps/music/stations_local.py` (gitignored) instead of editing `stations.py`, so updates never overwrite them
 - A radio station that yt-dlp can't resolve (e.g. the default Jamendo stream, whose certificate currently doesn't match its hostname) is now handed straight to ffmpeg instead of leaving the radio silent
 - Chat images up to 4MB / 4K: pasted images are re-encoded at high quality before upload (also strips photo metadata such as GPS location); anything over 1MB previously failed silently. GIFs stay animated
+- Sending a chat image shows progress on the thumbnail (spinner while it's prepared, then upload %). Pressing Enter again meanwhile no longer sends duplicates, and a failed upload keeps the image and text with an error instead of silently sending text only
+- Chat bubbles show a small preview uploaded alongside the image (with a placeholder while it loads) instead of downloading the full image; click it for full size
+- Faster image preparation in Safari, which has no WebP encoder — it no longer re-encodes a full-size PNG at every quality step before falling back to JPEG
 - Chat images are limited to PNG/JPEG/WebP/GIF — SVG is refused, since it can carry script — with a 4MB size cap, 10 uploads a minute per user and a 128MB cap on the in-memory store
 - API responses carry the security headers again (nosniff, CSP, HSTS); the CORS headers on `/api/` had silently replaced them
 - nginx access logs no longer record query strings, so login tokens on the live-events stream stay out of the logs; only that stream accepts a token in the URL now

@@ -1,10 +1,33 @@
-export type ChatLine = { text?: string; imageUrl?: string };
+import { useState } from 'react';
+
+/** imageUrl = full-size image (opened on click); thumbUrl = small preview shown in the bubble. */
+export type ChatLine = { text?: string; imageUrl?: string; thumbUrl?: string };
 export type ChatMsg = { id: number; lines: ChatLine[]; ts: number };
 
 interface ChatBubblesProps {
   messages: ChatMsg[];
   /** blue = own messages, green = other participants */
   color: 'blue' | 'green';
+}
+
+/** Bubble image with a placeholder until it loads, so the bubble never looks empty. */
+function ChatImage({ src }: { src: string }) {
+  const [state, setState] = useState<'loading' | 'loaded' | 'failed'>('loading');
+  if (state === 'failed') {
+    return <div className="text-[10px] italic opacity-80 mb-1">Image unavailable</div>;
+  }
+  return (
+    <>
+      {state === 'loading' && <div className="w-32 h-20 rounded mb-1 bg-white/20 animate-pulse" aria-hidden="true" />}
+      <img
+        src={src}
+        onLoad={() => setState('loaded')}
+        onError={() => setState('failed')}
+        className={`max-w-full max-h-32 rounded mb-1 cursor-pointer ${state === 'loaded' ? '' : 'hidden'}`}
+        alt=""
+      />
+    </>
+  );
 }
 
 /** Ephemeral speech-bubble stack overlaid on a participant tile. */
@@ -17,7 +40,11 @@ export function ChatBubbles({ messages, color }: ChatBubblesProps) {
           <div className={`max-w-[220px] px-3 py-1.5 rounded-xl ${color === 'blue' ? 'bg-blue-500' : 'bg-green-600'} text-white text-xs shadow-lg break-all select-text cursor-text`}>
             {msg.lines.map((line, li) => (
               <div key={li} className={li > 0 ? 'mt-1' : ''}>
-                {line.imageUrl && <a href={line.imageUrl} target="_blank" rel="noopener noreferrer"><img src={line.imageUrl} className="max-w-full max-h-32 rounded mb-1 cursor-pointer" alt="" /></a>}
+                {line.imageUrl && (
+                  <a href={line.imageUrl} target="_blank" rel="noopener noreferrer">
+                    <ChatImage src={line.thumbUrl ?? line.imageUrl} />
+                  </a>
+                )}
                 {line.text}
               </div>
             ))}

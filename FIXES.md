@@ -75,6 +75,13 @@ merge so unmerged code never auto-updates clients.
       (raw pastes >1 MB already died at nginx's default body limit); it now re-encodes to
       ≤4 MB at up to 3840 px, quality from 0.92 (strips EXIF/GPS too; GIFs under the cap
       pass through animated). nginx `/api/` gets `client_max_body_size 5m`.
+- [x] Found while testing: repeat Enter during an upload sent the image again each time;
+      bubbles downloaded the full image just to show a 128 px preview. Now: send guard +
+      progress on the thumbnail (XHR upload progress), failed upload keeps image/text with
+      an error; a ≤200 KB 480 px thumbnail is uploaded alongside and served from
+      `/api/chat/image/:id/thumb` (falls back to full for old clients); bubble shows a
+      placeholder until it loads. `resizeImage` stops retrying a format the browser
+      can't encode (Safari + WebP re-encoded a full PNG at every quality step).
 - [x] **#16 (part)** nginx access logs use `$uri` (no query string); `?token=` accepted
       only on the SSE route (pipe WS has its own check). Rest of #16 is in slice 4.
 - [x] **#20 (part)** multer 1.4.5-lts → ^2.0.2 (DoS CVEs), @types/multer → ^2.0.0.
@@ -84,6 +91,8 @@ merge so unmerged code never auto-updates clients.
     `x-content-type-options: nosniff`, `strict-transport-security`.
   - `docker compose logs --tail=20 web` → `/api/events` lines have no `?token=`.
   - Chat: paste a big screenshot → arrives (resized); paste a small GIF → animated.
+  - Paste an image, press Enter 3× quickly → one message; thumbnail shows spinner then
+    %; bubble preview appears quickly, click opens full size.
   - SVG upload refused: `curl -s -H "Authorization: Bearer <token>" -F "image=@x.svg;type=image/svg+xml" https://<domain>/api/chat/image`
     → "No image provided (PNG, JPEG, WebP or GIF)".
   - Soundboard upload + play still work (multer 2).

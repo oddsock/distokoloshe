@@ -328,26 +328,42 @@ export function sendChatMessage(text?: string, imageId?: string) {
   });
 }
 
-export async function uploadChatImage(blob: Blob): Promise<{ imageId: string }> {
-  const token = getStoredToken();
-  const form = new FormData();
-  form.append('image', blob);
+/**
+ * Upload a chat image plus its bubble-sized thumbnail. Uses XHR because fetch can't
+ * report upload progress; onProgress receives 0–100 as the body is sent.
+ */
+export function uploadChatImage(
+  image: Blob,
+  thumb: Blob,
+  onProgress?: (pct: number) => void,
+): Promise<{ imageId: string }> {
+  return new Promise((resolve, reject) => {
+    const form = new FormData();
+    form.append('image', image);
+    form.append('thumb', thumb);
 
-  const headers: Record<string, string> = {};
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-
-  const res = await fetch(`${baseUrl}/api/chat/image`, {
-    method: 'POST',
-    headers,
-    body: form,
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${baseUrl}/api/chat/image`);
+    xhr.responseType = 'json';
+    const token = getStoredToken();
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    if (onProgress) {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+      };
+    }
+    xhr.onload = () => {
+      // responseType 'json' yields null for non-JSON bodies (e.g. an nginx error page)
+      const body = xhr.response as { imageId?: string; error?: string } | null;
+      if (xhr.status >= 200 && xhr.status < 300 && body?.imageId) {
+        resolve({ imageId: body.imageId });
+      } else {
+        reject(new ApiError(xhr.status, body?.error || 'Upload failed'));
+      }
+    };
+    xhr.onerror = () => reject(new ApiError(0, 'Upload failed (network error)'));
+    xhr.send(form);
   });
-
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: 'Upload failed' }));
-    throw new ApiError(res.status, body.error || 'Upload failed');
-  }
-
-  return res.json();
 }
 
 export async function fetchSoundboardAudio(id: number): Promise<ArrayBuffer> {

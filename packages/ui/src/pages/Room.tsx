@@ -28,7 +28,7 @@ import { getRoomInitials, toggleTheme, getTheme, parseParticipantMetadata } from
 import * as api from '../lib/api';
 import { resizeImage } from '../lib/imageResize';
 import { playSound } from '../lib/sounds';
-import { Mic, MicOff, Camera, CameraOff, Ear, EarOff, Monitor, MonitorOff, Volume2, VolumeX, Settings, Sun, Moon, LogOut, AudioLines, Music, X, Download, Scissors, Lock, ShieldAlert, RefreshCw } from 'lucide-react';
+import { Mic, MicOff, Camera, CameraOff, Ear, EarOff, Monitor, MonitorOff, Volume2, VolumeX, Settings, Sun, Moon, LogOut, AudioLines, Music, X, Download, Scissors, Lock, ShieldAlert, RefreshCw, Loader2 } from 'lucide-react';
 
 interface RoomPageProps {
   user: api.User;
@@ -131,6 +131,12 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
   const [chatInput, setChatInput] = useState('');
   const [chatPendingImage, setChatPendingImage] = useState<Blob | null>(null);
   const [chatImagePreview, setChatImagePreview] = useState<string | null>(null);
+  const [chatUpload, setChatUpload] = useState<
+    { phase: 'preparing' } | { phase: 'uploading'; pct: number } | { phase: 'error'; message: string } | null
+  >(null);
+  // Synchronous guard: repeat Enter presses during an upload must not start more sends.
+  const chatSendingRef = useRef(false);
+  const chatBusy = chatUpload?.phase === 'preparing' || chatUpload?.phase === 'uploading';
 
   const isSafari = /Safari\//.test(navigator.userAgent) && !/Chrome\//.test(navigator.userAgent);
   const [safariWarnDismissed, setSafariWarnDismissed] = useState(() => localStorage.getItem('safariCodecWarnDismissed') === '1');
@@ -165,38 +171,64 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     enabled: connectionState === ConnectionState.Connected,
   });
 
+  const clearChatImage = useCallback(() => {
+    setChatPendingImage(null);
+    setChatUpload(null);
+    setChatImagePreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+  }, []);
+
   // Chat send handler
   const handleChatSend = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
+    if (chatSendingRef.current) return;
     const text = chatInput.trim();
     if (!text && !chatPendingImage) return;
 
     let imageId: string | undefined;
     if (chatPendingImage) {
+      chatSendingRef.current = true;
       try {
+        setChatUpload({ phase: 'preparing' });
         // Server caps chat images at 4MB. Re-encoding also strips EXIF/GPS
         // metadata; GIFs under the cap pass through untouched so they stay animated.
-        const upload = chatPendingImage.type === 'image/gif' && chatPendingImage.size <= 4_000_000
+        const isGif = chatPendingImage.type === 'image/gif';
+        const full = isGif && chatPendingImage.size <= 4_000_000
           ? chatPendingImage
           : await resizeImage(chatPendingImage, 3840, 4_000_000);
-        const res = await api.uploadChatImage(upload);
+        // Small preview for the bubble, so nobody downloads the full image just to see it.
+        const thumb = isGif && chatPendingImage.size <= 200_000
+          ? chatPendingImage
+          : await resizeImage(chatPendingImage, 480, 200_000);
+        setChatUpload({ phase: 'uploading', pct: 0 });
+        const res = await api.uploadChatImage(full, thumb, (pct) => setChatUpload({ phase: 'uploading', pct }));
         imageId = res.imageId;
-      } catch { /* upload failed — send text only */ }
-      setChatPendingImage(null);
-      if (chatImagePreview) { URL.revokeObjectURL(chatImagePreview); setChatImagePreview(null); }
+      } catch (err) {
+        // Keep the image and text so the user can retry (Enter) or remove the image.
+        setChatUpload({ phase: 'error', message: err instanceof api.ApiError ? err.message : 'Image upload failed' });
+        return;
+      } finally {
+        chatSendingRef.current = false;
+      }
+      clearChatImage();
     }
-    if (text || imageId) {
-      api.sendChatMessage(text || undefined, imageId).catch(() => {});
-    }
+    api.sendChatMessage(text || undefined, imageId).catch(() => {});
     setChatInput('');
-  }, [chatInput, chatPendingImage, chatImagePreview]);
+  }, [chatInput, chatPendingImage, clearChatImage]);
 
   const handleChatPaste = useCallback((e: React.ClipboardEvent) => {
+    if (chatSendingRef.current) return;
     const file = Array.from(e.clipboardData?.files || []).find(f => f.type.startsWith('image/'));
     if (file) {
       e.preventDefault();
       setChatPendingImage(file);
-      setChatImagePreview(URL.createObjectURL(file));
+      setChatUpload(null);
+      setChatImagePreview((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return URL.createObjectURL(file);
+      });
     }
   }, []);
 
@@ -582,7 +614,8 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
       const identity = chatUser.username;
       const now = Date.now();
       const imageUrl = imageId ? `${api.getBaseUrl()}/api/chat/image/${imageId}` : undefined;
-      const newLine: ChatLine = { text: text || undefined, imageUrl };
+      const thumbUrl = imageUrl ? `${imageUrl}/thumb` : undefined;
+      const newLine: ChatLine = { text: text || undefined, imageUrl, thumbUrl };
 
       // Play sound for messages from others
       if (chatUser.id !== user.id) playSound('chatMessage');
@@ -1560,17 +1593,29 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
         {connectionState === ConnectionState.Connected && room && (
           <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 w-[calc(100%-2rem)] md:w-3/5 min-w-[14rem] max-w-2xl bg-white/80 dark:bg-zinc-800/80 backdrop-blur-xl rounded-2xl px-4 py-2.5 shadow-lg border border-zinc-200/50 dark:border-zinc-700/50 flex flex-col gap-2">
             {/* Chat input */}
+            {chatUpload?.phase === 'error' && (
+              <p className="text-xs text-red-500 px-1" role="alert">{chatUpload.message} — press Enter to retry</p>
+            )}
             <form onSubmit={handleChatSend} className="w-full flex gap-2 items-center">
               {chatImagePreview && (
                 <div className="relative shrink-0">
-                  <img src={chatImagePreview} className="h-8 w-8 rounded object-cover" alt="" />
-                  <button type="button" onClick={() => { setChatPendingImage(null); if (chatImagePreview) { URL.revokeObjectURL(chatImagePreview); setChatImagePreview(null); } }}
-                    className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center leading-none">&times;</button>
+                  <img src={chatImagePreview} className={`h-8 w-8 rounded object-cover ${chatUpload?.phase === 'error' ? 'ring-2 ring-red-500' : ''}`} alt="" />
+                  {chatBusy ? (
+                    <div className="absolute inset-0 rounded bg-black/55 flex items-center justify-center text-[9px] font-semibold text-white" aria-live="polite">
+                      {chatUpload?.phase === 'uploading'
+                        ? `${chatUpload.pct}%`
+                        : <Loader2 size={14} className="animate-spin" aria-label="Preparing image" />}
+                    </div>
+                  ) : (
+                    <button type="button" onClick={clearChatImage} aria-label="Remove image"
+                      className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center leading-none">&times;</button>
+                  )}
                 </div>
               )}
               <input
                 type="text"
                 value={chatInput}
+                readOnly={chatBusy}
                 onChange={(e) => setChatInput(e.target.value.slice(0, 200))}
                 onPaste={handleChatPaste}
                 onKeyDown={(e) => {
@@ -1579,9 +1624,9 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
                     handleChatSend(e as unknown as React.FormEvent);
                   }
                 }}
-                placeholder="Send a message…"
+                placeholder={chatBusy ? 'Sending image…' : 'Send a message…'}
                 maxLength={200}
-                className="flex-1 min-w-0 px-3 py-1.5 rounded-lg text-sm bg-zinc-100 dark:bg-zinc-700 text-zinc-900 dark:text-white border border-zinc-300 dark:border-zinc-600 focus:border-indigo-500 outline-none placeholder-zinc-400 dark:placeholder-zinc-500"
+                className={`flex-1 min-w-0 px-3 py-1.5 rounded-lg text-sm ${chatBusy ? 'opacity-60' : ''} bg-zinc-100 dark:bg-zinc-700 text-zinc-900 dark:text-white border border-zinc-300 dark:border-zinc-600 focus:border-indigo-500 outline-none placeholder-zinc-400 dark:placeholder-zinc-500`}
               />
             </form>
             {/* Icon buttons */}

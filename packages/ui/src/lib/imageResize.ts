@@ -31,6 +31,9 @@ export async function resizeImage(
     while (quality >= 0.3) {
       const blob = await canvas.convertToBlob({ type: format, quality });
       if (blob.size <= maxBytes) return blob;
+      // No encoder for this format (Safari can't encode WebP): the browser returned
+      // PNG and ignored quality, so lower settings won't shrink it — try the next format.
+      if (blob.type !== format) break;
       quality -= 0.1;
     }
   }
