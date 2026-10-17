@@ -10,6 +10,8 @@ dist/
 # Tauri / Rust
 target/
 package-lock.json
+# Server-local music station list (overrides apps/music/stations.py)
+apps/music/stations_local.py
 # Tauri sidecar binaries (ffmpeg + yt-dlp) are staged by CI; never commit
 apps/desktop/src-tauri/ffmpeg-*
 apps/desktop/src-tauri/yt-dlp-*

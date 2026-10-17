@@ -9,6 +9,8 @@
 - Music bot control API (`:3001`) now rejects anything not from the API server — previously queue/skip/pause/station needed no auth and the bot listens on the host network
 - The API↔music-bot shared key is now derived from `LIVEKIT_API_SECRET` instead of reusing `LIVEKIT_API_KEY`, which every client could read from its LiveKit token (and use to push fake now-playing updates to everyone)
 - The music bot refuses to queue or stream URLs that point at private, loopback or link-local addresses
+- Custom radio stations can live in `apps/music/stations_local.py` (gitignored) instead of editing `stations.py`, so updates never overwrite them
+- A radio station that yt-dlp can't resolve (e.g. the default Jamendo stream, whose certificate currently doesn't match its hostname) is now handed straight to ffmpeg instead of leaving the radio silent
 
 ## 2.2.4 — Screen-Share-First Tiles (UI redesign phase 3)
 

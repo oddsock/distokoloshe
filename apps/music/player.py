@@ -411,6 +411,11 @@ class Player:
 
         # Resolve YouTube / yt-dlp-supported URLs to direct stream URLs
         stream_url = await self._resolve_url(url)
+        if stream_url is None and not user_url:
+            # Stations are normally direct streams: if yt-dlp can't make sense of one
+            # (e.g. it rejects the host's TLS certificate), let ffmpeg play it as-is
+            # rather than leaving the radio silent.
+            stream_url = url
         if stream_url is None:
             print(f"[player] Failed to resolve URL: {url}")
             if self._mode == "queue":

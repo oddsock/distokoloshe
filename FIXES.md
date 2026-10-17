@@ -55,6 +55,9 @@ merge so unmerged code never auto-updates clients.
 - [x] **#18** Bot rejects queue URLs (and yt-dlp-resolved stream URLs) whose host
       resolves to a non-public address. Residual: DNS rebinding and HLS segment URLs
       aren't covered (yt-dlp/ffmpeg resolve on their own).
+- [x] Added: `stations_local.py` override (gitignored) so the server's custom station
+      list survives pulls; radio stations yt-dlp can't resolve fall back to ffmpeg
+      directly (stock default Jamendo Chillout was silent due to a cert mismatch).
 - [x] Pushed. End-pass tests: radio, queue a YouTube link, skip, pause, station change,
       desktop pipe into Music and into another room all still work;
       `curl -s -X POST http://<server-ip>:3001/skip` → 403 `Forbidden`;
