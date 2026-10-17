@@ -5,8 +5,8 @@ set -euo pipefail
 # Run ONCE before first production deployment.
 #
 # Usage:
-#   ./scripts/init-certs.sh              # Request real certificate
-#   ./scripts/init-certs.sh --dry-run    # Test without hitting rate limits
+#   ./infra/scripts/init-certs.sh              # Request real certificate
+#   ./infra/scripts/init-certs.sh --dry-run    # Test without hitting rate limits
 #
 # Prerequisites:
 #   - DNS A record pointing DOMAIN to this server's public IP
@@ -31,7 +31,7 @@ cd "$PROJECT_DIR"
 
 # Load .env
 if [ ! -f ".env" ]; then
-  echo "Error: .env not found. Run ./scripts/init.sh first."
+  echo "Error: .env not found. Run ./infra/scripts/init.sh first."
   exit 1
 fi
 set -a; source ".env"; set +a

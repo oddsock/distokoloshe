@@ -77,7 +77,9 @@ services:
     networks:
       - app_net
 
-  # ── Music Bot (DJ Tokoloshe — headless browser + FFmpeg) ──
+  # ── Music Bot (DJ Tokoloshe — Python + FFmpeg/yt-dlp) ──
+  # Host networking: :3001 is not firewalled by Docker. Every endpoint except
+  # /health requires the internal key the API derives from LIVEKIT_API_SECRET.
   music:
     build:
       context: ./apps/music
@@ -96,7 +98,8 @@ services:
 
   # ── LiveKit SFU (WebRTC media relay + built-in TURN) ───
   # Uses host networking so WebRTC ICE candidates work correctly.
-  # Ports bound directly: 7881 (WS), 50201-50400 (UDP), 3478 (TURN), 5349 (TURN/TLS)
+  # Ports bound directly: 7881 (WS/API — keep closed, nginx proxies it), 7882 (ICE/TCP),
+  # 50201-50400 (UDP), 3478 (TURN), 5349 (TURN/TLS)
   livekit:
     build:
       context: ./infra/livekit
@@ -118,7 +121,8 @@ services:
 
   # ── Certbot (Let's Encrypt cert renewal) ────────────────
   # Only needed in production. Renews certs every 12 hours.
-  # nginx detects the updated cert and reloads itself automatically.
+  # nginx detects the updated cert and reloads itself automatically; LiveKit (TURN/TLS)
+  # needs a restart — see "Certificate Renewal" in README.md.
   certbot:
     image: certbot/certbot:latest
     container_name: distokoloshe_certbot

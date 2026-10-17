@@ -125,13 +125,22 @@ merge so unmerged code never auto-updates clients.
 
 ## Slice 5 — Setup scripts & docs (`fix/05-docs`)
 
-- [ ] **#6** `init.sh` resolves the repo root correctly (wrote `infra/.env`).
-- [ ] **#19** README firewall table: add TCP 7882, drop public 7881 (nginx proxies it).
-- [ ] **#24** Backup instructions use `sqlite3 .backup` / stop the api first.
-- [ ] **#27** Doc nits: README tree (`infra/music`), compose "headless browser" comment,
-      init scripts' `./scripts/...` paths, chat 413 message, Safari E2EE wording.
-- [ ] Push, STOP. Test: fresh clone in a scratch dir → `./infra/scripts/init.sh` writes
-      `.env` at the repo root.
+- [x] **#6** `init.sh` resolves the repo root correctly (wrote `infra/.env`) — verified
+      by running it from a scratch copy.
+- [x] **#19** README firewall table: add TCP 7882, drop public 7881 (nginx proxies it),
+      warn that host-networked 7881/3001 aren't firewalled by Docker.
+- [x] **#24** Backup uses SQLite's online backup (`better-sqlite3 .backup()` via
+      `docker compose exec api`, no sqlite3 CLI in the image); restore deletes stale
+      `-wal`/`-shm` files. Offline alternative documented.
+- [x] **#27** Doc nits: README tree (`infra/music`, missing files), compose comments
+      (music "headless browser", LiveKit ports, cert reload), init scripts'
+      `./scripts/...` paths, TURN troubleshooting step that only curled `/server-info`,
+      cert-renewal note (nginx reloads itself now; only LiveKit needs the cron), LiveKit
+      Dockerfile `EXPOSE`, README security section updated for slices 2–4,
+      `stations_local.py` documented. (Chat 413 message done in slice 3; Safari E2EE
+      wording moved to slice 7, where it gets verified.)
+- [x] Pushed. End-pass tests: in a scratch clone, `./infra/scripts/init.sh` writes `.env`
+      at the repo root; backup command produces a tarball with `api/backup.db` + `certs`.
 
 ## Slice 6 — Jail enforcement via LiveKit webhooks (`fix/06-livekit-webhook`)
 
@@ -154,7 +163,8 @@ honest.
       over the internal key (slice 2).
 - [ ] **#27 (part)** Verify a mixed room (E2EE-capable + non-capable client) and document
       the result.
-- [ ] README describes the scheme accurately.
+- [ ] README describes the scheme accurately — including the Safari claim ("falls back
+      to unencrypted"), which looks stale.
 
 ## Slice 8 — Soundboard (`fix/08-soundboard`)
 

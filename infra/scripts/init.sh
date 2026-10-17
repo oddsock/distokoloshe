@@ -2,7 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+# infra/scripts → repo root (compose.yml reads .env from there)
+PROJECT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 ENV_FILE="$PROJECT_DIR/.env"
 
 generate_secret() {
@@ -54,4 +55,4 @@ echo "Next steps:"
 echo "  1. Edit .env and set DOMAIN + ACME_EMAIL for production"
 echo "  2. docker compose build"
 echo "  3. docker compose up -d"
-echo "  4. For TLS: ./scripts/init-certs.sh"
+echo "  4. For TLS: ./infra/scripts/init-certs.sh"

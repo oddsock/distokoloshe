@@ -60,11 +60,13 @@ Register a user, create a room, and start talking. No TLS required for local dev
 | Port | Protocol | Purpose |
 |------|----------|---------|
 | 80 | TCP | HTTP (ACME challenge + redirect to HTTPS) |
-| 443 | TCP + UDP | HTTPS + HTTP/3 (QUIC) |
-| 7881 | TCP | LiveKit WebSocket signaling |
+| 443 | TCP + UDP | HTTPS + HTTP/3 (QUIC); LiveKit signaling is proxied here at `/livekit/` |
 | 3478 | UDP | TURN relay |
 | 5349 | TCP | TURN/TLS relay |
+| 7882 | TCP | WebRTC media over TCP (fallback when UDP is blocked) |
 | 50201-50400 | UDP | WebRTC media (RTP) |
+
+Keep everything else closed. LiveKit and the music bot use host networking, so Docker does **not** firewall their ports for you — in particular don't expose `7881` (LiveKit signaling/API, plain HTTP; clients reach it through nginx) or `3001` (music bot control API, used only by the API server).
 
 ### Step 1: Generate secrets
 
@@ -119,9 +121,9 @@ LiveKit's entrypoint automatically detects TLS certs and switches to production 
 
 Certbot runs as a persistent container (under the `production` profile) and checks for renewal every 12 hours. Certificates are stored on disk at `./data/certs/` (bind-mounted into containers), so they survive `docker volume prune`.
 
-> **Note:** After automatic renewal, nginx and livekit must be restarted to pick up the new certificate. Add a host-level cron job to handle this:
+> **Note:** nginx notices a renewed certificate and reloads itself (it checks hourly). LiveKit does not — its TURN/TLS listener keeps the old certificate until restarted. Add a host-level cron job for it:
 > ```
-> 0 3 * * * cd /path/to/distokoloshe && docker compose restart web livekit 2>/dev/null
+> 0 3 * * * cd /path/to/distokoloshe && docker compose restart livekit 2>/dev/null
 > ```
 
 To manually force a renewal:
@@ -133,18 +135,27 @@ docker compose restart web livekit
 
 ### Backup & Restore
 
-All persistent data lives in `./data/`. To back up the SQLite database and certificates:
+All persistent data lives in `./data/`. The database is at `./data/api/distokoloshe.db`; soundboard audio clips are stored as BLOBs in it, so the database plus `./data/certs/` covers everything.
+
+The database runs in WAL mode, so don't `tar` the live file — recent writes sit in a separate `-wal` file and a plain copy can be inconsistent. Take a snapshot through SQLite instead (safe while running):
 
 ```bash
-# Backup
-tar czf distokoloshe-backup-$(date +%Y%m%d).tar.gz ./data/api/ ./data/certs/
+# Backup: consistent snapshot of the live database, then archive it with the certs
+docker compose exec api node -e "require('better-sqlite3')('data/distokoloshe.db').backup('data/backup.db').then(() => console.log('snapshot ok'))"
+tar czf distokoloshe-backup-$(date +%Y%m%d).tar.gz -C data api/backup.db certs
+rm data/api/backup.db
 
 # Restore
-tar xzf distokoloshe-backup-YYYYMMDD.tar.gz
+docker compose stop api
+tar xzf distokoloshe-backup-YYYYMMDD.tar.gz -C data
+mv data/api/backup.db data/api/distokoloshe.db
+rm -f data/api/distokoloshe.db-wal data/api/distokoloshe.db-shm   # stale WAL would corrupt the restored DB
 docker compose up -d
 ```
 
-The database is at `./data/api/distokoloshe.db`. Soundboard audio clips are stored as BLOBs in the database, so a single backup covers everything.
+Alternatively stop the API first (`docker compose stop api`), archive `./data/api/` and `./data/certs/`, then start it again.
+
+Custom radio stations live in `apps/music/stations_local.py` (gitignored) — back that up too if you use one.
 
 ### Troubleshooting
 
@@ -152,9 +163,9 @@ The database is at `./data/api/distokoloshe.db`. Soundboard audio clips are stor
 
 LiveKit uses TURN relay in production mode (when TLS certs are present). If clients can connect via direct P2P but audio drops for some users, check:
 
-1. Ports `3478/UDP` and `5349/TCP` are open in your firewall
-2. The TURN server is working — test with: `curl -s https://chat.yourdomain.com/api/server-info`
-3. LiveKit logs: `docker compose logs livekit --tail=50`
+1. Ports `3478/UDP`, `5349/TCP` and `7882/TCP` are open in your firewall
+2. LiveKit started in production mode with TURN enabled: `docker compose logs livekit | grep -i -e "production mode" -e turn`
+3. Recent LiveKit logs: `docker compose logs livekit --tail=50`
 
 If TURN isn't helping, ensure `DOMAIN` is set correctly in `.env` — LiveKit uses it to advertise its public IP to clients.
 
@@ -203,7 +214,7 @@ The SQLite database in `data/api/` persists across rebuilds.
 - **Soundboard** — Upload audio clips (max 10 seconds) to play to the room. Inline clip trimmer with waveform visualization, draggable start/end handles, preview playback with animated scrubber, and trim-to-WAV before upload. Per-clip preview (local-only) and room playback with volume control
 - **Democratic moderation** — Vote to jail disruptive users. 30-second voting window, quorum of 3, simple majority. Passed votes auto-create a timed jail room and kick the target from LiveKit. Room creator can lift punishments early
 - **Whispers mode** — Room mode that shuffles participants into a random chain (Fisher-Yates). Chain updates live as users join/leave
-- **Music bot** — DJ Tokoloshe streams internet radio into rooms via a Python LiveKit bot. HTTP API for playback control, now-playing display with marquee scroll, E2EE compatible
+- **Music bot** — DJ Tokoloshe streams internet radio into rooms via a Python LiveKit bot. HTTP API for playback control, now-playing display with marquee scroll, E2EE compatible. Use your own stations by putting a `STATIONS` list (same shape as `apps/music/stations.py`) in `apps/music/stations_local.py` — it's gitignored, so pulls never touch it; rebuild the `music` container after editing
 - **Sound notifications** — 4 synthesized sound packs (Mystical Chimes, Mischievous Pops, Retro Arcade, Digital Whispers) with 8 events each. All generated via Web Audio API oscillators — no audio files
 - **Real-time presence** — SSE-based online/offline status, room membership, vote/punishment/whispers events (13 event types)
 - **Connection quality** — Live signal strength indicator with RTT (round-trip time) and jitter stats, server region display
@@ -223,21 +234,28 @@ The SQLite database in `data/api/` persists across rebuilds.
 │   ├── web/                 # Vite + React SPA (nginx + Docker)
 │   │   ├── nginx.conf       # Dev proxy config
 │   │   ├── nginx.tls.conf   # Production TLS config (HTTPS + HTTP/3)
+│   │   ├── security-headers*.conf  # Shared header snippets (included per location)
 │   │   └── src/             # Web-specific entry (App.tsx, main.tsx)
 │   ├── desktop/             # Tauri v2 desktop client
 │   │   ├── src/             # Desktop entry (App.tsx, ServerConfig.tsx)
 │   │   └── src-tauri/       # Rust shell (global shortcuts, window state)
 │   ├── server/              # Node.js/Express API (JWT + SQLite)
 │   │   └── src/
-│   │       ├── routes/      # auth, rooms, users, votes, punishments, whispers,
-│   │       │                #   soundboard, chat, music, updates, events (SSE)
+│   │       ├── routes/      # auth, rooms, users, votes, punishments, soundboard,
+│   │       │                #   chat, music, updates, events (SSE)
 │   │       ├── livekit.ts   # Token generation + E2EE key derivation
-│   │       └── events.ts    # SSE client tracking + room membership
+│   │       ├── events.ts    # SSE client tracking + room membership
+│   │       ├── presence.ts  # Room-leave broadcasts (+ whisper chain upkeep)
+│   │       ├── whispers.ts  # Whispers mode chains
+│   │       └── timers.ts    # Vote/punishment timers (restored on restart)
 │   └── music/               # DJ Tokoloshe — Python music bot
-│       ├── main.py          # Entry point + HTTP API (:3001)
+│       ├── main.py          # Entry point
+│       ├── api.py           # HTTP API (:3001, internal-key protected)
 │       ├── bot.py           # LiveKit participant (publishes audio track)
-│       ├── player.py        # Internet radio playback (FFmpeg)
-│       └── stations.py      # Station list
+│       ├── ephemeral.py     # Per-room bots for desktop-piped audio
+│       ├── player.py        # Radio + queue playback (FFmpeg, yt-dlp)
+│       ├── stations.py      # Stock station list
+│       └── stations_local.py  # Your own stations (optional, gitignored)
 ├── packages/
 │   └── ui/                  # Shared React components, hooks, and utilities
 │       └── src/
@@ -247,7 +265,6 @@ The SQLite database in `data/api/` persists across rebuilds.
 │           └── lib/         # api.ts, sounds.ts, utils.ts, codec.ts, imageResize.ts
 ├── infra/
 │   ├── livekit/             # LiveKit SFU config + entrypoint
-│   ├── music/               # Music bot Node.js dependencies (build cache)
 │   └── scripts/             # init.sh, init-certs.sh
 └── data/                    # Persistent data (gitignored)
     ├── api/                 # SQLite database
@@ -295,10 +312,12 @@ These issues will be resolved once the app is signed with an Apple Developer cer
 - **Auth** — bcrypt password hashing (12 rounds), JWT with 7-day expiry (HS256), rate-limited login (20/15min) and registration (5/hour per IP)
 - **E2EE** — AES-GCM end-to-end encryption via LiveKit Encoded Transforms. Per-room key derivation using HMAC-SHA256 with a dedicated `E2EE_SECRET` (separate from `JWT_SECRET`)
 - **TLS** — TLS 1.2/1.3 only, HSTS with 2-year max-age, OCSP stapling, HTTP/3 (QUIC)
-- **Headers** — CSP (frame-ancestors 'none', strict script/connect/media sources), X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy strict-origin-when-cross-origin, Permissions-Policy (camera/mic/display-capture self-only)
-- **API** — CORS disabled at Express level (`origin: false`), nginx whitelists only Tauri desktop origins. 16KB body limit, parameterized SQL queries (no injection), input validation with regex/whitelist on all user inputs
+- **Headers** — CSP (frame-ancestors 'none', strict script/connect/media sources), X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy strict-origin-when-cross-origin, Permissions-Policy (camera/mic/display-capture self-only) — on every response, API included (shared nginx snippets)
+- **API** — CORS disabled at Express level (`origin: false`), nginx whitelists only Tauri desktop origins. 16KB JSON body limit (uploads capped per route: chat images 4MB, raster formats only), parameterized SQL queries (no injection), input validation with regex/whitelist on all user inputs
 - **Database** — SQLite with WAL mode, foreign key constraints enabled
-- **SSE** — Per-user connection cap (3) and global cap (500), 30s keepalive ping
+- **SSE** — Opened with a 30s single-use ticket rather than the login token in the URL; per-user connection cap (3) and global cap (500), 30s keepalive ping
+- **Logs** — nginx access logs omit query strings
+- **Music bot** — Its control API (`:3001`, host networking) only accepts requests carrying an internal key derived from `LIVEKIT_API_SECRET`; queued URLs must resolve to public addresses
 - **Desktop** — Tauri CSP restricts connect-src, media-src, script-src. WASM eval allowed only for livekit-client
 
 ## License

@@ -25,6 +25,8 @@
 - The live-events stream authenticates with a short-lived single-use ticket instead of your login token in the URL, so the token can't end up in server logs
 - The E2EE indicator only shows once encryption has actually been enabled
 - Desktop: the server location in the connection-quality tooltip now shows (it was fetched from the wrong address)
+- `infra/scripts/init.sh` writes `.env` to the repo root again (it was writing `infra/.env`, so a fresh install's API exited on missing secrets)
+- README: firewall table adds TCP 7882 and stops recommending opening 7881; backup instructions take a consistent SQLite snapshot instead of copying the live WAL database; cert-renewal, troubleshooting and project-structure sections brought up to date
 
 ## 2.2.4 — Screen-Share-First Tiles (UI redesign phase 3)
 
