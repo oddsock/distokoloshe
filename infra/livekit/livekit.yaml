@@ -17,6 +17,14 @@ room:
   auto_create: true
   empty_timeout: 30
 
+# Room/participant events → API (signed with the matching API secret). LiveKit runs
+# on host networking; the API is published on 127.0.0.1:3000 for exactly this.
+# The api_key placeholder is substituted by entrypoint.sh.
+webhook:
+  api_key: ${LIVEKIT_API_KEY}
+  urls:
+    - http://127.0.0.1:3000/api/livekit/webhook
+
 # TURN relay — allows clients behind restrictive NATs/firewalls
 # to connect via TCP (TLS on 5349) or UDP (3478).
 turn:

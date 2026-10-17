@@ -26,6 +26,8 @@
 - The E2EE indicator only shows once encryption has actually been enabled
 - Desktop: the server location in the connection-quality tooltip now shows (it was fetched from the wrong address)
 - `infra/scripts/init.sh` writes `.env` to the repo root again (it was writing `infra/.env`, so a fresh install's API exited on missing secrets)
+- Jail can no longer be dodged by reconnecting with an earlier room token: LiveKit now notifies the API of every join (signed webhooks), and a jailed user who turns up in the room they were voted out of is removed straight away
+- The internal-only endpoints (LiveKit webhooks, music-bot status notifications) are no longer reachable through the public site
 - README: firewall table adds TCP 7882 and stops recommending opening 7881; backup instructions take a consistent SQLite snapshot instead of copying the live WAL database; cert-renewal, troubleshooting and project-structure sections brought up to date
 
 ## 2.2.4 — Screen-Share-First Tiles (UI redesign phase 3)

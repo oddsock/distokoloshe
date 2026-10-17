@@ -317,6 +317,7 @@ These issues will be resolved once the app is signed with an Apple Developer cer
 - **Database** — SQLite with WAL mode, foreign key constraints enabled
 - **SSE** — Opened with a 30s single-use ticket rather than the login token in the URL; per-user connection cap (3) and global cap (500), 30s keepalive ping
 - **Logs** — nginx access logs omit query strings
+- **Jail enforcement** — LiveKit sends signed webhooks to the API (`127.0.0.1:3000`; nginx refuses the endpoint from outside), and a jailed user who joins their source room by any route — e.g. replaying an earlier token — is removed immediately
 - **Music bot** — Its control API (`:3001`, host networking) only accepts requests carrying an internal key derived from `LIVEKIT_API_SECRET`; queued URLs must resolve to public addresses
 - **Desktop** — Tauri CSP restricts connect-src, media-src, script-src. WASM eval allowed only for livekit-client
 

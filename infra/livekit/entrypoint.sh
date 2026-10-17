@@ -3,8 +3,14 @@ set -e
 
 DOMAIN="${DOMAIN:-localhost}"
 
-# Substitute ${DOMAIN} in config template
-sed "s/\${DOMAIN}/${DOMAIN}/g" /etc/livekit.yaml.tmpl > /etc/livekit.yaml
+if [ -z "${LIVEKIT_API_KEY:-}" ]; then
+  echo "FATAL: LIVEKIT_API_KEY not set (needed to sign webhooks to the API)"
+  exit 1
+fi
+
+# Substitute ${DOMAIN} and ${LIVEKIT_API_KEY} in config template
+sed -e "s/\${DOMAIN}/${DOMAIN}/g" -e "s/\${LIVEKIT_API_KEY}/${LIVEKIT_API_KEY}/g" \
+  /etc/livekit.yaml.tmpl > /etc/livekit.yaml
 
 if [ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]; then
   # Production mode: use external IP discovery for correct public ICE candidates

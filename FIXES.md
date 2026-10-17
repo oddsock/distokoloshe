@@ -144,12 +144,23 @@ merge so unmerged code never auto-updates clients.
 
 ## Slice 6 — Jail enforcement via LiveKit webhooks (`fix/06-livekit-webhook`)
 
-- [ ] **#11** LiveKit sends webhooks to the API (`http://127.0.0.1:3000/api/livekit/webhook`,
+- [x] **#11** LiveKit sends webhooks to the API (`http://127.0.0.1:3000/api/livekit/webhook`,
       signature-verified with `WebhookReceiver`). On `participant_joined`, a user with an
       active punishment for that room is removed — a kept/replayed token no longer
-      bypasses jail.
-- [ ] Push, STOP. Test: normal joins unaffected; jailed user forcing a rejoin of the
-      source room (e.g. replaying the old join token) gets kicked.
+      bypasses jail. LiveKit gets `LIVEKIT_API_KEY` in its env; entrypoint substitutes it
+      into `webhook.api_key` (and refuses to start without it).
+- [x] nginx returns 404 for the internal-only `/api/livekit/webhook` and
+      `/api/music/notify` (both are called on 127.0.0.1:3000 directly).
+- [x] `infra/scripts/check-jail-kick.py` — joins a room as a user via the music
+      container's LiveKit SDK and reports whether they get kicked.
+- [x] Pushed. End-pass tests:
+  - After rebuilding, join any room → `docker compose logs api | grep livekit-webhook`
+    shows `receiving events from LiveKit` (no `rejected:` lines).
+  - `curl -s -o /dev/null -w "%{http_code}\n" -X POST https://<domain>/api/livekit/webhook` → 404.
+  - Jail a user from room X (3 accounts), then:
+    `docker compose exec -T music python - <jailed-username> "X" < infra/scripts/check-jail-kick.py`
+    → `KICKED`, and the api log shows `removing jailed user`.
+  - Normal joins, music bot and desktop pipe streams unaffected.
 
 ## Slice 7 — E2EE tightening (`fix/07-e2ee`) — depends on 2 and 6
 
