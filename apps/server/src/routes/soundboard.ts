@@ -6,22 +6,59 @@ import { broadcast, broadcastToRoom, getUserRoomId } from '../events.js';
 
 const router = Router();
 
+// Clients upload the clip trimmer's output: mono 16-bit PCM WAV, ≤10 s. That's under
+// 2MB even at 96 kHz; 4MB leaves room for 2-channel files.
+const MAX_CLIP_BYTES = 4 * 1024 * 1024;
+const MAX_CLIP_SECONDS = 10.5; // 10 s limit plus rounding slack from the trimmer
+const WAV_MIME_TYPES = new Set(['audio/wav', 'audio/x-wav', 'audio/wave', 'audio/vnd.wave']);
+
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB
+  limits: { fileSize: MAX_CLIP_BYTES },
   fileFilter: (_req, file, cb) => {
-    // Accept audio/* plus ogg/webm containers that browsers may report as application/ or video/
-    const allowed = file.mimetype.startsWith('audio/')
-      || file.mimetype === 'application/ogg'
-      || file.mimetype === 'video/ogg'
-      || file.mimetype === 'video/webm';
-    if (allowed) {
+    if (WAV_MIME_TYPES.has(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('Only audio files are allowed'));
+      cb(new Error('Clips must be WAV — use the clip trimmer'));
     }
   },
 });
+
+/**
+ * Duration in seconds of a 16-bit PCM WAV (1–2 channels), or null if the buffer isn't
+ * one. Header fields must agree with each other, so the computed length matches what a
+ * browser will actually play.
+ */
+function pcmWavDurationSecs(buf: Buffer): number | null {
+  if (buf.length < 12 || buf.toString('ascii', 0, 4) !== 'RIFF' || buf.toString('ascii', 8, 12) !== 'WAVE') {
+    return null;
+  }
+  let byteRate = 0;
+  let offset = 12;
+  while (offset + 8 <= buf.length) {
+    const id = buf.toString('ascii', offset, offset + 4);
+    const size = buf.readUInt32LE(offset + 4);
+    const body = offset + 8;
+    if (id === 'fmt ') {
+      if (size < 16 || body + 16 > buf.length) return null;
+      const format = buf.readUInt16LE(body);
+      const channels = buf.readUInt16LE(body + 2);
+      const sampleRate = buf.readUInt32LE(body + 4);
+      byteRate = buf.readUInt32LE(body + 8);
+      const blockAlign = buf.readUInt16LE(body + 12);
+      const bits = buf.readUInt16LE(body + 14);
+      const valid = format === 1 && bits === 16 && channels >= 1 && channels <= 2
+        && sampleRate >= 8000 && sampleRate <= 192_000
+        && blockAlign === channels * 2 && byteRate === sampleRate * blockAlign;
+      if (!valid) return null;
+    } else if (id === 'data') {
+      if (!byteRate) return null; // fmt must come before data
+      return Math.min(size, buf.length - body) / byteRate;
+    }
+    offset = body + size + (size % 2); // chunks are word-aligned
+  }
+  return null;
+}
 
 interface ClipRow {
   id: number;
@@ -51,7 +88,7 @@ router.post('/', requireAuth, (req: Request, res: Response) => {
   upload.single('file')(req, res, (err) => {
     if (err) {
       if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
-        res.status(413).json({ error: 'File too large (max 15MB)' });
+        res.status(413).json({ error: 'File too large (max 4MB)' });
         return;
       }
       res.status(400).json({ error: err.message || 'Upload failed' });
@@ -61,6 +98,16 @@ router.post('/', requireAuth, (req: Request, res: Response) => {
     const file = req.file;
     if (!file) {
       res.status(400).json({ error: 'No file provided' });
+      return;
+    }
+
+    const duration = pcmWavDurationSecs(file.buffer);
+    if (duration === null) {
+      res.status(400).json({ error: 'Not a valid 16-bit PCM WAV file' });
+      return;
+    }
+    if (duration > MAX_CLIP_SECONDS) {
+      res.status(400).json({ error: 'Clips can be at most 10 seconds long' });
       return;
     }
 
@@ -140,7 +187,10 @@ router.post('/:id/play', requireAuth, (req: Request, res: Response) => {
     return;
   }
 
-  const durationMs = typeof req.body?.durationMs === 'number' ? req.body.durationMs : 10000;
+  // Relayed to everyone in the room for the "playing" indicator — keep it sane
+  const durationMs = typeof req.body?.durationMs === 'number' && Number.isFinite(req.body.durationMs)
+    ? Math.min(Math.max(req.body.durationMs, 0), 15_000)
+    : 10_000;
 
   const roomId = getUserRoomId(req.user!.sub);
   if (roomId != null) {

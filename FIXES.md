@@ -204,10 +204,16 @@ server can't decrypt) is its own project, scheduled after the UI redesign.
 
 ## Slice 8 — Soundboard (`fix/08-soundboard`)
 
-- [ ] **#26** Trimmer downmixes all channels (not just left). Server accepts only WAV
-      from the trimmer, checks header duration ≤ 10.5 s, size cap ~4 MB (nginx `/api/`
-      already allows 5 MB since slice 3, so 88.2/96 kHz devices fit).
-- [ ] Push, STOP. Test: upload stereo clip (both channels audible), long clip refused.
+- [x] **#26** Trimmer downmixes all channels to mono (it kept channel 0 only, dropping
+      anything panned right). Server accepts only WAV (the trimmer's output), parses the
+      header and requires consistent 16-bit PCM, 1–2 ch, 8–192 kHz, duration ≤ 10.5 s;
+      cap 15 MB → 4 MB (nginx `/api/` allows 5 MB since slice 3, so 96 kHz devices fit).
+      Parser checked via a Python port against `encodeWav`-style and `wave`-module files.
+      Existing clips in other formats are untouched.
+- [x] `/soundboard/:id/play` clamps the relayed `durationMs` to 0–15 s (was unvalidated).
+- [x] Pushed. End-pass tests: upload a stereo clip with sound only in the right channel →
+      audible; a clip trimmed to 10 s uploads; uploading a non-WAV via curl →
+      "Clips must be WAV"; existing clips still play.
 
 ## Slice 9 — Updater & CI (`fix/09-updater-ci`) — desktop build via workflow_dispatch
 

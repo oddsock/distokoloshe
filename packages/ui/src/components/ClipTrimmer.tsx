@@ -224,10 +224,17 @@ export function ClipTrimmer({ audioBuffer, maxDuration, onConfirm, onCancel }: C
 
   // ── Confirm ──
   const handleConfirm = useCallback(() => {
-    const channelData = audioBuffer.getChannelData(0);
-    const startSample = Math.floor(startFrac * channelData.length);
-    const endSample = Math.floor(endFrac * channelData.length);
-    const trimmed = channelData.slice(startSample, endSample);
+    const { numberOfChannels, length } = audioBuffer;
+    const startSample = Math.floor(startFrac * length);
+    const endSample = Math.floor(endFrac * length);
+    // Downmix every channel to mono — taking channel 0 alone dropped anything panned right.
+    const trimmed = new Float32Array(endSample - startSample);
+    for (let ch = 0; ch < numberOfChannels; ch++) {
+      const data = audioBuffer.getChannelData(ch);
+      for (let i = 0; i < trimmed.length; i++) {
+        trimmed[i] += data[startSample + i] / numberOfChannels;
+      }
+    }
     const blob = encodeWav(trimmed, audioBuffer.sampleRate);
     onConfirm(blob);
   }, [audioBuffer, startFrac, endFrac, onConfirm]);

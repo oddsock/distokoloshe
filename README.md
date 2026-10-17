@@ -317,7 +317,7 @@ These issues will be resolved once the app is signed with an Apple Developer cer
   - A browser without E2EE support (rare: old browsers, some Linux WebKitGTK builds) joins unencrypted and can't decode encrypted participants. The lock icon shows whether you're encrypted.
 - **TLS** — TLS 1.2/1.3 only, HSTS with 2-year max-age, OCSP stapling, HTTP/3 (QUIC)
 - **Headers** — CSP (frame-ancestors 'none', strict script/connect/media sources), X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy strict-origin-when-cross-origin, Permissions-Policy (camera/mic/display-capture self-only) — on every response, API included (shared nginx snippets)
-- **API** — CORS disabled at Express level (`origin: false`), nginx whitelists only Tauri desktop origins. 16KB JSON body limit (uploads capped per route: chat images 4MB, raster formats only), parameterized SQL queries (no injection), input validation with regex/whitelist on all user inputs
+- **API** — CORS disabled at Express level (`origin: false`), nginx whitelists only Tauri desktop origins. 16KB JSON body limit (uploads capped per route: chat images 4MB, raster formats only; soundboard clips 4MB, PCM WAV ≤10s checked from the header), parameterized SQL queries (no injection), input validation with regex/whitelist on all user inputs
 - **Database** — SQLite with WAL mode, foreign key constraints enabled
 - **SSE** — Opened with a 30s single-use ticket rather than the login token in the URL; per-user connection cap (3) and global cap (500), 30s keepalive ping
 - **Logs** — nginx access logs omit query strings

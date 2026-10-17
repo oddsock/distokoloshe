@@ -29,6 +29,8 @@
 - Jail can no longer be dodged by reconnecting with an earlier room token: LiveKit now notifies the API of every join (signed webhooks), and a jailed user who turns up in the room they were voted out of is removed straight away
 - The internal-only endpoints (LiveKit webhooks, music-bot status notifications) are no longer reachable through the public site
 - Each room now has its own random encryption key, stored on the server and replaced whenever the room empties — previously keys were derived from one server secret and the room name, so they never changed and a re-created room got the same key. Existing rooms keep their current key until they next empty, so calls survive the upgrade
+- Soundboard clips keep both stereo channels (mixed to mono) — the trimmer used only the left channel, so sound panned right was lost
+- The server now enforces the soundboard's 10-second limit (checked from the WAV header) and accepts only the trimmer's WAV output, capped at 4MB (was 15MB of any audio)
 - The `Music` room (or `MUSIC_ROOM_NAME`) is created automatically at startup — on a fresh install it didn't exist, so nobody could join the room DJ Tokoloshe plays in
 - E2EE now also turns on in Chromium builds that only support Insertable Streams (LiveKit's own support check replaces a narrower hand-rolled one)
 - README describes the encryption honestly: media is encrypted in the browser so the relay only sees ciphertext, but the server issues the keys, so this isn't end-to-end against whoever runs it; true end-to-end encryption is planned. `E2EE_SECRET` is now only needed on upgraded installs
