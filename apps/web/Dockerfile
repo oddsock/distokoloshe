@@ -26,6 +26,8 @@ COPY --from=build /app/apps/web/dist /app
 RUN mkdir -p /etc/nginx/templates
 COPY apps/web/nginx.conf /etc/nginx/templates/nginx.conf
 COPY apps/web/nginx.tls.conf /etc/nginx/templates/nginx.tls.conf
+# Shared security-header snippets (included by both configs)
+COPY apps/web/security-headers.conf apps/web/security-headers-tls.conf /etc/nginx/snippets/
 # Entrypoint selects HTTP or HTTPS config based on cert presence
 COPY apps/web/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

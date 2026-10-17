@@ -26,6 +26,7 @@ import { useNoiseCancellation } from '../hooks/useNoiseCancellation';
 import { useAutoUpdate } from '../hooks/useAutoUpdate';
 import { getRoomInitials, toggleTheme, getTheme, parseParticipantMetadata } from '../lib/utils';
 import * as api from '../lib/api';
+import { resizeImage } from '../lib/imageResize';
 import { playSound } from '../lib/sounds';
 import { Mic, MicOff, Camera, CameraOff, Ear, EarOff, Monitor, MonitorOff, Volume2, VolumeX, Settings, Sun, Moon, LogOut, AudioLines, Music, X, Download, Scissors, Lock, ShieldAlert, RefreshCw } from 'lucide-react';
 
@@ -173,7 +174,12 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     let imageId: string | undefined;
     if (chatPendingImage) {
       try {
-        const res = await api.uploadChatImage(chatPendingImage);
+        // Server caps chat images at 512KB. Re-encoding also strips EXIF/GPS
+        // metadata; small GIFs pass through untouched so they stay animated.
+        const upload = chatPendingImage.type === 'image/gif' && chatPendingImage.size <= 500_000
+          ? chatPendingImage
+          : await resizeImage(chatPendingImage, 1920, 500_000);
+        const res = await api.uploadChatImage(upload);
         imageId = res.imageId;
       } catch { /* upload failed — send text only */ }
       setChatPendingImage(null);

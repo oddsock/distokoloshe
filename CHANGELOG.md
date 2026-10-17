@@ -11,6 +11,11 @@
 - The music bot refuses to queue or stream URLs that point at private, loopback or link-local addresses
 - Custom radio stations can live in `apps/music/stations_local.py` (gitignored) instead of editing `stations.py`, so updates never overwrite them
 - A radio station that yt-dlp can't resolve (e.g. the default Jamendo stream, whose certificate currently doesn't match its hostname) is now handed straight to ffmpeg instead of leaving the radio silent
+- Chat images are resized to ≤500KB before upload (also strips photo metadata such as GPS location); large pasted screenshots previously failed silently. Small GIFs stay animated
+- Chat images are limited to PNG/JPEG/WebP/GIF — SVG is refused, since it can carry script — with a 512KB size cap, 10 uploads a minute per user and a 32MB cap on the in-memory store
+- API responses carry the security headers again (nosniff, CSP, HSTS); the CORS headers on `/api/` had silently replaced them
+- nginx access logs no longer record query strings, so login tokens on the live-events stream stay out of the logs; only that stream accepts a token in the URL now
+- Upgraded multer to 2.x (fixes known denial-of-service vulnerabilities in 1.4.5-lts)
 
 ## 2.2.4 — Screen-Share-First Tiles (UI redesign phase 3)
 

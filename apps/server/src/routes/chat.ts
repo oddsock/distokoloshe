@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import crypto from 'crypto';
+import rateLimit from 'express-rate-limit';
 import { requireAuth } from '../middleware/auth.js';
 import { broadcastToRoom, getUserRoomId } from '../events.js';
 
@@ -37,23 +38,37 @@ function isRateLimited(userId: number): boolean {
 }
 
 // ── Ephemeral image store (in-memory, auto-cleanup) ──────
-const MAX_IMAGE_STORE_SIZE = 200;
+// Clients resize to ≤500KB WebP/JPEG before upload, so these limits only bite abuse.
+const MAX_IMAGE_BYTES = 512 * 1024;
+const MAX_IMAGE_STORE_BYTES = 32 * 1024 * 1024;
+// Raster formats only — SVG can carry script and is served from our origin.
+const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
 const imageStore = new Map<string, { data: Buffer; mime: string }>();
+let imageStoreBytes = 0;
 
 const imageUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  limits: { fileSize: MAX_IMAGE_BYTES },
   fileFilter: (_req, file, cb) => {
-    cb(null, file.mimetype.startsWith('image/'));
+    cb(null, ALLOWED_IMAGE_TYPES.has(file.mimetype));
   },
 });
 
+const imageUploadLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many images — try again in a minute' },
+  keyGenerator: (req) => String(req.user!.sub),
+});
+
 // POST /api/chat/image — upload ephemeral image
-router.post('/image', requireAuth, (req: Request, res: Response) => {
+router.post('/image', requireAuth, imageUploadLimiter, (req: Request, res: Response) => {
   imageUpload.single('image')(req, res, (err) => {
     if (err) {
       if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
-        res.status(413).json({ error: 'Image too large (max 500KB)' });
+        res.status(413).json({ error: 'Image too large (max 512KB)' });
         return;
       }
       res.status(400).json({ error: err.message || 'Upload failed' });
@@ -62,20 +77,24 @@ router.post('/image', requireAuth, (req: Request, res: Response) => {
 
     const file = req.file;
     if (!file) {
-      res.status(400).json({ error: 'No image provided' });
+      res.status(400).json({ error: 'No image provided (PNG, JPEG, WebP or GIF)' });
       return;
     }
 
-    if (imageStore.size >= MAX_IMAGE_STORE_SIZE) {
+    if (imageStoreBytes + file.size > MAX_IMAGE_STORE_BYTES) {
       res.status(429).json({ error: 'Image store full, try again shortly' });
       return;
     }
 
     const imageId = crypto.randomUUID();
     imageStore.set(imageId, { data: file.buffer, mime: file.mimetype });
+    imageStoreBytes += file.size;
 
     // Auto-cleanup after 60 seconds
-    setTimeout(() => imageStore.delete(imageId), 60_000);
+    setTimeout(() => {
+      imageStore.delete(imageId);
+      imageStoreBytes -= file.size;
+    }, 60_000);
 
     res.json({ imageId });
   });

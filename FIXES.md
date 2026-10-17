@@ -64,17 +64,29 @@ merge so unmerged code never auto-updates clients.
       `curl -s http://<server-ip>:3001/health` → ok; queueing `http://127.0.0.1:3000/`
       in the music panel → "url must point to a public host".
 
-## Slice 3 — API/web hardening (`fix/03-web-hardening`)
+## Slice 3 — API/web hardening (`fix/03-web-hardening`) — server, nginx, packages/ui
 
-- [ ] **#4** Chat images: reject SVG (allow png/jpeg/webp/gif only). nginx `/api/`
-      blocks re-declare the security headers (nosniff, CSP, frame/referrer, HSTS in TLS).
-- [ ] **#5** Chat image upload limit 10 MB → 600 KB (client already resizes to ≤500 KB),
-      per-user upload rate limit, store cap by total bytes not count.
-- [ ] **#16** nginx access logs strip query strings (custom `log_format` using `$uri`);
-      `?token=` accepted only on the SSE route (pipe WS keeps its own check).
-- [ ] **#20 (part)** multer 1.4.5-lts → 2.x (known DoS CVEs).
-- [ ] Push, STOP. Test: chat text + image, soundboard upload/play, SSE presence;
-      `docker compose logs web` shows `/api/events` without `?token=`; SVG upload refused.
+- [x] **#4** Chat images: raster only (png/jpeg/webp/gif) — SVG rejected. Security
+      headers moved into `security-headers{,-tls}.conf` snippets and included by every
+      location, so `/api/` responses get nosniff/CSP/HSTS again (its CORS `add_header`s
+      had silently dropped them).
+- [x] **#5** Chat image limit 10 MB → 512 KB, 10 uploads/min per user, store capped at
+      32 MB total. The client never actually called `resizeImage()` (raw pastes >1 MB
+      already died at nginx's default body limit); it now re-encodes to ≤500 KB at up to
+      1920 px before upload (strips EXIF/GPS too; small GIFs pass through animated).
+      Old desktop clients don't resize, so their large pastes fail until they update.
+- [x] **#16 (part)** nginx access logs use `$uri` (no query string); `?token=` accepted
+      only on the SSE route (pipe WS has its own check). Rest of #16 is in slice 4.
+- [x] **#20 (part)** multer 1.4.5-lts → ^2.0.2 (DoS CVEs), @types/multer → ^2.0.0.
+- [x] Pushed. End-pass tests:
+  - `docker compose exec web nginx -t` → ok; app loads (CSP didn't break anything).
+  - `curl -sI https://<domain>/api/health` shows `content-security-policy`,
+    `x-content-type-options: nosniff`, `strict-transport-security`.
+  - `docker compose logs --tail=20 web` → `/api/events` lines have no `?token=`.
+  - Chat: paste a big screenshot → arrives (resized); paste a small GIF → animated.
+  - SVG upload refused: `curl -s -H "Authorization: Bearer <token>" -F "image=@x.svg;type=image/svg+xml" https://<domain>/api/chat/image`
+    → "No image provided (PNG, JPEG, WebP or GIF)".
+  - Soundboard upload + play still work (multer 2).
 
 ## Slice 4 — Client resilience (`fix/04-client-resilience`) — packages/ui
 
@@ -82,6 +94,10 @@ merge so unmerged code never auto-updates clients.
       reconnect with backoff; on 401 log out to the login screen.
 - [ ] **#10** Startup `getMe()` only clears the stored token on 401, not on network/5xx.
 - [ ] **#13 (part)** Await `room.setE2EEEnabled(true)` so the E2EE indicator is honest.
+- [ ] **#16 (rest)** SSE authenticates with a short-lived single-use ticket
+      (`POST /api/events/ticket`) instead of the JWT in the URL — nginx's *error* log
+      still records the full request line on upstream failures (e.g. every SSE reconnect
+      during an API restart). Keep accepting `?token=` until old desktop clients update.
 - [ ] Push, STOP. Test: `docker compose restart api` while connected → presence/chat
       recover without reload; stop the api container, reload page → still logged in once
       it's back.

@@ -15,19 +15,7 @@ declare global {
   }
 }
 
-export function requireAuth(req: Request, res: Response, next: NextFunction): void {
-  // Accept token from Authorization header or query param (for SSE EventSource)
-  const header = req.headers.authorization;
-  let token: string | undefined;
-
-  if (header?.startsWith('Bearer ')) {
-    token = header.slice(7);
-  } else if (typeof req.query.token === 'string') {
-    token = req.query.token;
-  } else if (typeof req.body?.token === 'string') {
-    token = req.body.token;
-  }
-
+function authenticate(token: string | undefined, req: Request, res: Response, next: NextFunction): void {
   if (!token) {
     res.status(401).json({ error: 'Missing authorization token' });
     return;
@@ -39,4 +27,26 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   } catch {
     res.status(401).json({ error: 'Invalid or expired token' });
   }
+}
+
+function headerOrBodyToken(req: Request): string | undefined {
+  const header = req.headers.authorization;
+  if (header?.startsWith('Bearer ')) return header.slice(7);
+  // JSON body token: sendBeacon (tab close) can't set headers
+  if (typeof req.body?.token === 'string') return req.body.token;
+  return undefined;
+}
+
+/** Token from the Authorization header, or a JSON body `token` field. */
+export function requireAuth(req: Request, res: Response, next: NextFunction): void {
+  authenticate(headerOrBodyToken(req), req, res, next);
+}
+
+/**
+ * Also accepts `?token=` — only for EventSource, which can't send headers.
+ * Query strings end up in proxy logs, so don't use this on other routes.
+ */
+export function requireAuthAllowQuery(req: Request, res: Response, next: NextFunction): void {
+  const token = headerOrBodyToken(req) ?? (typeof req.query.token === 'string' ? req.query.token : undefined);
+  authenticate(token, req, res, next);
 }

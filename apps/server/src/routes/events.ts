@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import db from '../db.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, requireAuthAllowQuery } from '../middleware/auth.js';
 import {
   addClient, removeClient, broadcast,
   isUserOnline, isUserInRoom, canAddClient,
@@ -13,7 +13,7 @@ import { releasePipeIfOwnedBy } from './music.js';
 const router = Router();
 
 // GET /api/events — SSE stream for real-time updates
-router.get('/', requireAuth, (req: Request, res: Response) => {
+router.get('/', requireAuthAllowQuery, (req: Request, res: Response) => {
   const userId = req.user!.sub;
 
   // Check connection limits
