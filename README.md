@@ -201,7 +201,7 @@ The SQLite database in `data/api/` persists across rebuilds.
 | `WEB_TLS_PORT` | No | `3443` | Host port for HTTPS / HTTP/3 |
 | `LK_PORT` | No | `7881` | LiveKit WebSocket port |
 | `SERVER_CITY` | No | — | Server location label (shown in connection quality UI) |
-| `MUSIC_ROOM_NAME` | No | `Music` | LiveKit room name the music bot joins |
+| `MUSIC_ROOM_NAME` | No | `Music` | Room the music bot joins (created automatically at API startup) |
 | `GITHUB_REPO` | No | — | GitHub repo for auto-update sync (e.g., `user/distokoloshe`) |
 | `GITHUB_TOKEN` | No | — | GitHub token (only needed for private repos) |
 
@@ -214,7 +214,7 @@ The SQLite database in `data/api/` persists across rebuilds.
 - **Soundboard** — Upload audio clips (max 10 seconds) to play to the room. Inline clip trimmer with waveform visualization, draggable start/end handles, preview playback with animated scrubber, and trim-to-WAV before upload. Per-clip preview (local-only) and room playback with volume control
 - **Democratic moderation** — Vote to jail disruptive users. 30-second voting window, quorum of 3, simple majority. Passed votes auto-create a timed jail room and kick the target from LiveKit. Room creator can lift punishments early
 - **Whispers mode** — Room mode that shuffles participants into a random chain (Fisher-Yates). Chain updates live as users join/leave
-- **Music bot** — DJ Tokoloshe streams internet radio into rooms via a Python LiveKit bot. HTTP API for playback control, now-playing display with marquee scroll, E2EE compatible. Use your own stations by putting a `STATIONS` list (same shape as `apps/music/stations.py`) in `apps/music/stations_local.py` — it's gitignored, so pulls never touch it; rebuild the `music` container after editing
+- **Music bot** — DJ Tokoloshe streams internet radio into the `Music` room (created automatically) via a Python LiveKit bot. HTTP API for playback control, now-playing display with marquee scroll, E2EE compatible. Use your own stations by putting a `STATIONS` list (same shape as `apps/music/stations.py`) in `apps/music/stations_local.py` — it's gitignored, so pulls never touch it; rebuild the `music` container after editing
 - **Sound notifications** — 4 synthesized sound packs (Mystical Chimes, Mischievous Pops, Retro Arcade, Digital Whispers) with 8 events each. All generated via Web Audio API oscillators — no audio files
 - **Real-time presence** — SSE-based online/offline status, room membership, vote/punishment/whispers events (13 event types)
 - **Connection quality** — Live signal strength indicator with RTT (round-trip time) and jitter stats, server region display

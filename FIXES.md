@@ -179,6 +179,9 @@ server can't decrypt) is its own project, scheduled after the UI redesign.
 - [x] Music bot fetches its key from the API on every (re)connect via internal-only
       `GET /api/music/room-key` (nginx 404s it); no longer needs `E2EE_SECRET`. The Music
       room's key never rotates while the bot is in it.
+- [x] Found while testing: a fresh install had no `Music` room in the DB (only `General`
+      was seeded), so users couldn't join the bot's room and the bot found no key. The API
+      now creates it at startup (`INSERT OR IGNORE`, no creator → undeletable).
 - [x] Room rows sent to clients use explicit public columns — the room list,
       `room:created` and `room:deleted` used `SELECT *` and would have leaked every key.
 - [x] Client E2EE detection uses LiveKit's `isE2EESupported()` (also covers Chromium

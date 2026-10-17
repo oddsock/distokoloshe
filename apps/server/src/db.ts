@@ -124,4 +124,9 @@ if (roomCount.count === 0) {
     .run('General', 'voice', randomBytes(32).toString('base64'));
 }
 
+// The music bot always sits in this LiveKit room — make sure the app lists it too, or
+// nobody can join it and the bot has no E2EE key. No creator, so it can't be deleted.
+db.prepare('INSERT OR IGNORE INTO rooms (name, type, e2ee_key) VALUES (?, ?, ?)')
+  .run(process.env.MUSIC_ROOM_NAME || 'Music', 'voice', randomBytes(32).toString('base64'));
+
 export default db;
