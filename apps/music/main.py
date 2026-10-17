@@ -5,7 +5,8 @@ import aiohttp
 from aiohttp import web
 from player import Player
 from bot import MusicBot
-from api import create_routes, internal_key, require_internal_key
+from api import create_routes, require_internal_key
+from internal import internal_key
 from ephemeral import EphemeralPool
 
 

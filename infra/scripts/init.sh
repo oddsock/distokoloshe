@@ -18,7 +18,6 @@ fi
 LIVEKIT_API_KEY="API$(openssl rand -hex 8)"
 LIVEKIT_API_SECRET="$(generate_secret)"
 JWT_SECRET="$(generate_secret)"
-E2EE_SECRET="$(generate_secret)"
 
 cat > "$ENV_FILE" <<EOF
 # ── Domain (set these for production TLS) ───────────────
@@ -31,7 +30,6 @@ LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
 
 # ── App Auth ────────────────────────────────────────────
 JWT_SECRET=${JWT_SECRET}
-E2EE_SECRET=${E2EE_SECRET}
 
 # ── Ports ────────────────────────────────────────────────
 # Dev defaults (used when lines below are commented out):
@@ -49,7 +47,6 @@ echo "Generated .env with fresh secrets."
 echo "  LIVEKIT_API_KEY    = ${LIVEKIT_API_KEY}"
 echo "  LIVEKIT_API_SECRET = ${LIVEKIT_API_SECRET:0:8}..."
 echo "  JWT_SECRET         = ${JWT_SECRET:0:8}..."
-echo "  E2EE_SECRET        = ${E2EE_SECRET:0:8}..."
 echo ""
 echo "Next steps:"
 echo "  1. Edit .env and set DOMAIN + ACME_EMAIL for production"

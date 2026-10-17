@@ -56,7 +56,7 @@ services:
       - LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
       - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
       - JWT_SECRET=${JWT_SECRET}
-      - E2EE_SECRET=${E2EE_SECRET:-}
+      - E2EE_SECRET=${E2EE_SECRET:-}   # legacy: only seeds keys for rooms that predate per-room keys
       - LIVEKIT_URL=ws://host.docker.internal:${LK_PORT:-7881}
       - MUSIC_ROOM_NAME=${MUSIC_ROOM_NAME:-Music}
       - SERVER_CITY=${SERVER_CITY:-}
@@ -91,7 +91,6 @@ services:
       - PYTHONUNBUFFERED=1
       - LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
       - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
-      - E2EE_SECRET=${E2EE_SECRET:-}
       - LIVEKIT_URL=ws://127.0.0.1:${LK_PORT:-7881}
       - MUSIC_ROOM_NAME=${MUSIC_ROOM_NAME:-Music}
       - API_URL=http://127.0.0.1:3000

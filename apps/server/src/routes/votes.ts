@@ -6,7 +6,7 @@ import {
   getUserRoomId, getRoomMembers, setUserRoom,
 } from '../events.js';
 import { broadcastRoomLeave } from '../presence.js';
-import { generateRoomToken, deriveRoomE2EEKey, removeParticipant } from '../livekit.js';
+import { generateRoomToken, getRoomE2EEKey, newRoomE2EEKey, removeParticipant } from '../livekit.js';
 import {
   startVoteTimer,
   resolveVote,
@@ -252,8 +252,8 @@ setVotePassedHandler(async (vote) => {
   let jailRoom = db.prepare('SELECT * FROM rooms WHERE name = ? AND is_jail = 1').get(jailName) as RoomRow | undefined;
   if (!jailRoom) {
     db.prepare(
-      'INSERT INTO rooms (name, type, is_jail, jail_source_room_id, created_by) VALUES (?, ?, 1, ?, NULL)',
-    ).run(jailName, sourceRoom.type, sourceRoom.id);
+      'INSERT INTO rooms (name, type, is_jail, jail_source_room_id, created_by, e2ee_key) VALUES (?, ?, 1, ?, NULL, ?)',
+    ).run(jailName, sourceRoom.type, sourceRoom.id, newRoomE2EEKey());
     jailRoom = db.prepare('SELECT * FROM rooms WHERE name = ? AND is_jail = 1').get(jailName) as RoomRow;
   }
 
@@ -276,7 +276,7 @@ setVotePassedHandler(async (vote) => {
 
   // Generate jail room token
   const token = await generateRoomToken(targetUser.username, targetUser.display_name, jailRoom.name, targetUser.id);
-  const e2eeKey = deriveRoomE2EEKey(jailRoom.name);
+  const e2eeKey = getRoomE2EEKey(jailRoom.id);
 
   // Update room membership tracking
   setUserRoom(vote.target_user_id, jailRoom.id);

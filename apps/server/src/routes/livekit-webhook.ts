@@ -1,7 +1,8 @@
 import express, { Router, Request, Response } from 'express';
 import { WebhookReceiver, type WebhookEvent } from 'livekit-server-sdk';
 import db from '../db.js';
-import { removeParticipant } from '../livekit.js';
+import { removeParticipant, rotateRoomE2EEKey, roomHasParticipants } from '../livekit.js';
+import { getRoomMembers } from '../events.js';
 
 const router = Router();
 
@@ -24,6 +25,21 @@ async function enforcePunishment(roomName: string, identity: string): Promise<vo
   if (!punished) return;
   console.log(`[livekit-webhook] removing jailed user ${identity} from ${roomName}`);
   await removeParticipant(roomName, identity);
+}
+
+/**
+ * The room emptied out (LiveKit closes it after empty_timeout) — give it a fresh E2EE
+ * key so former members can't decrypt future sessions. Skipped if someone has just
+ * fetched the current key via /join, or a new LiveKit instance already has people in
+ * it: they'd be left holding a key nobody else uses.
+ */
+async function rotateKeyIfEmpty(roomName: string): Promise<void> {
+  const room = db.prepare('SELECT id FROM rooms WHERE name = ?').get(roomName) as { id: number } | undefined;
+  if (!room) return;
+  if ((getRoomMembers()[room.id] ?? []).length > 0) return;
+  if (await roomHasParticipants(roomName)) return;
+  rotateRoomE2EEKey(room.id);
+  console.log(`[livekit-webhook] rotated E2EE key for ${roomName}`);
 }
 
 // POST /api/livekit/webhook — sent by LiveKit straight to 127.0.0.1:3000 (nginx
@@ -49,6 +65,8 @@ router.post(
     try {
       if (event.event === 'participant_joined' && event.room && event.participant) {
         await enforcePunishment(event.room.name, event.participant.identity);
+      } else if (event.event === 'room_finished' && event.room) {
+        await rotateKeyIfEmpty(event.room.name);
       }
     } catch (err) {
       console.error(`[livekit-webhook] ${event.event} handler failed:`, err);

@@ -9,9 +9,6 @@ for (const key of REQUIRED_ENV) {
     process.exit(1);
   }
 }
-if (!process.env.E2EE_SECRET) {
-  console.warn('WARN: E2EE_SECRET not set — falling back to JWT_SECRET for room key derivation');
-}
 
 import './db.js'; // Initialize database on startup
 import { restoreTimers } from './timers.js';

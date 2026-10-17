@@ -1,5 +1,6 @@
 import Database, { type Database as DatabaseType } from 'better-sqlite3';
 import path from 'path';
+import { randomBytes } from 'crypto';
 
 const DB_PATH = path.join(process.env.DATA_DIR || './data', 'distokoloshe.db');
 
@@ -96,6 +97,10 @@ try { db.exec("ALTER TABLE rooms ADD COLUMN mode TEXT DEFAULT 'normal'"); } catc
 try { db.exec('ALTER TABLE rooms ADD COLUMN is_jail INTEGER NOT NULL DEFAULT 0'); } catch {}
 try { db.exec('ALTER TABLE rooms ADD COLUMN jail_source_room_id INTEGER REFERENCES rooms(id)'); } catch {}
 
+// Per-room random E2EE key (see livekit.ts). NULL for rooms created before this column;
+// those are seeded with the legacy derived key on first use.
+try { db.exec('ALTER TABLE rooms ADD COLUMN e2ee_key TEXT'); } catch {}
+
 // Add soundbite opt-out to user settings
 try { db.exec('ALTER TABLE user_settings ADD COLUMN soundbite_opt_out INTEGER DEFAULT 0'); } catch {}
 
@@ -115,7 +120,8 @@ db.exec(`
 // Seed a default "General" room if no rooms exist
 const roomCount = db.prepare('SELECT COUNT(*) as count FROM rooms').get() as { count: number };
 if (roomCount.count === 0) {
-  db.prepare('INSERT INTO rooms (name, type) VALUES (?, ?)').run('General', 'voice');
+  db.prepare('INSERT INTO rooms (name, type, e2ee_key) VALUES (?, ?, ?)')
+    .run('General', 'voice', randomBytes(32).toString('base64'));
 }
 
 export default db;

@@ -7,6 +7,7 @@ import {
   LocalParticipant,
   Participant,
   ExternalE2EEKeyProvider,
+  isE2EESupported,
 } from 'livekit-client';
 import { getBaseUrl } from '../lib/api';
 
@@ -24,14 +25,6 @@ interface LiveKitRoomState {
   connectionState: ConnectionState;
   e2eeEnabled: boolean;
   stateVersion: number;
-}
-
-/** Check if the browser supports Encoded Transforms (required for LiveKit E2EE) */
-function supportsE2EE(): boolean {
-  return (
-    typeof RTCRtpSender !== 'undefined' &&
-    'transform' in RTCRtpSender.prototype
-  );
 }
 
 export function useLiveKitRoom() {
@@ -67,8 +60,10 @@ export function useLiveKitRoom() {
         roomRef.current = null;
       }
 
-      // Set up E2EE only if the browser supports Encoded Transforms
-      const canE2EE = supportsE2EE();
+      // Set up E2EE if the browser can: LiveKit's check covers both RTCRtpScriptTransform
+      // (Safari, Firefox) and Chromium's Insertable Streams — the old hand-rolled check
+      // only looked for the former.
+      const canE2EE = isE2EESupported();
       let keyProvider: ExternalE2EEKeyProvider | null = null;
       let e2eeWorker: Worker | undefined;
 

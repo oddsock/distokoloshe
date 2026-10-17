@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import db from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
-import { generateRoomToken, deriveRoomE2EEKey } from '../livekit.js';
+import { generateRoomToken, getRoomE2EEKey, newRoomE2EEKey } from '../livekit.js';
 import { broadcast, broadcastToRoom, setUserRoom, getUserRoomId, getRoomMembers, isUserInRoom } from '../events.js';
 import { getChain, shuffleChain, addToChain, clearChain } from '../whispers.js';
 import { broadcastRoomLeave } from '../presence.js';
@@ -25,9 +25,12 @@ interface UserRow {
   display_name: string;
 }
 
+// Everything except e2ee_key — use for any room row that's sent to clients.
+const ROOM_PUBLIC_COLUMNS = 'id, name, type, created_by, created_at, mode, is_jail, jail_source_room_id';
+
 // GET /api/rooms — list all rooms
 router.get('/', requireAuth, (_req: Request, res: Response) => {
-  const rooms = db.prepare('SELECT * FROM rooms ORDER BY name').all() as RoomRow[];
+  const rooms = db.prepare(`SELECT ${ROOM_PUBLIC_COLUMNS} FROM rooms ORDER BY name`).all() as RoomRow[];
   res.json({ rooms });
 });
 
@@ -66,8 +69,9 @@ router.post('/', requireAuth, (req: Request, res: Response) => {
     return;
   }
 
-  const result = db.prepare('INSERT INTO rooms (name, type, created_by) VALUES (?, ?, ?)').run(trimmedName, roomType, req.user!.sub);
-  const room = db.prepare('SELECT * FROM rooms WHERE id = ?').get(result.lastInsertRowid) as RoomRow;
+  const result = db.prepare('INSERT INTO rooms (name, type, created_by, e2ee_key) VALUES (?, ?, ?, ?)')
+    .run(trimmedName, roomType, req.user!.sub, newRoomE2EEKey());
+  const room = db.prepare(`SELECT ${ROOM_PUBLIC_COLUMNS} FROM rooms WHERE id = ?`).get(result.lastInsertRowid) as RoomRow;
 
   broadcast('room:created', { room });
 
@@ -152,7 +156,7 @@ router.post('/:id/join', requireAuth, async (req: Request, res: Response) => {
       room.name,
       req.user!.sub,
     );
-    const e2eeKey = deriveRoomE2EEKey(room.name);
+    const e2eeKey = getRoomE2EEKey(room.id);
 
     res.json({
       token,
@@ -337,7 +341,7 @@ router.delete('/:id', requireAuth, (req: Request, res: Response) => {
     return;
   }
 
-  const room = db.prepare('SELECT * FROM rooms WHERE id = ?').get(roomId) as RoomRow | undefined;
+  const room = db.prepare(`SELECT ${ROOM_PUBLIC_COLUMNS} FROM rooms WHERE id = ?`).get(roomId) as RoomRow | undefined;
   if (!room) {
     res.status(404).json({ error: 'Room not found' });
     return;
@@ -361,7 +365,7 @@ router.delete('/:id', requireAuth, (req: Request, res: Response) => {
     return;
   }
 
-  const jailRooms = db.prepare('SELECT * FROM rooms WHERE jail_source_room_id = ?').all(roomId) as RoomRow[];
+  const jailRooms = db.prepare(`SELECT ${ROOM_PUBLIC_COLUMNS} FROM rooms WHERE jail_source_room_id = ?`).all(roomId) as RoomRow[];
   deleteRoomCascade(roomId, jailRooms.map((j) => j.id));
 
   for (const jailRoom of jailRooms) {

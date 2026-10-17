@@ -7,10 +7,13 @@ import base64
 import time
 from typing import Optional
 
+import aiohttp
 from livekit import rtc
 from livekit.rtc._ffi_client import FfiHandle, FfiClient
 from livekit.rtc._proto import audio_frame_pb2 as proto_audio
 from livekit.rtc._proto import ffi_pb2 as proto_ffi
+
+from internal import internal_key
 
 BOT_IDENTITY = "__music-bot__"
 BOT_NAME = "DJ Tokoloshe"
@@ -25,7 +28,7 @@ class MusicBot:
         self._api_key = os.environ["LIVEKIT_API_KEY"]
         self._api_secret = os.environ["LIVEKIT_API_SECRET"]
         self._room_name = os.environ.get("MUSIC_ROOM_NAME", "Music")
-        self._e2ee_secret = os.environ.get("E2EE_SECRET", "")
+        self._api_url = os.environ.get("API_URL", "http://127.0.0.1:3000")
         self._room: Optional[rtc.Room] = None
         self._audio_source: Optional[rtc.AudioSource] = None
         self._connected = False
@@ -77,6 +80,8 @@ class MusicBot:
 
     async def _connect(self):
         token = self._generate_token()
+        # Fetched on every (re)connect: the room key rotates whenever the room empties.
+        e2ee_key = await self._fetch_e2ee_key()
 
         # Create audio source with audio processing DISABLED.
         # The Python SDK doesn't expose AudioSourceOptions, so we construct the
@@ -108,12 +113,15 @@ class MusicBot:
         # single_peer_connection=True matches the browser client behavior and
         # may fix the Rust FFI not detecting the PC as connected.
         room_options = rtc.RoomOptions(single_peer_connection=True)
-        if self._e2ee_secret:
-            e2ee_key = self._derive_e2ee_key().encode()
+        if e2ee_key:
+            # LiveKit's shared_key takes the base64 text as UTF-8 bytes, matching the
+            # browser's ExternalE2EEKeyProvider.setKey(string).
             room_options.e2ee = rtc.E2EEOptions(
-                key_provider_options=rtc.KeyProviderOptions(shared_key=e2ee_key),
+                key_provider_options=rtc.KeyProviderOptions(shared_key=e2ee_key.encode()),
             )
             print("[bot] E2EE configured")
+        else:
+            print(f"[bot] No app room named {self._room_name!r} — joining without E2EE")
 
         self._room = rtc.Room()
 
@@ -203,7 +211,17 @@ class MusicBot:
         ).rstrip(b"=")
         return (signing_input + b"." + signature).decode()
 
-    def _derive_e2ee_key(self) -> str:
-        secret = self._e2ee_secret or os.environ.get("JWT_SECRET", "")
-        h = hmac.new(secret.encode(), self._room_name.encode(), hashlib.sha256)
-        return base64.b64encode(h.digest()).decode()
+    async def _fetch_e2ee_key(self) -> Optional[str]:
+        """The room's current E2EE key from the API, or None if no app room has this
+        name. Raises if the API is unreachable, so the connect retry loop waits for it."""
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{self._api_url}/api/music/room-key",
+                params={"room": self._room_name},
+                headers={"X-Internal-Key": internal_key()},
+                timeout=aiohttp.ClientTimeout(total=5),
+            ) as resp:
+                if resp.status == 404:
+                    return None
+                resp.raise_for_status()
+                return (await resp.json())["key"]

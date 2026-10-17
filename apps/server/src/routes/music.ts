@@ -8,7 +8,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { broadcast, isUserInRoom } from '../events.js';
 import type { AuthUser } from '../middleware/auth.js';
 import db from '../db.js';
-import { generateRoomToken, deriveRoomE2EEKey } from '../livekit.js';
+import { generateRoomToken, getRoomE2EEKey } from '../livekit.js';
 
 const router = Router();
 
@@ -68,6 +68,22 @@ router.post('/notify', async (req: Request, res: Response) => {
   }
   broadcast('music:status', req.body);
   res.json({ ok: true });
+});
+
+// GET /room-key?room=<name> — internal only: the music bot's E2EE key for its room.
+// 404 if no app room has that name (nobody can join it, so the bot goes unencrypted).
+router.get('/room-key', (req: Request, res: Response) => {
+  if (!isInternalKey(req.headers['x-internal-key'])) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+  const roomName = typeof req.query.room === 'string' ? req.query.room : '';
+  const room = db.prepare('SELECT id FROM rooms WHERE name = ?').get(roomName) as { id: number } | undefined;
+  if (!room) {
+    res.status(404).json({ error: 'Room not found' });
+    return;
+  }
+  res.json({ key: getRoomE2EEKey(room.id) });
 });
 
 // All remaining routes require user auth
@@ -277,7 +293,7 @@ async function runPipeRelay(client: WebSocket, user: AuthUser, room: RoomRow): P
         room.name,
         user.sub,
       );
-      ephemeralE2eeKey = deriveRoomE2EEKey(room.name);
+      ephemeralE2eeKey = getRoomE2EEKey(room.id);
     } catch (err) {
       console.error('[music-relay] token mint failed:', err);
       try { client.close(1011, 'token mint failed'); } catch { /* ignore */ }

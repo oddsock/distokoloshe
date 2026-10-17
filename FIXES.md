@@ -164,18 +164,40 @@ merge so unmerged code never auto-updates clients.
 
 ## Slice 7 — E2EE tightening (`fix/07-e2ee`) — depends on 2 and 6
 
-Decision needed before starting: true E2EE (server cannot decrypt) needs client-side key
-agreement — a larger redesign. This slice makes the current scheme tighter and the docs
-honest.
+Decided: option A now (tighten + honest docs). True E2EE (client-side key agreement, the
+server can't decrypt) is its own project, scheduled after the UI redesign.
 
-- [ ] **#13** Random per-room key stored in the DB instead of `HMAC(secret, room name)`;
-      rotated when LiveKit reports the room finished (webhook from slice 6), so former
-      members/recreated rooms don't share keys. Music bot fetches its key from the API
-      over the internal key (slice 2).
-- [ ] **#27 (part)** Verify a mixed room (E2EE-capable + non-capable client) and document
-      the result.
-- [ ] README describes the scheme accurately — including the Safari claim ("falls back
-      to unencrypted"), which looks stale.
+- [x] **#13** Random 256-bit per-room key in `rooms.e2ee_key` instead of
+      `HMAC(secret, room name)`. New rooms (incl. jail rooms, seeded General) get a random
+      key at creation; rooms that predate the column are seeded with the legacy derived
+      key on first use, so calls in progress during the upgrade keep working.
+- [x] Rotation on LiveKit `room_finished` (slice 6 webhook) — skipped if anyone is
+      tracked in the room (just fetched the key via `/join`) or LiveKit already has a new
+      instance with participants. Known edge: if a *whole* room drops for >30 s and some
+      clients resume via the SDK while others rejoin fresh, they can end up on different
+      keys until the resumed ones rejoin.
+- [x] Music bot fetches its key from the API on every (re)connect via internal-only
+      `GET /api/music/room-key` (nginx 404s it); no longer needs `E2EE_SECRET`. The Music
+      room's key never rotates while the bot is in it.
+- [x] Room rows sent to clients use explicit public columns — the room list,
+      `room:created` and `room:deleted` used `SELECT *` and would have leaked every key.
+- [x] Client E2EE detection uses LiveKit's `isE2EESupported()` (also covers Chromium
+      Insertable Streams) instead of checking `RTCRtpSender.transform` only.
+- [x] **#27 (part)** Mixed rooms documented from LiveKit's design, not tested here: a
+      client without E2EE support joins unencrypted and can't decode encrypted
+      participants. Safari *does* support E2EE (old "falls back on Safari" claim removed).
+- [x] README: intro, features, env table and Security section describe the scheme
+      accurately (not end-to-end against the server operator; chat is plain over TLS).
+      `E2EE_SECRET` marked legacy; `init.sh` no longer generates it.
+- [x] Pushed. End-pass tests:
+  - Existing rooms: two people in a room during the upgrade still hear each other;
+    newcomers joining afterwards can too (legacy key carried over).
+  - Everyone leaves a room, wait ~40 s → `docker compose logs api | grep "rotated E2EE"`
+    shows that room; rejoining with two people works (new key).
+  - Music room: `docker compose logs music | grep E2EE` → `E2EE configured`; music audible.
+  - Desktop pipe into a non-Music room is audible to others (ephemeral bot uses the key).
+  - `curl -s -o /dev/null -w "%{http_code}\n" "https://<domain>/api/music/room-key?room=Music"` → 404.
+  - DevTools → Network → `/api/rooms` response has no `e2ee_key`.
 
 ## Slice 8 — Soundboard (`fix/08-soundboard`)
 
