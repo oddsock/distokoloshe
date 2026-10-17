@@ -217,15 +217,34 @@ server can't decrypt) is its own project, scheduled after the UI redesign.
 
 ## Slice 9 — Updater & CI (`fix/09-updater-ci`) — desktop build via workflow_dispatch
 
-- [ ] **#15** Re-sign `.app.tar.gz` (`tauri signer sign`) after codesign re-packages it;
-      release assets get an arch in the macOS tarball name; server `detectPlatform` copes.
-      Check whether the evermeet.cx ffmpeg is Intel-only (Rosetta dependency on arm64).
-- [ ] **#17** Updater drops `Authorization` on cross-host redirects.
-- [ ] **#23 (part)** Sidecar downloads verified (yt-dlp against its release
-      `SHA2-256SUMS`; ffmpeg pinned + sha256).
-- [ ] **#25** Release builds without the `devtools` feature.
-- [ ] Push, STOP. Test: workflow_dispatch artifacts install on each OS; after merge + tag,
-      macOS client auto-updates from the server.
+- [x] **#15** Codesign step: re-signs the re-packed `.app.tar.gz` with `tauri signer
+      sign` (its `.sig` no longer matched) and rebuilds the `.dmg` around the signed app.
+      Its `if:` read a step-level env var (not visible in `if`) — now a job-level
+      `HAS_MACOS_CERT` flag. New step names the updater tarball with its arch
+      (`disTokoloshe_aarch64.app.tar.gz`); server `detectPlatform` also maps an
+      unlabelled `.app.tar.gz` (older releases) to `darwin-aarch64` — previously macOS
+      never got updates from the server sync.
+- [x] macOS ffmpeg: evermeet.cx was Intel-only (needed Rosetta on Apple Silicon) and now
+      returns HTTP 410 — the macOS CI build would fail. Replaced with a pinned native
+      arm64 build from ffmpeg.martin-riedl.de (checked here: Mach-O arm64, system
+      frameworks only, macOS 12+). CI fails the job if ffmpeg or yt-dlp isn't arm64.
+- [x] **#23 (part)** ffmpeg pinned to 9.0.2 with SHA-256 on all three platforms (Linux:
+      same Riedl server, needs glibc 2.35 / GCC 12 libstdc++ = ubuntu-22.04 baseline,
+      checked; Windows: GyanD/codexffmpeg GitHub release, GitHub's asset digest). yt-dlp
+      stays on the newest release but is verified against that release's
+      `SHA2-256SUMS`.
+- [x] **#17** Updater: one `httpGet` helper follows redirects, drops `Authorization` when
+      the host changes, refuses https→http, caps redirects; downloads go to `.part` and
+      are renamed when complete.
+- [x] **#25** `devtools` is now a crate feature: on for workflow_dispatch test builds
+      (you debug with those), off for tagged releases.
+- [x] Pushed; workflow_dispatch run started on the branch. End-pass tests:
+  - Run succeeds on all three OSes; logs show `checksum ... OK` lines and the macOS
+    `file` checks say arm64.
+  - Install each artifact; desktop pipe (URL + local file) plays — exercises ffmpeg/yt-dlp.
+  - Test build: right-click → Inspect works (devtools on).
+  - After merge + tag: release has `disTokoloshe_aarch64.app.tar.gz(.sig)`; with
+    `GITHUB_REPO` set the server log lists `darwin-aarch64` among synced platforms.
 
 ## Slice 10 — yt-dlp freshness (`fix/10-ytdlp`)
 

@@ -29,6 +29,11 @@
 - Jail can no longer be dodged by reconnecting with an earlier room token: LiveKit now notifies the API of every join (signed webhooks), and a jailed user who turns up in the room they were voted out of is removed straight away
 - The internal-only endpoints (LiveKit webhooks, music-bot status notifications) are no longer reachable through the public site
 - Each room now has its own random encryption key, stored on the server and replaced whenever the room empties — previously keys were derived from one server secret and the room name, so they never changed and a re-created room got the same key. Existing rooms keep their current key until they next empty, so calls survive the upgrade
+- macOS desktop: the bundled ffmpeg is now native Apple Silicon (the previous source was Intel-only, needing Rosetta, and has since disappeared, which would have broken the macOS build)
+- Desktop builds pin ffmpeg 9.0.2 by checksum on every platform and verify yt-dlp against its release checksums
+- macOS clients now receive auto-updates: the updater bundle is named with its architecture so the server's release sync recognises it, and it's re-signed after codesigning so the signature matches
+- The server's update sync no longer sends `GITHUB_TOKEN` to GitHub's download CDN on redirects, and never serves a half-downloaded installer
+- Tagged desktop releases no longer include the web inspector (manual test builds still do)
 - Soundboard clips keep both stereo channels (mixed to mono) — the trimmer used only the left channel, so sound panned right was lost
 - The server now enforces the soundboard's 10-second limit (checked from the WAV header) and accepts only the trimmer's WAV output, capped at 4MB (was 15MB of any audio)
 - The `Music` room (or `MUSIC_ROOM_NAME`) is created automatically at startup — on a fresh install it didn't exist, so nobody could join the room DJ Tokoloshe plays in

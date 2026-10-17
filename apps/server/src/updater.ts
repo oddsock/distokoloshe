@@ -1,7 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import https from 'https';
-import http from 'http';
+import http, { type IncomingMessage } from 'http';
+import { pipeline } from 'stream/promises';
 
 const UPDATES_DIR = path.resolve(process.env.DATA_DIR || './data', 'updates');
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // 60 minutes
@@ -46,19 +47,34 @@ function isNewer(a: string, b: string): boolean {
   return false;
 }
 
-function fetchJSON(url: string, headers: Record<string, string> = {}): Promise<unknown> {
+const USER_AGENT = 'disTokoloshe-updater';
+const MAX_REDIRECTS = 5;
+
+/**
+ * GET that follows redirects and resolves with the final 200 response. Authorization
+ * only goes to the original host: GitHub release downloads redirect to a CDN, which
+ * must not receive the token (and may reject requests that carry one).
+ */
+function httpGet(url: string, headers: Record<string, string>, redirects = 0): Promise<IncomingMessage> {
   return new Promise((resolve, reject) => {
-    const mod = url.startsWith('https') ? https : http;
-    mod.get(url, {
-      headers: {
-        'User-Agent': 'disTokoloshe-updater',
-        Accept: 'application/vnd.github+json',
-        ...headers,
-      },
-    }, (res) => {
-      // Follow redirects
-      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        fetchJSON(res.headers.location, headers).then(resolve, reject);
+    const mod = url.startsWith('https:') ? https : http;
+    mod.get(url, { headers }, (res) => {
+      const location = res.headers.location;
+      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && location) {
+        res.resume();
+        if (redirects >= MAX_REDIRECTS) {
+          reject(new Error('Too many redirects'));
+          return;
+        }
+        const from = new URL(url);
+        const to = new URL(location, url);
+        if (from.protocol === 'https:' && to.protocol !== 'https:') {
+          reject(new Error(`Refusing redirect to ${to.protocol}`));
+          return;
+        }
+        const nextHeaders = { ...headers };
+        if (to.host !== from.host) delete nextHeaders.Authorization;
+        httpGet(to.toString(), nextHeaders, redirects + 1).then(resolve, reject);
         return;
       }
       if (res.statusCode !== 200) {
@@ -66,70 +82,41 @@ function fetchJSON(url: string, headers: Record<string, string> = {}): Promise<u
         reject(new Error(`HTTP ${res.statusCode}`));
         return;
       }
-      let data = '';
-      res.on('data', (chunk) => { data += chunk; });
-      res.on('end', () => {
-        try { resolve(JSON.parse(data)); }
-        catch (e) { reject(e); }
-      });
-      res.on('error', reject);
+      resolve(res);
     }).on('error', reject);
   });
 }
 
-function downloadFile(url: string, dest: string, headers: Record<string, string> = {}): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const mod = url.startsWith('https') ? https : http;
-    mod.get(url, {
-      headers: {
-        'User-Agent': 'disTokoloshe-updater',
-        Accept: 'application/octet-stream',
-        ...headers,
-      },
-    }, (res) => {
-      // Follow redirects
-      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        downloadFile(res.headers.location, dest, headers).then(resolve, reject);
-        return;
-      }
-      if (res.statusCode !== 200) {
-        res.resume();
-        reject(new Error(`HTTP ${res.statusCode}`));
-        return;
-      }
-      const file = fs.createWriteStream(dest);
-      res.pipe(file);
-      file.on('finish', () => { file.close(); resolve(); });
-      file.on('error', (e) => { fs.unlink(dest, () => {}); reject(e); });
-    }).on('error', (e) => { fs.unlink(dest, () => {}); reject(e); });
-  });
+async function readBody(res: IncomingMessage): Promise<string> {
+  res.setEncoding('utf8');
+  let data = '';
+  for await (const chunk of res) data += chunk;
+  return data;
+}
+
+async function fetchJSON(url: string, headers: Record<string, string> = {}): Promise<unknown> {
+  const res = await httpGet(url, { 'User-Agent': USER_AGENT, Accept: 'application/vnd.github+json', ...headers });
+  return JSON.parse(await readBody(res));
+}
+
+/** Download to `${dest}.part`, renamed into place only once complete, so clients
+ *  never fetch a half-written installer. */
+async function downloadFile(url: string, dest: string, headers: Record<string, string> = {}): Promise<void> {
+  const res = await httpGet(url, { 'User-Agent': USER_AGENT, Accept: 'application/octet-stream', ...headers });
+  const tmp = `${dest}.part`;
+  try {
+    await pipeline(res, fs.createWriteStream(tmp));
+    fs.renameSync(tmp, dest);
+  } catch (err) {
+    fs.rmSync(tmp, { force: true });
+    throw err;
+  }
 }
 
 // Download the text content of a signature file
-function downloadText(url: string, headers: Record<string, string> = {}): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const mod = url.startsWith('https') ? https : http;
-    mod.get(url, {
-      headers: {
-        'User-Agent': 'disTokoloshe-updater',
-        ...headers,
-      },
-    }, (res) => {
-      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        downloadText(res.headers.location, headers).then(resolve, reject);
-        return;
-      }
-      if (res.statusCode !== 200) {
-        res.resume();
-        reject(new Error(`HTTP ${res.statusCode}`));
-        return;
-      }
-      let data = '';
-      res.on('data', (chunk) => { data += chunk; });
-      res.on('end', () => resolve(data.trim()));
-      res.on('error', reject);
-    }).on('error', reject);
-  });
+async function downloadText(url: string, headers: Record<string, string> = {}): Promise<string> {
+  const res = await httpGet(url, { 'User-Agent': USER_AGENT, ...headers });
+  return (await readBody(res)).trim();
 }
 
 // Detect platform from asset filename
@@ -153,6 +140,11 @@ function detectPlatform(filename: string): string | null {
     if (lower.endsWith('.appimage') || lower.endsWith('.deb')) {
       return 'linux-aarch64';
     }
+  }
+  // Tauri names the macOS updater bundle without an arch (CI now adds one); macOS is
+  // only built on Apple Silicon, so an unlabelled one is aarch64.
+  if (lower.endsWith('.app.tar.gz')) {
+    return 'darwin-aarch64';
   }
   return null;
 }

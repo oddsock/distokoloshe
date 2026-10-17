@@ -31,21 +31,39 @@ jobs:
 
       - name: Stage ffmpeg + yt-dlp sidecars (Windows)
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Pinned: bump both together (asset digest from the GyanD/codexffmpeg release)
+          FFMPEG_URL: https://github.com/GyanD/codexffmpeg/releases/download/9.0.2/ffmpeg-9.0.2-essentials_build.zip
+          FFMPEG_SHA256: 60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba
         run: |
           $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'   # progress bar makes Invoke-WebRequest crawl
           $triple = (rustc -vV | Select-String '^host: ').ToString().Split(' ')[1]
           $dir = "apps/desktop/src-tauri"
           New-Item -ItemType Directory -Force -Path $dir | Out-Null
           Write-Host "Target triple: $triple"
 
           $ffmpegZip = "$env:RUNNER_TEMP/ffmpeg.zip"
-          Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile $ffmpegZip
+          Invoke-WebRequest -Uri $env:FFMPEG_URL -OutFile $ffmpegZip
+          $actual = (Get-FileHash $ffmpegZip -Algorithm SHA256).Hash.ToLower()
+          if ($actual -ne $env:FFMPEG_SHA256) { throw "ffmpeg checksum mismatch: got $actual" }
           Expand-Archive -Path $ffmpegZip -DestinationPath "$env:RUNNER_TEMP/ffmpeg-extract" -Force
           $ffmpegExe = Get-ChildItem -Path "$env:RUNNER_TEMP/ffmpeg-extract" -Filter ffmpeg.exe -Recurse | Select-Object -First 1
           if (-not $ffmpegExe) { throw "ffmpeg.exe not found in extracted archive" }
           Copy-Item $ffmpegExe.FullName "$dir/ffmpeg-$triple.exe"
 
-          Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile "$dir/yt-dlp-$triple.exe"
+          # yt-dlp: newest release (it has to stay current), verified against that release's checksums
+          $tag = gh release view --repo yt-dlp/yt-dlp --json tagName --jq .tagName
+          $base = "https://github.com/yt-dlp/yt-dlp/releases/download/$tag"
+          Invoke-WebRequest -Uri "$base/SHA2-256SUMS" -OutFile "$env:RUNNER_TEMP/SHA2-256SUMS"
+          Invoke-WebRequest -Uri "$base/yt-dlp.exe" -OutFile "$dir/yt-dlp-$triple.exe"
+          $line = Get-Content "$env:RUNNER_TEMP/SHA2-256SUMS" | Where-Object { $_ -match '\s+yt-dlp\.exe$' } | Select-Object -First 1
+          if (-not $line) { throw "yt-dlp.exe not listed in SHA2-256SUMS" }
+          $expected = ($line -split '\s+')[0].ToLower()
+          $actualYt = (Get-FileHash "$dir/yt-dlp-$triple.exe" -Algorithm SHA256).Hash.ToLower()
+          if ($actualYt -ne $expected) { throw "yt-dlp checksum mismatch: got $actualYt, expected $expected" }
+          Write-Host "yt-dlp $tag verified"
 
           # Verify both staged binaries exist with the exact names Tauri expects
           if (-not (Test-Path "$dir/ffmpeg-$triple.exe")) { throw "missing ffmpeg sidecar" }
@@ -53,7 +71,8 @@ jobs:
           Get-ChildItem $dir | Where-Object { $_.Name -like 'ffmpeg-*' -or $_.Name -like 'yt-dlp-*' } | Format-Table Name, Length
 
       - name: Build desktop app
-        run: npx tauri build
+        # Manual test builds get the web inspector; tagged releases don't
+        run: npx tauri build ${{ !startsWith(github.ref, 'refs/tags/') && '--features devtools' || '' }}
         working-directory: apps/desktop
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -69,9 +88,13 @@ jobs:
           retention-days: 30
 
   build-macos:
-    runs-on: macos-latest
+    runs-on: macos-latest   # Apple Silicon runner -> native arm64 build
     permissions:
       contents: write
+    env:
+      # A step's own env isn't visible in its `if`, and secrets can't be used there —
+      # expose only whether the cert exists.
+      HAS_MACOS_CERT: ${{ secrets.MACOS_SIGNING_CERT != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -93,6 +116,13 @@ jobs:
 
       - name: Stage ffmpeg + yt-dlp sidecars (macOS)
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Pinned native arm64 build (system frameworks only, macOS 12+) from
+          # ffmpeg.martin-riedl.de — bump URL + SHA256 together (the .sha256 is published
+          # next to each build). evermeet.cx was Intel-only and has since gone (HTTP 410).
+          FFMPEG_URL: https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2/ffmpeg.zip
+          FFMPEG_SHA256: c8ed4c4e6978a03c485edbfe4e0a5dc2380f8a30bba5150531b31b094492d924
         run: |
           set -euo pipefail
           triple="$(rustc -vV | sed -n 's/host: //p')"
@@ -100,14 +130,27 @@ jobs:
           mkdir -p "$dir"
           echo "Target triple: $triple"
 
-          # evermeet.cx provides a static native ffmpeg build for macOS
-          curl -fsSL -o "$RUNNER_TEMP/ffmpeg.zip" "https://evermeet.cx/ffmpeg/getrelease/zip"
+          curl -fsSL -o "$RUNNER_TEMP/ffmpeg.zip" "$FFMPEG_URL"
+          echo "$FFMPEG_SHA256  $RUNNER_TEMP/ffmpeg.zip" | shasum -a 256 -c -
           unzip -o "$RUNNER_TEMP/ffmpeg.zip" -d "$RUNNER_TEMP/ffmpeg-extract"
           cp "$RUNNER_TEMP/ffmpeg-extract/ffmpeg" "$dir/ffmpeg-$triple"
           chmod +x "$dir/ffmpeg-$triple"
 
-          curl -fsSL -o "$dir/yt-dlp-$triple" "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
+          # yt-dlp: newest release (it has to stay current), verified against that release's checksums
+          tag="$(gh release view --repo yt-dlp/yt-dlp --json tagName --jq .tagName)"
+          base="https://github.com/yt-dlp/yt-dlp/releases/download/$tag"
+          curl -fsSL -o "$RUNNER_TEMP/SHA2-256SUMS" "$base/SHA2-256SUMS"
+          curl -fsSL -o "$dir/yt-dlp-$triple" "$base/yt-dlp_macos"
+          expected="$(awk '$2 == "yt-dlp_macos" {print $1}' "$RUNNER_TEMP/SHA2-256SUMS")"
+          test -n "$expected" || { echo "yt-dlp_macos not listed in SHA2-256SUMS"; exit 1; }
+          echo "$expected  $dir/yt-dlp-$triple" | shasum -a 256 -c -
           chmod +x "$dir/yt-dlp-$triple"
+
+          # Apple Silicon native only — never ship something that needs Rosetta
+          for bin in "$dir/ffmpeg-$triple" "$dir/yt-dlp-$triple"; do
+            file "$bin"
+            file "$bin" | grep -q "arm64" || { echo "$bin is not native arm64"; exit 1; }
+          done
 
           # Verify both staged binaries exist with the exact names Tauri expects
           test -f "$dir/ffmpeg-$triple" || { echo "missing ffmpeg sidecar"; exit 1; }
@@ -115,18 +158,22 @@ jobs:
           ls -la "$dir"/ffmpeg-* "$dir"/yt-dlp-*
 
       - name: Build desktop app
-        run: npx tauri build
+        # Manual test builds get the web inspector; tagged releases don't
+        run: npx tauri build ${{ !startsWith(github.ref, 'refs/tags/') && '--features devtools' || '' }}
         working-directory: apps/desktop
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       - name: Codesign macOS app
-        if: env.MACOS_SIGNING_CERT != ''
+        if: env.HAS_MACOS_CERT == 'true'
         env:
           MACOS_SIGNING_CERT: ${{ secrets.MACOS_SIGNING_CERT }}
           MACOS_SIGNING_CERT_PASSWORD: ${{ secrets.MACOS_SIGNING_CERT_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
+          set -euo pipefail
           CERT_NAME="${MACOS_CERT_IDENTITY:-disTokoloshe Self-Signed}"
           KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain-db
           KEYCHAIN_PASSWORD=$(openssl rand -base64 24)
@@ -151,9 +198,39 @@ jobs:
               APP_NAME=$(basename "$APP_PATH")
               tar -czf "$TAR_PATH" -C "$(dirname "$APP_PATH")" "$APP_NAME"
               echo "Re-packaged signed app"
+              # The updater signature covers the tarball's bytes, so the one from the
+              # build no longer matches — sign the new tarball (writes $TAR_PATH.sig).
+              (cd apps/desktop && npx tauri signer sign "$GITHUB_WORKSPACE/$TAR_PATH")
+            fi
+
+            # The .dmg was built before codesigning — rebuild it around the signed app
+            DMG_PATH=$(find apps/desktop/src-tauri/target/release/bundle/dmg -name "*.dmg" | head -1)
+            if [ -n "$DMG_PATH" ]; then
+              STAGE="$RUNNER_TEMP/dmg-stage"
+              rm -rf "$STAGE" && mkdir -p "$STAGE"
+              cp -R "$APP_PATH" "$STAGE/"
+              ln -s /Applications "$STAGE/Applications"
+              rm -f "$DMG_PATH"
+              hdiutil create -volname "disTokoloshe" -srcfolder "$STAGE" -ov -format UDZO "$DMG_PATH"
+              echo "Rebuilt $DMG_PATH with the signed app"
             fi
           fi
           rm -f $RUNNER_TEMP/cert.p12
+
+      - name: Name macOS updater bundle by architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Tauri names it disTokoloshe.app.tar.gz (no arch); the server's release sync
+          # needs the arch in the filename to file it under darwin-aarch64.
+          arch="$(uname -m | sed 's/^arm64$/aarch64/')"
+          cd apps/desktop/src-tauri/target/release/bundle/macos
+          for f in *.app.tar.gz; do
+            base="${f%.app.tar.gz}"
+            mv "$f" "${base}_${arch}.app.tar.gz"
+            mv "$f.sig" "${base}_${arch}.app.tar.gz.sig"
+          done
+          ls -la
 
       - name: Upload macOS installer
         uses: actions/upload-artifact@v4
@@ -195,6 +272,13 @@ jobs:
 
       - name: Stage ffmpeg + yt-dlp sidecars (Linux)
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Pinned x86_64 build from ffmpeg.martin-riedl.de (needs glibc 2.35 / GCC 12
+          # libstdc++ — same baseline as this ubuntu-22.04 AppImage). Bump URL + SHA256
+          # together; the .sha256 is published next to each build.
+          FFMPEG_URL: https://ffmpeg.martin-riedl.de/download/linux/amd64/1789931100_9.0.2/ffmpeg.zip
+          FFMPEG_SHA256: fa8ecf4abbd290d98f7d188b8649cc6b391ae209a98452be955a15aab1909d7f
         run: |
           set -euo pipefail
           triple="$(rustc -vV | sed -n 's/host: //p')"
@@ -202,14 +286,20 @@ jobs:
           mkdir -p "$dir"
           echo "Target triple: $triple"
 
-          # John Van Sickle static build for x86_64 linux
-          curl -fsSL -o "$RUNNER_TEMP/ffmpeg.tar.xz" "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
-          mkdir -p "$RUNNER_TEMP/ffmpeg-extract"
-          tar -xf "$RUNNER_TEMP/ffmpeg.tar.xz" -C "$RUNNER_TEMP/ffmpeg-extract" --strip-components=1
+          curl -fsSL -o "$RUNNER_TEMP/ffmpeg.zip" "$FFMPEG_URL"
+          echo "$FFMPEG_SHA256  $RUNNER_TEMP/ffmpeg.zip" | sha256sum -c -
+          unzip -o "$RUNNER_TEMP/ffmpeg.zip" -d "$RUNNER_TEMP/ffmpeg-extract"
           cp "$RUNNER_TEMP/ffmpeg-extract/ffmpeg" "$dir/ffmpeg-$triple"
           chmod +x "$dir/ffmpeg-$triple"
 
-          curl -fsSL -o "$dir/yt-dlp-$triple" "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux"
+          # yt-dlp: newest release (it has to stay current), verified against that release's checksums
+          tag="$(gh release view --repo yt-dlp/yt-dlp --json tagName --jq .tagName)"
+          base="https://github.com/yt-dlp/yt-dlp/releases/download/$tag"
+          curl -fsSL -o "$RUNNER_TEMP/SHA2-256SUMS" "$base/SHA2-256SUMS"
+          curl -fsSL -o "$dir/yt-dlp-$triple" "$base/yt-dlp_linux"
+          expected="$(awk '$2 == "yt-dlp_linux" {print $1}' "$RUNNER_TEMP/SHA2-256SUMS")"
+          test -n "$expected" || { echo "yt-dlp_linux not listed in SHA2-256SUMS"; exit 1; }
+          echo "$expected  $dir/yt-dlp-$triple" | sha256sum -c -
           chmod +x "$dir/yt-dlp-$triple"
 
           # Verify both staged binaries exist with the exact names Tauri expects
@@ -218,7 +308,8 @@ jobs:
           ls -la "$dir"/ffmpeg-* "$dir"/yt-dlp-*
 
       - name: Build desktop app
-        run: npx tauri build
+        # Manual test builds get the web inspector; tagged releases don't
+        run: npx tauri build ${{ !startsWith(github.ref, 'refs/tags/') && '--features devtools' || '' }}
         working-directory: apps/desktop
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
