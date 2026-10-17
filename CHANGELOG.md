@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 2.3.0 — Security & Reliability Fixes (project review)
 
+- Known issue: YouTube links in the desktop audio pipe can fail with "Sign in to confirm you're not a bot" — yt-dlp now needs a JavaScript runtime for full YouTube support; bundling one is planned
 - Jail credentials (the jailed user's LiveKit token and room key) are now sent only to the jailed user — previously every connected client received them
 - Active jail sentences and votes survive an API restart (a timestamp comparison bug treated anything expiring later the same UTC day as already expired)
 - Rooms that have ever had a vote can be deleted again (previously a 500); their jail room is removed with them. Deleting is refused while a vote or jail sentence is active
