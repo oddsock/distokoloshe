@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.3.2 — New Rooms List & People Panel (room redesign R2a)
+
+- The rooms list shows who's in each room as coloured avatars, with whoever's speaking highlighted; on medium-width windows it shrinks to room icons with member counts
+- A new People panel (People button in the room header) lists who's in your room — with speaking, mic-off and "mute for me" — who's online elsewhere and in which room, and who's offline. On wide windows it opens beside the stage by default and remembers your choice; on narrow ones it slides over the stage
+- Room options moved into a "⋯" menu in the room header: Whispers on/off, and **Delete room** for the room's creator
+- You're always in a room: new accounts join General automatically, and if the room you're in is deleted you're moved to General
+- Everyone gets their own avatar colour
+
 ## 2.3.1 — Tooltips That Stay On Screen (room redesign R1)
 
 - Tooltips are no longer cut off at the edge of the window or hidden inside tiles and scrolling areas; long labels wrap instead of running off-screen

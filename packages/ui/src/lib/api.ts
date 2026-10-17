@@ -140,6 +140,10 @@ export function createRoom(name: string, type: 'voice' | 'video' = 'voice') {
   });
 }
 
+export function deleteRoom(roomId: number) {
+  return request<{ deleted: boolean }>(`/rooms/${roomId}`, { method: 'DELETE' });
+}
+
 export function joinRoom(roomId: number) {
   return request<JoinRoomResponse>(`/rooms/${roomId}/join`, { method: 'POST' });
 }

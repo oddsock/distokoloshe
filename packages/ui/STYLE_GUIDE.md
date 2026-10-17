@@ -309,27 +309,29 @@ Responsive label: `<span className="hidden sm:inline ml-1">Label</span>`
 h-screen overflow-hidden flex
 ```
 
-### Left Sidebar (Rooms)
+### Left Rail (Rooms) — `RoomRail`
 
-```
-w-60 bg-white dark:bg-zinc-800
-border-r border-zinc-200 dark:border-zinc-700
-flex flex-col
-```
+Three widths, chosen with `useMediaQuery`:
+- **lg+ (≥1024px):** `w-60`, room rows with a member avatar stack (max 5 + "+N"), the
+  speaking member ringed `ring-blue-400`; active room `bg-indigo-500/15` with an inset
+  left bar (`shadow-[inset_3px_0_0_var(--color-indigo-500)]`), jail room the red variant.
+- **md–lg (768–1023px):** `w-16` icon rail — room badges with a member-count bubble,
+  names in tooltips; user card stacked vertically.
+- **< md:** `w-64` slide-in drawer (`fixed … z-40`, backdrop `bg-black/50 z-30`).
 
-Header: `h-14 px-3 border-b flex items-center justify-between`
-List: `flex-1 overflow-y-auto p-2`
-Footer: `h-16 px-3 border-t flex items-center`
+User card (bottom): avatar, name/@username, `SignalStrength`, E2EE lock, log out.
 
-### Right Sidebar (Users)
+### Side Panel (People) — `SidePanel` + `PeopleList`
 
-```
-w-52 bg-white dark:bg-zinc-800
-border-l border-zinc-200 dark:border-zinc-700
-flex flex-col
-```
+`w-72 max-w-[85vw]`. From 1080px it's a column beside the stage and opens by default
+(choice remembered in `localStorage`); below 1080px it's an overlay drawer
+(`fixed inset-y-0 right-0 z-40 shadow-2xl` + `bg-black/40` backdrop) that starts closed.
+Sections: In this room / Elsewhere / Offline. Toggled from the stage header's People button.
 
-Mobile: `fixed inset-y-0 right-0 z-40 transform transition-transform duration-200 ease-in-out`
+### Avatars
+
+Use `avatarColor(userId)` (`lib/utils.ts`) for every user avatar so the same person has
+the same colour everywhere; offline users use `bg-zinc-500`.
 
 ### Main Content
 

@@ -11,8 +11,10 @@ import { ScreenShareView } from '../components/ScreenShareView';
 import { VideoTrackView } from '../components/VideoTrackView';
 import { ParticipantTile } from '../components/ParticipantTile';
 import type { ChatLine, ChatMsg } from '../components/ChatBubbles';
-import { UserList } from '../components/UserList';
-import { SignalStrength } from '../components/SignalStrength';
+import { RoomRail } from '../components/RoomRail';
+import { StageHeader } from '../components/StageHeader';
+import { SidePanel } from '../components/SidePanel';
+import { PeopleList } from '../components/PeopleList';
 import { TooltipLayer } from '../components/TooltipLayer';
 import { Soundboard } from '../components/Soundboard';
 import { MusicControls } from '../components/MusicControls';
@@ -25,11 +27,27 @@ import { useMutedMicDetector } from '../hooks/useMutedMicDetector';
 import { useSoundbiteRecorder } from '../hooks/useSoundbiteRecorder';
 import { useNoiseCancellation } from '../hooks/useNoiseCancellation';
 import { useAutoUpdate } from '../hooks/useAutoUpdate';
-import { getRoomInitials, toggleTheme, getTheme, parseParticipantMetadata } from '../lib/utils';
+import { useMediaQuery } from '../hooks/useMediaQuery';
+import { toggleTheme, getTheme, parseParticipantMetadata } from '../lib/utils';
 import * as api from '../lib/api';
 import { resizeImage } from '../lib/imageResize';
 import { playSound } from '../lib/sounds';
-import { Mic, MicOff, Camera, CameraOff, Ear, EarOff, Monitor, MonitorOff, Volume2, VolumeX, Settings, Sun, Moon, LogOut, AudioLines, Music, X, Download, Scissors, Lock, ShieldAlert, RefreshCw, Loader2 } from 'lucide-react';
+import { Mic, MicOff, Camera, CameraOff, Ear, EarOff, Monitor, MonitorOff, Volume2, VolumeX, Settings, AudioLines, Music, X, Scissors, RefreshCw, Loader2 } from 'lucide-react';
+
+const PANEL_PREF_KEY = 'distokoloshe_side_panel';
+
+function readPanelPref(): boolean {
+  try {
+    return localStorage.getItem(PANEL_PREF_KEY) !== 'closed';
+  } catch {
+    return true;
+  }
+}
+
+/** The room everyone falls back to: the oldest non-jail room (General on a fresh install). */
+function defaultRoom(rooms: api.Room[]): api.Room | undefined {
+  return rooms.filter((r) => !r.is_jail).sort((a, b) => a.id - b.id)[0];
+}
 
 interface RoomPageProps {
   user: api.User;
@@ -253,9 +271,25 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
     return () => { clearTimeout(fadeTimer); clearTimeout(clearTimer); };
   }, [error]);
 
-  // Responsive sidebar state
+  // Rooms drawer (phones)
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
-  const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
+  // Side panel (People): a column beside the stage from 1080px, an overlay drawer below.
+  // Opens by default where it fits; the choice is remembered for wide windows.
+  const panelOverlay = !useMediaQuery('(min-width: 1080px)');
+  const [panelOpen, setPanelOpen] = useState(() => !panelOverlay && readPanelPref());
+  useEffect(() => {
+    // Shrinking below the threshold would suddenly cover the stage — close it; growing
+    // back restores the saved preference.
+    setPanelOpen(panelOverlay ? false : readPanelPref());
+  }, [panelOverlay]);
+  const togglePanel = useCallback(() => {
+    setPanelOpen((open) => {
+      if (!panelOverlay) {
+        try { localStorage.setItem(PANEL_PREF_KEY, open ? 'closed' : 'open'); } catch { /* private mode */ }
+      }
+      return !open;
+    });
+  }, [panelOverlay]);
 
   // Ref for handleJoinRoom so SSE handlers can access latest version
   const handleJoinRoomRef = useRef<(roomId: number) => Promise<void>>();
@@ -421,6 +455,13 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
     'room:deleted': (data) => {
       const { room: deletedRoom } = data as { room: api.Room };
       setRooms((prev) => prev.filter((r) => r.id !== deletedRoom.id));
+      if (currentRoom?.id === deletedRoom.id) {
+        const fallback = defaultRoom(rooms.filter((r) => r.id !== deletedRoom.id));
+        if (fallback) {
+          setError({ msg: `${deletedRoom.name} was deleted — you've been moved to ${fallback.name}` });
+          handleJoinRoomRef.current?.(fallback.id);
+        }
+      }
     },
     'user:online': (data) => {
       const { user: onlineUser } = data as { user: { id: number; username: string; display_name: string } };
@@ -882,12 +923,15 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
 
     if (activePunishment) {
       handleJoinRoom(activePunishment.jailRoomId);
-    } else if (user.last_room_id) {
-      const lastRoom = rooms.find((r) => r.id === user.last_room_id);
-      if (lastRoom) {
-        handleJoinRoom(lastRoom.id);
-      }
+      return;
     }
+    // You're always in a room: the last one, or the default if it's gone (or was a jail
+    // room whose sentence has ended — then its source room).
+    const lastRoom = user.last_room_id ? rooms.find((r) => r.id === user.last_room_id) : undefined;
+    const target = lastRoom && !lastRoom.is_jail
+      ? lastRoom
+      : rooms.find((r) => r.id === lastRoom?.jail_source_room_id) ?? defaultRoom(rooms);
+    if (target) handleJoinRoom(target.id);
   }, [punishmentChecked, rooms]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleJoinRoom = useCallback(
@@ -1036,6 +1080,17 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
     }
   }, [currentRoom, isWhispersMode]);
 
+  const handleDeleteRoom = useCallback(async () => {
+    if (!currentRoom) return;
+    if (!window.confirm(`Delete "${currentRoom.name}"? Everyone in it will be moved to another room.`)) return;
+    try {
+      await api.deleteRoom(currentRoom.id);
+    } catch (err) {
+      const msg = err instanceof api.ApiError ? err.message : 'Failed to delete room';
+      setError({ msg });
+    }
+  }, [currentRoom]);
+
   // Lift punishment (room creator only)
   const handleLiftPunishment = useCallback(async (punishmentId: number) => {
     try {
@@ -1046,214 +1101,56 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
     }
   }, []);
 
+  // Who's audibly active / has their mic off, for the rail avatars and People panel
+  const speakingUsernames = new Set(activeSpeakers.filter((id) => !mutedUsers.has(id)));
+  if (soundboardPlaying && !mutedUsers.has(soundboardPlaying.username)) speakingUsernames.add(soundboardPlaying.username);
+  const micOffUsernames = new Set(remoteParticipants.filter((p) => !p.isMicrophoneEnabled).map((p) => p.identity));
+  if (localParticipant && micMuted) micOffUsernames.add(localParticipant.identity);
+
   return (
     <div className="h-screen overflow-hidden bg-zinc-100 dark:bg-zinc-900 text-zinc-900 dark:text-white flex">
       <TooltipLayer />
-      {/* Left sidebar backdrop (mobile) */}
-      {leftSidebarOpen && (
-        <div className="fixed inset-0 bg-black/50 z-30 md:hidden" onClick={() => setLeftSidebarOpen(false)} />
-      )}
-      {/* Left sidebar — Rooms */}
-      <aside className={`fixed inset-y-0 left-0 z-40 w-60 bg-white dark:bg-zinc-800 border-r border-zinc-200 dark:border-zinc-700 flex flex-col transform transition-transform duration-200 ease-in-out md:relative md:translate-x-0 md:z-auto ${leftSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
-        <div className="h-14 px-4 border-b border-zinc-200 dark:border-zinc-700 flex items-center justify-between shrink-0">
-          <h2 className="text-lg font-bold">disTokoloshe</h2>
-          <button
-            onClick={() => setThemeState(toggleTheme())}
-            className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 text-sm focus-visible:ring-2 focus-visible:ring-indigo-500 rounded"
-            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-            title="Toggle theme"
-          >
-            {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto overflow-x-hidden p-2">
-          <div className="flex items-center justify-between px-2 mb-2">
-            <span className="text-xs font-semibold uppercase text-zinc-500">Rooms</span>
-            <button
-              onClick={handleCreateRoom}
-              className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 text-lg leading-none"
-              title="Create room"
-            >
-              +
-            </button>
-          </div>
-
-          {visibleRooms.map((r) => (
-            <div key={r.id} className="mb-1">
-              <button
-                onClick={() => {
-                  if (activePunishment && r.id !== activePunishment.jailRoomId) {
-                    setError({ msg: 'You are currently jailed and cannot switch rooms' });
-                    return;
-                  }
-                  handleJoinRoom(r.id);
-                }}
-                className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 ${
-                  currentRoom?.id === r.id
-                    ? r.is_jail ? 'bg-red-600 text-white' : 'bg-indigo-600 text-white'
-                    : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
-                }`}
-              >
-                <span
-                  className={`w-7 h-7 rounded-md flex items-center justify-center text-xs font-bold shrink-0 ${
-                    currentRoom?.id === r.id
-                      ? r.is_jail ? 'bg-red-500 text-white' : 'bg-indigo-500 text-white'
-                      : r.is_jail
-                        ? 'bg-red-600/30 text-red-400'
-                        : 'bg-zinc-200 dark:bg-zinc-600 text-zinc-600 dark:text-zinc-300'
-                  }`}
-                >
-                  {r.is_jail ? '!' : getRoomInitials(r.name)}
-                </span>
-                <span className="truncate">{r.name}</span>
-              </button>
-              {/* Connected members */}
-              {roomMembers[r.id] && roomMembers[r.id].length > 0 && (
-                <div className="ml-5 pl-4 border-l border-zinc-300 dark:border-zinc-600 mt-0.5">
-                  {roomMembers[r.id].map((m) => {
-                    const memberSpeaking = activeSpeakers.includes(m.username);
-                    const memberMuted = mutedUsers.has(m.username);
-                    const memberPlayingSB = soundboardPlaying?.username === m.username;
-                    const isMe = m.id === user.id;
-                    return (
-                      <div
-                        key={m.id}
-                        className="flex items-center gap-1.5 py-0.5 text-xs text-zinc-500 dark:text-zinc-400 group"
-                      >
-                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 transition-colors ${
-                          (memberSpeaking || memberPlayingSB) && !memberMuted ? 'bg-blue-400 shadow-[0_0_4px_rgba(96,165,250,0.8)]'
-                          : 'bg-green-500'
-                        }`} />
-                        <span className="truncate flex-1">{m.display_name}</span>
-                        {!isMe && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); toggleMuteUser(m.username); }}
-                            className={`md:opacity-0 md:group-hover:opacity-100 transition-opacity text-[10px] px-1 rounded ${
-                              memberMuted
-                                ? 'text-red-400 md:opacity-100'
-                                : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200'
-                            }`}
-                            title={memberMuted ? 'Unmute' : 'Mute'}
-                          >
-                            {memberMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-
-        {/* Desktop app download — browser only */}
-        {!('__TAURI_INTERNALS__' in window) && (
-          <a
-            href="https://github.com/oddsock/distokoloshe/releases/latest"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mx-3 mb-1 flex items-center gap-2 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors text-xs text-zinc-600 dark:text-zinc-400"
-          >
-            <Download size={14} className="shrink-0" />
-            <span className="truncate">Get the desktop app</span>
-          </a>
-        )}
-
-        {/* User bar */}
-        <div className="h-16 px-3 border-t border-zinc-200 dark:border-zinc-700 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-xs font-bold text-white shrink-0">
-              {user.display_name.charAt(0).toUpperCase()}
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm font-medium truncate">{user.display_name}</p>
-              <p className="text-xs text-zinc-500 truncate">@{user.username}</p>
-            </div>
-          </div>
-          <SignalStrength stats={connectionStats} serverCity={serverCity} connecting={connectionState === ConnectionState.Connecting || (connectionState === ConnectionState.Connected && connectionStats.rttMs === null)} />
-          {connectionState === ConnectionState.Connected && (
-            e2eeEnabled
-              ? <span data-tooltip="End-to-end encrypted" className="shrink-0 flex items-center"><Lock size={13} className="text-green-400" /></span>
-              : <span data-tooltip="Transport encryption only — E2EE not available in this browser" className="shrink-0 flex items-center"><ShieldAlert size={13} className="text-amber-400" /></span>
-          )}
-          <button
-            onClick={onLogout}
-            className="text-zinc-500 hover:text-red-400 transition-colors flex-shrink-0 focus-visible:ring-2 focus-visible:ring-indigo-500 rounded"
-            aria-label="Logout"
-            title="Logout"
-          >
-            <LogOut size={14} />
-          </button>
-        </div>
-      </aside>
+      <RoomRail
+        rooms={visibleRooms}
+        currentRoomId={currentRoom?.id ?? null}
+        roomMembers={roomMembers}
+        speaking={speakingUsernames}
+        user={user}
+        theme={theme}
+        onToggleTheme={() => setThemeState(toggleTheme())}
+        onSelectRoom={(roomId) => {
+          if (activePunishment && roomId !== activePunishment.jailRoomId) {
+            setError({ msg: 'You are currently jailed and cannot switch rooms' });
+            return;
+          }
+          handleJoinRoom(roomId);
+        }}
+        onCreateRoom={handleCreateRoom}
+        mobileOpen={leftSidebarOpen}
+        onMobileClose={() => setLeftSidebarOpen(false)}
+        connectionStats={connectionStats}
+        serverCity={serverCity}
+        connecting={connectionState === ConnectionState.Connecting || (connectionState === ConnectionState.Connected && connectionStats.rttMs === null)}
+        connected={connectionState === ConnectionState.Connected}
+        e2eeEnabled={e2eeEnabled}
+        onLogout={onLogout}
+      />
 
       {/* Main content */}
       <main className="flex-1 flex flex-col min-w-0 min-h-0">
-        {/* Header */}
-        <header className="h-14 flex items-center px-3 md:px-6 border-b border-zinc-200 dark:border-zinc-700 bg-white/50 dark:bg-zinc-800/50 shrink-0">
-          {/* Left sidebar toggle — mobile only */}
-          <button
-            onClick={() => setLeftSidebarOpen(!leftSidebarOpen)}
-            className="mr-2 p-1.5 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700 focus-visible:ring-2 focus-visible:ring-indigo-500 md:hidden shrink-0"
-            aria-label="Toggle rooms sidebar"
-            title="Toggle rooms"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </button>
-
-          {currentRoom ? (
-            <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
-              <span className={`w-8 h-8 rounded-md flex items-center justify-center text-xs font-bold text-white shrink-0 ${
-                currentRoom.is_jail ? 'bg-red-600' : 'bg-indigo-600'
-              }`}>
-                {currentRoom.is_jail ? '!' : getRoomInitials(currentRoom.name)}
-              </span>
-              <span className="font-semibold truncate">{currentRoom.name}</span>
-              <span className="text-xs text-zinc-500">
-                {connectionState === ConnectionState.Connected
-                  ? `${remoteParticipants.length + 1} participant${remoteParticipants.length !== 0 ? 's' : ''}`
-                  : connectionState}
-              </span>
-              {isWhispersMode && (
-                <span className="text-xs bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded-full">
-                  Whispers{whisperSource ? ` \u2014 You hear: ${whisperSource.displayName}` : ''}
-                </span>
-              )}
-              {/* Mode toggle — any room member */}
-              {!currentRoom.is_jail && connectionState === ConnectionState.Connected && (
-                <button
-                  onClick={handleToggleWhispers}
-                  className={`ml-auto text-xs px-2 py-1 rounded transition-colors ${
-                    isWhispersMode
-                      ? 'bg-purple-500/20 text-purple-400 hover:bg-purple-500/30'
-                      : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-200 hover:bg-zinc-300 dark:hover:bg-zinc-600'
-                  }`}
-                  title={isWhispersMode ? 'Disable Whispers' : 'Enable Whispers'}
-                >
-                  {isWhispersMode ? 'Disable Whispers' : 'Enable Whispers'}
-                </button>
-              )}
-            </div>
-          ) : (
-            <span className="text-zinc-500 flex-1">Select a room to join</span>
-          )}
-
-          {/* Right sidebar toggle — mobile only */}
-          <button
-            onClick={() => setRightSidebarOpen(!rightSidebarOpen)}
-            className="ml-2 p-1.5 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700 focus-visible:ring-2 focus-visible:ring-indigo-500 md:hidden shrink-0"
-            aria-label="Toggle members sidebar"
-            title="Toggle members"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-          </button>
-        </header>
+        <StageHeader
+          room={currentRoom}
+          status={connectionState === ConnectionState.Connected ? `${remoteParticipants.length + 1} in room` : connectionState}
+          whispersActive={isWhispersMode}
+          whisperSourceName={whisperSource?.displayName ?? null}
+          canToggleWhispers={!!currentRoom && !currentRoom.is_jail && connectionState === ConnectionState.Connected}
+          onToggleWhispers={handleToggleWhispers}
+          canDeleteRoom={!!currentRoom && !currentRoom.is_jail && currentRoom.created_by === user.id}
+          onDeleteRoom={handleDeleteRoom}
+          onOpenRail={() => setLeftSidebarOpen(true)}
+          panelOpen={panelOpen}
+          onTogglePanel={togglePanel}
+        />
 
         {/* Participant area */}
         <div className="flex-1 p-6 pb-20 overflow-y-auto">
@@ -1890,8 +1787,20 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
         )}
       </main>
 
-      {/* Right sidebar — User list */}
-      <UserList users={users} currentUserId={user.id} open={rightSidebarOpen} onClose={() => setRightSidebarOpen(false)} />
+      {/* Side panel — People */}
+      <SidePanel open={panelOpen} onClose={togglePanel} overlay={panelOverlay}>
+        <PeopleList
+          users={users}
+          currentUserId={user.id}
+          currentRoomId={currentRoom?.id ?? null}
+          roomMembers={roomMembers}
+          rooms={rooms}
+          speaking={speakingUsernames}
+          micOff={micOffUsernames}
+          mutedForMe={mutedUsers}
+          onToggleMute={toggleMuteUser}
+        />
+      </SidePanel>
     </div>
   );
 }

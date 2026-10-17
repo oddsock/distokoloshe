@@ -9,6 +9,17 @@ export function getRoomInitials(name: string): string {
     .slice(0, 2);
 }
 
+// Literal class names so Tailwind generates them
+const AVATAR_COLORS = [
+  'bg-indigo-600', 'bg-sky-600', 'bg-emerald-600', 'bg-amber-600',
+  'bg-rose-600', 'bg-violet-600', 'bg-teal-600', 'bg-orange-600',
+];
+
+/** Stable per-user avatar background, so people are easier to tell apart. */
+export function avatarColor(userId: number): string {
+  return AVATAR_COLORS[Math.abs(userId) % AVATAR_COLORS.length];
+}
+
 /** Parse a participant's LiveKit metadata JSON. Returns {} when absent or malformed. */
 export function parseParticipantMetadata(metadata?: string | null): Record<string, unknown> {
   if (!metadata) return {};

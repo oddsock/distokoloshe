@@ -134,17 +134,35 @@ Responsive rules (apply in every phase):
       stuck tooltips; tap the signal bars for the card), fullscreen screen share
       (tooltips visible), banners fade in.
 
-### R2 — Room shell
-- [ ] Split Room.tsx (~1,850 lines) into `RoomRail`, `StageHeader`, `Stage`,
-      `ControlBar`, `SidePanel` while restyling.
-- [ ] Rail: rooms with member avatar stacks + speaking highlight (replaces the nested
-      member lists); user card with avatar, name, signal bars (→ connection card, R8),
-      E2EE lock, settings, logout.
-- [ ] Stage header: room badge, count, Whispers pill, layout switcher (wired in R6/R7),
-      fullscreen, room "⋯" menu (Whispers toggle; delete room for its creator).
-- [ ] Side panel with People (default) / Chat tabs; open state remembered per device.
-- [ ] Control bar docked to the stage, one row, grouped (talk · share/media · panels),
-      responsive rule 1; chat input moves into the Chat tab. **No leave button.**
+### R2a — Room shell: rail, header, side panel (2.3.2)
+- [x] `RoomRail`: rooms with member avatar stacks (max 5 + "+N") and speaking ring
+      (replaces the nested member lists); icon rail at md–lg with counts + tooltips;
+      drawer on phones; user card (avatar, name, signal bars, E2EE lock, log out).
+      Settings gear waits for the settings dialog (R9).
+- [x] `StageHeader`: room badge, count, Whispers pill, room "⋯" menu (on `<Floating>`)
+      with Whispers on/off and **Delete room…** for its creator (new — the server endpoint
+      existed, the client never had a button); People toggle at every width. Layout
+      switcher + fullscreen arrive with R6.
+- [x] `SidePanel` + `PeopleList` (replaces `UserList`): In this room (speaking / mic off /
+      mute-for-me toggle, moved from the rail) · Elsewhere (with room name) · Offline.
+      Column from 1080 px, open by default, remembered; overlay drawer below, starts closed.
+- [x] Always in a room: with no usable last room (new user, room deleted, last room was a
+      jail whose sentence ended) you join the default room; if your room is deleted you're
+      moved there with a notice.
+- [x] Per-user avatar colours (`avatarColor`).
+- [x] Released as 2.3.2. User tests: rail at ≥1024 / 768–1023 / phone widths; avatars +
+      speaking ring; People panel sections + mute-for-me; panel open/close remembered,
+      overlay below 1080 px; room "⋯" menu (Whispers, delete as creator → everyone moved
+      to General); a brand-new account lands in General.
+
+### R2b — Room shell: control bar (2.3.3)
+- [ ] Control bar docked to the stage (centred on it, not the window), one row, grouped
+      (talk · share/media · panels), responsive rule 1 (container query, folds into "⋯").
+      **No leave button.**
+- [ ] Control-bar popovers (share quality, stop share, volumes, music, pipe, soundboard,
+      settings, vote duration) onto `<Floating>`.
+- [ ] Chat input stays in the bar until R4 moves it into the Chat tab.
+- [ ] Extract `ControlBar` (and `Stage`) from Room.tsx.
 
 ### R3 — Stage grid & tiles
 - [ ] Fit-to-stage grid (ResizeObserver): columns/rows from participant count and stage
