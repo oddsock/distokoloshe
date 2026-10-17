@@ -118,15 +118,21 @@ Responsive rules (apply in every phase):
 4. Below 640 px: mobile layout (R10).
 
 ### R1 — Foundations
-- [ ] `Tooltip` component: rendered in a portal, clamped to the viewport, flips below when
-      there's no room above; no hover tooltips on touch. Replace every `data-tooltip`
-      (16 in Room.tsx, more in components) and the hand-rolled SignalStrength tooltip.
-- [ ] Shared positioning primitive (`placeFloating` + `<Floating>`: portal, flip, clamp to
+- [x] `TooltipLayer`: one app-wide tooltip for every `data-tooltip` (existing call sites
+      unchanged), portal + clamp + flip, mouse and keyboard focus only (not touch), live
+      label updates, hides on click/scroll/Escape/unmount; renders inside the fullscreen
+      element when needed. SignalStrength's card moved onto `<Floating>` (tap on touch).
+- [x] Shared positioning primitive (`placeFloating` + `<Floating>`: portal, flip, clamp to
       viewport) — used by tooltips and the connection card now; the control-bar popovers
       move onto it in R2 (rebuilding them here would be redone there).
-- [ ] Move the shared CSS (tooltip, keyframes) from the duplicated
-      `apps/web` + `apps/desktop` `globals.css` into `packages/ui`.
-- [ ] Update `STYLE_GUIDE.md` as components land.
+- [x] Shared CSS moved from the duplicated `apps/web` + `apps/desktop` `globals.css` into
+      `packages/ui/src/styles/base.css` (CSS `::after` tooltips removed; missing `fadeIn`
+      keyframes added — banner fade-ins never played).
+- [x] `STYLE_GUIDE.md`: tooltips & floating boxes section, z-index layer.
+- [x] Released as 2.3.1. User tests: hover controls at the window edges and inside tiles
+      (no clipping), tab through the control bar (tooltips on focus), touch device (no
+      stuck tooltips; tap the signal bars for the card), fullscreen screen share
+      (tooltips visible), banners fade in.
 
 ### R2 — Room shell
 - [ ] Split Room.tsx (~1,850 lines) into `RoomRail`, `StageHeader`, `Stage`,

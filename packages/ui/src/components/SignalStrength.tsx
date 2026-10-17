@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { ConnectionStats } from '../hooks/useConnectionStats';
+import { Floating } from './Floating';
 
 interface SignalStrengthProps {
   stats: ConnectionStats;
@@ -30,6 +31,7 @@ const SWEEP_SEQUENCE = [0, 1, 2, 3, 2, 1];
 
 export function SignalStrength({ stats, serverCity, connecting }: SignalStrengthProps) {
   const [hover, setHover] = useState(false);
+  const [anchor, setAnchor] = useState<HTMLDivElement | null>(null);
   const [sweepIdx, setSweepIdx] = useState(0);
   const { rttMs, jitterMs, audioCodec, videoCodec, sendBitrateKbps, protocol, packetLossPct, iceType } = stats;
   const tier = getTier(rttMs, jitterMs);
@@ -48,11 +50,23 @@ export function SignalStrength({ stats, serverCity, connecting }: SignalStrength
   // Estimated distance: speed of light in fiber ≈ 200 km/ms round-trip → one-way = rtt/2 * 100
   const distanceKm = rttMs !== null ? Math.round(rttMs / 2 * 100) : null;
 
+  // Touch has no hover: a tap toggles the card, a tap anywhere else closes it
+  useEffect(() => {
+    if (!hover || !anchor) return;
+    const close = (e: PointerEvent) => {
+      if (e.pointerType !== 'mouse' && !(e.target instanceof Node && anchor.contains(e.target))) setHover(false);
+    };
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
+  }, [hover, anchor]);
+
   return (
     <div
+      ref={setAnchor}
       className="relative flex-shrink-0 cursor-default"
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
+      onPointerEnter={(e) => { if (e.pointerType === 'mouse') setHover(true); }}
+      onPointerLeave={(e) => { if (e.pointerType === 'mouse') setHover(false); }}
+      onPointerUp={(e) => { if (e.pointerType !== 'mouse') setHover((h) => !h); }}
     >
       {/* Bars */}
       <div className="flex items-end gap-[2px]">
@@ -69,9 +83,9 @@ export function SignalStrength({ stats, serverCity, connecting }: SignalStrength
         ))}
       </div>
 
-      {/* Tooltip */}
-      {hover && (
-        <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-300 whitespace-nowrap z-50 shadow-lg">
+      {/* Details card — portal, kept inside the viewport */}
+      <Floating anchor={anchor} open={hover} role="tooltip">
+        <div className="bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-300 whitespace-nowrap shadow-lg">
           <p className="font-semibold text-white mb-1">{connecting ? 'Connecting...' : tier.label}</p>
           {!connecting && rttMs !== null ? (
             <>
@@ -93,10 +107,8 @@ export function SignalStrength({ stats, serverCity, connecting }: SignalStrength
           ) : null}
           {protocol && <p className="text-zinc-500 mt-1">Transport: {protocol === 'h3' ? 'HTTP/3 (QUIC/UDP)' : protocol === 'h2' ? 'HTTP/2 (TCP)' : protocol}</p>}
           {serverCity && <p className="text-zinc-500 mt-1">Server: {serverCity}</p>}
-          {/* Tooltip arrow */}
-          <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-zinc-700" />
         </div>
-      )}
+      </Floating>
     </div>
   );
 }

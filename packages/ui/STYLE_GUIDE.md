@@ -125,6 +125,23 @@ disabled:opacity-50 cursor-not-allowed
 
 ---
 
+## Tooltips & Floating Boxes
+
+**Tooltips:** put `data-tooltip="Label"` on any element. `<TooltipLayer>` (mounted once
+in `RoomPage`) shows it on mouse hover and keyboard focus — never on touch — in a portal,
+clamped to the viewport and flipped below the element when there's no room above. Labels
+may wrap (max 240px) and update live if the attribute changes while shown. Don't add a
+`title` as well — it would show a second, native tooltip. Don't build tooltips with CSS
+`::after`; they get clipped by `overflow` parents and the window edge.
+
+**Floating boxes:** for anything richer (e.g. the connection details card), wrap the
+content in `<Floating anchor={el} open={…} placement="top">`. It renders in a portal
+(inside the fullscreen element when the anchor is in one), positions with
+`placeFloating()` from `lib/floating.ts`, and re-measures on content change, resize and
+scroll. Provide a touch alternative to hover (tap to toggle) yourself.
+
+---
+
 ## Popover Menus
 
 ### Standard Popover (above trigger)
@@ -348,8 +365,9 @@ border border-zinc-200/50 dark:border-zinc-700/50
 | In-card overlays | `z-10` | PIP video, whisper badges |
 | Control bar, backdrops | `z-30` | Floating bar, mobile overlays |
 | Sidebars (mobile) | `z-40` | Slide-in panels |
-| All popovers/menus | `z-50` | Settings, dropdowns, tooltips |
+| All popovers/menus | `z-50` | Settings, dropdowns |
 | Full-screen modals | `z-[60]` | Portal modals (clip trimmer, etc.) |
+| Floating layer | `z-[70]` | Tooltips and cards rendered by `<Floating>` (above modals) |
 
 ---
 

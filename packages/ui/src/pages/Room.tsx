@@ -13,6 +13,7 @@ import { ParticipantTile } from '../components/ParticipantTile';
 import type { ChatLine, ChatMsg } from '../components/ChatBubbles';
 import { UserList } from '../components/UserList';
 import { SignalStrength } from '../components/SignalStrength';
+import { TooltipLayer } from '../components/TooltipLayer';
 import { Soundboard } from '../components/Soundboard';
 import { MusicControls } from '../components/MusicControls';
 import { PipePanel } from '../components/PipePanel';
@@ -1047,6 +1048,7 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
 
   return (
     <div className="h-screen overflow-hidden bg-zinc-100 dark:bg-zinc-900 text-zinc-900 dark:text-white flex">
+      <TooltipLayer />
       {/* Left sidebar backdrop (mobile) */}
       {leftSidebarOpen && (
         <div className="fixed inset-0 bg-black/50 z-30 md:hidden" onClick={() => setLeftSidebarOpen(false)} />

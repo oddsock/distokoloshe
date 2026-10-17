@@ -1,0 +1,40 @@
+/* Shared app styles — imported by apps/web and apps/desktop globals.css (after Tailwind). */
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Tooltips are rendered by <TooltipLayer> (usage: data-tooltip="Label" on any element).
+   Elements with data-tooltip stay position: relative, as some layouts were built on
+   that when the tooltip was a CSS ::after. */
+[data-tooltip] {
+  position: relative;
+}
+
+/* Keyboard focus ring — applied via focus-visible:ring-* Tailwind classes.
+   This resets the browser default outline so only our ring style shows. */
+:focus-visible {
+  outline: none;
+}
+
+/* Banner/toast entry (used as animate-[fadeIn_0.2s_ease-out]) */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Speech bubble entry animation */
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(0.5rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Scrolling text for now-playing */
+@keyframes marquee {
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
+
+/* Scrolling text for soundbite labels — pause, scroll, pause, wrap */
+@keyframes marquee-left {
+  0%, 10% { transform: translateX(0); }
+  90%, 100% { transform: translateX(-100%); }
+}

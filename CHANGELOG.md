@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.3.1 — Tooltips That Stay On Screen (room redesign R1)
+
+- Tooltips are no longer cut off at the edge of the window or hidden inside tiles and scrolling areas; long labels wrap instead of running off-screen
+- Tooltips also appear when you move through the controls with the keyboard, and no longer get stuck open after a tap on touch screens
+- Tooltips work over a fullscreen screen share
+- The connection details card (hover the signal bars) always stays fully on screen, and opens with a tap on touch devices
+- Banners fade in as intended (their animation was missing)
+
 ## 2.3.0 — Security & Reliability Fixes (project review)
 
 - Known issue: YouTube links in the desktop audio pipe can fail with "Sign in to confirm you're not a bot" — yt-dlp now needs a JavaScript runtime for full YouTube support; bundling one is planned
