@@ -70,11 +70,11 @@ merge so unmerged code never auto-updates clients.
       headers moved into `security-headers{,-tls}.conf` snippets and included by every
       location, so `/api/` responses get nosniff/CSP/HSTS again (its CORS `add_header`s
       had silently dropped them).
-- [x] **#5** Chat image limit 10 MB → 512 KB, 10 uploads/min per user, store capped at
-      32 MB total. The client never actually called `resizeImage()` (raw pastes >1 MB
-      already died at nginx's default body limit); it now re-encodes to ≤500 KB at up to
-      1920 px before upload (strips EXIF/GPS too; small GIFs pass through animated).
-      Old desktop clients don't resize, so their large pastes fail until they update.
+- [x] **#5** Chat image limit 10 MB → 4 MB, 10 uploads/min per user, store capped at
+      128 MB total (images live 60 s). The client never actually called `resizeImage()`
+      (raw pastes >1 MB already died at nginx's default body limit); it now re-encodes to
+      ≤4 MB at up to 3840 px, quality from 0.92 (strips EXIF/GPS too; GIFs under the cap
+      pass through animated). nginx `/api/` gets `client_max_body_size 5m`.
 - [x] **#16 (part)** nginx access logs use `$uri` (no query string); `?token=` accepted
       only on the SSE route (pipe WS has its own check). Rest of #16 is in slice 4.
 - [x] **#20 (part)** multer 1.4.5-lts → ^2.0.2 (DoS CVEs), @types/multer → ^2.0.0.
@@ -138,8 +138,8 @@ honest.
 ## Slice 8 — Soundboard (`fix/08-soundboard`)
 
 - [ ] **#26** Trimmer downmixes all channels (not just left). Server accepts only WAV
-      from the trimmer, checks header duration ≤ 10.5 s, size cap ~4 MB; nginx
-      `client_max_body_size` set explicitly for uploads so 88.2/96 kHz devices fit.
+      from the trimmer, checks header duration ≤ 10.5 s, size cap ~4 MB (nginx `/api/`
+      already allows 5 MB since slice 3, so 88.2/96 kHz devices fit).
 - [ ] Push, STOP. Test: upload stereo clip (both channels audible), long clip refused.
 
 ## Slice 9 — Updater & CI (`fix/09-updater-ci`) — desktop build via workflow_dispatch

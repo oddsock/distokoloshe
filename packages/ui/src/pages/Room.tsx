@@ -174,11 +174,11 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     let imageId: string | undefined;
     if (chatPendingImage) {
       try {
-        // Server caps chat images at 512KB. Re-encoding also strips EXIF/GPS
-        // metadata; small GIFs pass through untouched so they stay animated.
-        const upload = chatPendingImage.type === 'image/gif' && chatPendingImage.size <= 500_000
+        // Server caps chat images at 4MB. Re-encoding also strips EXIF/GPS
+        // metadata; GIFs under the cap pass through untouched so they stay animated.
+        const upload = chatPendingImage.type === 'image/gif' && chatPendingImage.size <= 4_000_000
           ? chatPendingImage
-          : await resizeImage(chatPendingImage, 1920, 500_000);
+          : await resizeImage(chatPendingImage, 3840, 4_000_000);
         const res = await api.uploadChatImage(upload);
         imageId = res.imageId;
       } catch { /* upload failed — send text only */ }

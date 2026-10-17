@@ -27,11 +27,11 @@ export async function resizeImage(
   // Try WebP first, fall back to JPEG
   const formats = ['image/webp', 'image/jpeg'] as const;
   for (const format of formats) {
-    let quality = 0.85;
+    let quality = 0.92;
     while (quality >= 0.3) {
       const blob = await canvas.convertToBlob({ type: format, quality });
       if (blob.size <= maxBytes) return blob;
-      quality -= 0.15;
+      quality -= 0.1;
     }
   }
 

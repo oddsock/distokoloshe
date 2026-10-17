@@ -38,9 +38,10 @@ function isRateLimited(userId: number): boolean {
 }
 
 // ── Ephemeral image store (in-memory, auto-cleanup) ──────
-// Clients resize to ≤500KB WebP/JPEG before upload, so these limits only bite abuse.
-const MAX_IMAGE_BYTES = 512 * 1024;
-const MAX_IMAGE_STORE_BYTES = 32 * 1024 * 1024;
+// Clients re-encode to ≤4MB WebP/JPEG (max 3840px) before upload. Images live for
+// 60s, so the store cap bounds memory: worst case ~128MB.
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+const MAX_IMAGE_STORE_BYTES = 128 * 1024 * 1024;
 // Raster formats only — SVG can carry script and is served from our origin.
 const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
 const imageStore = new Map<string, { data: Buffer; mime: string }>();
@@ -68,7 +69,7 @@ router.post('/image', requireAuth, imageUploadLimiter, (req: Request, res: Respo
   imageUpload.single('image')(req, res, (err) => {
     if (err) {
       if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
-        res.status(413).json({ error: 'Image too large (max 512KB)' });
+        res.status(413).json({ error: 'Image too large (max 4MB)' });
         return;
       }
       res.status(400).json({ error: err.message || 'Upload failed' });
