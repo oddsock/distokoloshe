@@ -10,8 +10,8 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "bcrypt": "^5.1.1",
-    "better-sqlite3": "^11.7.0",
+    "bcrypt": "^6.0.0",
+    "better-sqlite3": "^13.0.3",
     "cors": "^2.8.5",
     "express": "^4.21.2",
     "express-rate-limit": "^7.5.0",
@@ -21,7 +21,7 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "@types/bcrypt": "^5.0.2",
+    "@types/bcrypt": "^6.0.0",
     "@types/multer": "^2.0.0",
     "@types/better-sqlite3": "^7.6.12",
     "@types/cors": "^2.8.17",

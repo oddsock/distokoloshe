@@ -29,6 +29,8 @@
 - Jail can no longer be dodged by reconnecting with an earlier room token: LiveKit now notifies the API of every join (signed webhooks), and a jailed user who turns up in the room they were voted out of is removed straight away
 - The internal-only endpoints (LiveKit webhooks, music-bot status notifications) are no longer reachable through the public site
 - Each room now has its own random encryption key, stored on the server and replaced whenever the room empties — previously keys were derived from one server secret and the room name, so they never changed and a re-created room got the same key. Existing rooms keep their current key until they next empty, so calls survive the upgrade
+- Server images run on Node 24 (Node 20 reached end of life) with nginx 1.30; certbot is pinned to v5.8.0 instead of `latest`; better-sqlite3 13 and bcrypt 6 (prebuilt for Alpine, no compiler needed)
+- Removed nginx OCSP stapling, which Let's Encrypt certificates no longer support (it only produced a warning)
 - macOS desktop: the bundled ffmpeg is now native Apple Silicon (the previous source was Intel-only, needing Rosetta, and has since disappeared, which would have broken the macOS build)
 - Desktop builds pin ffmpeg 9.0.2 by checksum on every platform and verify yt-dlp against its release checksums
 - macOS clients now receive auto-updates: the updater bundle is named with its architecture so the server's release sync recognises it, and it's re-signed after codesigning so the signature matches

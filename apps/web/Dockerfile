@@ -1,4 +1,4 @@
-FROM node:20-alpine AS build
+FROM node:24-alpine AS build
 
 # Work from apps/web so ../../packages/ui/src resolves correctly
 WORKDIR /app/apps/web
@@ -19,7 +19,7 @@ COPY apps/web/ ./
 # Build
 RUN npm run build
 
-FROM nginx:1.27-alpine
+FROM nginx:1.30-alpine
 # Copy built SPA
 COPY --from=build /app/apps/web/dist /app
 # Copy both nginx configs as templates

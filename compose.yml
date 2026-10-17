@@ -124,7 +124,7 @@ services:
   # nginx detects the updated cert and reloads itself automatically; LiveKit (TURN/TLS)
   # needs a restart — see "Certificate Renewal" in README.md.
   certbot:
-    image: certbot/certbot:latest
+    image: certbot/certbot:v5.8.0
     container_name: distokoloshe_certbot
     restart: unless-stopped
     volumes:

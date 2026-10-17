@@ -246,17 +246,33 @@ server can't decrypt) is its own project, scheduled after the UI redesign.
   - After merge + tag: release has `disTokoloshe_aarch64.app.tar.gz(.sig)`; with
     `GITHUB_REPO` set the server log lists `darwin-aarch64` among synced platforms.
 
-## Slice 10 — yt-dlp freshness (`fix/10-ytdlp`)
+## Slice 10 — yt-dlp freshness — DEFERRED (user, 2026-10-18)
+
+Skipped for now; slice 11 stacks directly on slice 9. Pick up later together with:
 
 - [ ] **#23 (part)** Music bot refreshes yt-dlp at container start (and daily).
 - [ ] Desktop copies the bundled yt-dlp to the app data dir and self-updates it (`-U`)
       periodically, preferring the updated copy.
-- [ ] Push, STOP. Test: YouTube queue on the bot and desktop pipe both work.
+- [ ] Found while testing the slice 9 build: YouTube in the desktop pipe failed with
+      "Sign in to confirm you're not a bot". yt-dlp now needs `yt-dlp-ejs` plus a
+      JavaScript runtime (Deno recommended; only Deno is enabled by default) for full
+      YouTube support — neither the desktop app nor the music container ships one, so
+      yt-dlp falls back to fewer clients. Options when this is picked up: bundle Deno
+      (desktop sidecar ~40 MB, music image) and pass `--js-runtimes deno:<path>`;
+      optional per-desktop "use my browser's YouTube login" (`--cookies-from-browser`),
+      off by default; optional cookies file for the server bot.
 
 ## Slice 11 — Runtime & reproducible builds (`fix/11-deps`)
 
-- [ ] **#20** Node 20 (EOL) → 24 in Dockerfiles and CI; nginx 1.27 → 1.28; pin certbot;
-      bump native deps (better-sqlite3, bcrypt) to versions with Node 24 musl builds.
+- [x] **#20** Node 20 (EOL) → 24 in both Dockerfiles and the desktop CI; nginx 1.27 →
+      1.30 (current stable line); certbot `latest` → `v5.8.0`. Native deps:
+      better-sqlite3 11 → 13 (first N-API release, bundles prebuilds incl.
+      `linuxmusl-x64`, so no compiler needed in Alpine) and bcrypt 5 → 6 (prebuildify,
+      ships `bcrypt.musl.node`); neither changes the API used here, existing password
+      hashes still verify. Vite 6 supports Node ≥22.
+- [x] OCSP stapling removed from `nginx.tls.conf` (+ its resolver) and the README —
+      Let's Encrypt stopped putting OCSP URLs in certificates in 2025, so nginx warned
+      and ignored it.
 - [ ] **#21** Commit lockfiles and switch Dockerfiles/CI to `npm ci`. Lockfile generation
       needs Node, which this machine lacks — decide then (generate on the dev server, or a
       one-off workflow).
