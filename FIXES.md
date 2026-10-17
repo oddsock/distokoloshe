@@ -15,6 +15,45 @@ in CHANGELOG.md; server-only slices need no version bump. For slices that touch
 on the branch (artifacts only, no release); the version bump + `v*` tag happen after
 merge so unmerged code never auto-updates clients.
 
+**Status (2026-10-18):** slices 1–9 and 11 done, on the stacked branches ending at
+`fix/11-deps`. Deferred: #14 (admin/registration), #22 (tests/CI), slice 10 (yt-dlp
+freshness + the YouTube JS-runtime issue), #21 (lockfiles + `npm ci`).
+
+## End-pass checklist (run once, on `fix/11-deps`)
+
+Setup: `git fetch origin && git checkout fix/11-deps && docker compose build --pull &&
+docker compose --profile production up -d`. Details for each line are in the slice
+sections below.
+
+Solo (two browser windows where noted):
+- [ ] Build clean; `docker compose exec web nginx -t` ok (no OCSP warning); logs clean (slice 11)
+- [ ] Music room listed; `logs music` shows `E2EE configured`; radio, skip, pause, station
+      change; `curl -X POST 127.0.0.1:3001/skip` → 403; queueing `http://127.0.0.1:3000/` refused (2, 7)
+- [ ] Chat: large screenshot arrives; small GIF animated; Enter ×3 → one message with
+      spinner → %; bubble preview then full size on click; SVG upload refused (3)
+- [ ] `docker compose restart api` while in a room → chat/presence recover without reload;
+      `stop api` + reload → "retrying…", `start api` → back in (4)
+- [ ] Soundboard: stereo clip audible on both sides; 10 s clip uploads; old clips play (8)
+- [ ] Two windows in one room hear each other with the lock; empty a room ~40 s →
+      `logs api | grep "rotated E2EE"`; `/api/rooms` has no `e2ee_key` (7)
+- [ ] `curl -sI https://<domain>/api/health` shows CSP/nosniff/HSTS; `logs web` has no
+      `?token=`; `/api/livekit/webhook` and `/api/music/room-key` → 404 from outside (3, 6, 7)
+
+With 3 accounts (3 browser profiles, mics muted):
+- [ ] Vote someone into jail → only they move; other clients' event stream has no
+      `jailConnection`; `restart api` → sentence still active (1)
+- [ ] `docker compose exec -T music python - <jailed-user> "<room>" < infra/scripts/check-jail-kick.py` → `KICKED` (6)
+- [ ] Delete a room after a vote → works, its `Jail: …` room goes too; refused mid-vote/jail (1)
+- [ ] Whispers with 3 people; one switches rooms → chain shrinks (1)
+
+Desktop (artifacts from run 39072977746 — slice 11 changes no desktop code):
+- [ ] macOS: install, `xattr -cr /Applications/disTokoloshe.app`, pipe a local file and a
+      direct audio URL (YouTube is the deferred slice 10 issue); right-click → Inspect works (9)
+- [ ] Windows/Linux installers start and join a room (9)
+
+Then: fast-forward `main` to `fix/11-deps`, turn `## Unreleased` into a version, bump
+the version files, tag → release.
+
 ---
 
 ## Slice 1 — Moderation & room bookkeeping (`fix/01-moderation`) — server only
@@ -273,7 +312,9 @@ Skipped for now; slice 11 stacks directly on slice 9. Pick up later together wit
 - [x] OCSP stapling removed from `nginx.tls.conf` (+ its resolver) and the README —
       Let's Encrypt stopped putting OCSP URLs in certificates in 2025, so nginx warned
       and ignored it.
-- [ ] **#21** Commit lockfiles and switch Dockerfiles/CI to `npm ci`. Lockfile generation
-      needs Node, which this machine lacks — decide then (generate on the dev server, or a
-      one-off workflow).
+- [ ] **#21** DEFERRED (user, 2026-10-18). Commit lockfiles and switch Dockerfiles/CI
+      to `npm ci`. Lockfile generation needs Node, which this machine lacks. Preferred
+      approach when picked up: a `workflow_dispatch` "Update lockfiles" workflow with
+      `sync` (after package.json edits) and `upgrade` (newest within ranges) modes that
+      commits to the chosen branch.
 - [ ] Push, STOP. Test: full `docker compose build` on the dev server; app smoke test.
