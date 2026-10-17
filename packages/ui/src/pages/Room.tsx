@@ -33,6 +33,8 @@ import { Mic, MicOff, Camera, CameraOff, Ear, EarOff, Monitor, MonitorOff, Volum
 interface RoomPageProps {
   user: api.User;
   onLogout: () => void;
+  /** Server rejected our token mid-session; defaults to onLogout. */
+  onSessionExpired?: () => void;
 }
 
 const DURATION_OPTIONS = [
@@ -67,7 +69,7 @@ type Popover =
   | 'settings' | 'volumes' | 'soundboard' | 'music' | 'pipe' | 'quality' | 'stopShare'
   | { durationPickerFor: number };
 
-export function RoomPage({ user, onLogout }: RoomPageProps) {
+export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
   const [rooms, setRooms] = useState<api.Room[]>([]);
   const [users, setUsers] = useState<api.UserListItem[]>([]);
   const [roomMembers, setRoomMembers] = useState<Record<number, api.RoomMember[]>>({});
@@ -295,13 +297,14 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
 
   // Fetch server city once on mount
   useEffect(() => {
-    fetch('/api/server-info').then((r) => r.json()).then((d) => {
+    fetch(`${api.getBaseUrl()}/api/server-info`).then((r) => r.json()).then((d) => {
       if (d.city) setServerCity(d.city);
     }).catch(() => {});
   }, []);
 
-  // Load initial data
-  useEffect(() => {
+  // Rooms, users and room membership — on mount, and again after an SSE drop
+  // (events sent while we were disconnected are lost, so these would go stale).
+  const loadLists = useCallback(() => {
     api.listRooms().then(({ rooms }) => setRooms(rooms)).catch(() => {});
     api.listUsers().then(({ users }) => setUsers(users)).catch(() => {});
     api.listRoomMembers().then(({ members }) => {
@@ -309,6 +312,11 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
       for (const [k, v] of Object.entries(members)) parsed[Number(k)] = v;
       setRoomMembers(parsed);
     }).catch(() => {});
+  }, []);
+
+  // Load initial data
+  useEffect(() => {
+    loadLists();
     // Check for active punishments
     api.getActivePunishments().then(({ punishments }) => {
       if (punishments.length > 0) {
@@ -316,7 +324,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
       }
       setPunishmentChecked(true);
     }).catch(() => setPunishmentChecked(true));
-  }, []);
+  }, [loadLists]);
 
   // Auto-rejoin when LiveKit drops (e.g. "createOffer with closed peer connection")
   // Only triggers after we were Connected and then dropped — not during intentional joins.
@@ -366,16 +374,17 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
 
   // Re-sync room membership when SSE reconnects after a drop
   const handleSSEReconnect = useCallback(async () => {
-    if (!currentRoom) return;
-    if (connectionState === ConnectionState.Connected) {
+    if (currentRoom && connectionState === ConnectionState.Connected) {
       try {
         await api.syncRoom(currentRoom.id);
       } catch (err) {
         console.warn('Room sync after SSE reconnect failed:', err);
       }
     } else if (
-      connectionState === ConnectionState.Disconnected ||
-      connectionState === ConnectionState.Reconnecting
+      currentRoom && (
+        connectionState === ConnectionState.Disconnected ||
+        connectionState === ConnectionState.Reconnecting
+      )
     ) {
       // LiveKit dropped while SSE was down — re-join the room
       try {
@@ -385,7 +394,19 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
         console.warn('LiveKit reconnect after SSE reconnect failed:', err);
       }
     }
-  }, [currentRoom, connectionState, connect]);
+    // After our own membership is re-established, refetch what we may have missed
+    loadLists();
+    // A jail sentence may have ended while we were disconnected (expiry event missed)
+    api.getActivePunishments().then(({ punishments }) => {
+      setActivePunishment((prev) => {
+        if (prev && !punishments.some((p) => p.id === prev.id)) {
+          handleJoinRoomRef.current?.(prev.sourceRoomId);
+          return null;
+        }
+        return prev;
+      });
+    }).catch(() => {});
+  }, [currentRoom, connectionState, connect, loadLists]);
 
   // SSE events for real-time updates
   useEvents({ handlers: {
@@ -672,7 +693,7 @@ export function RoomPage({ user, onLogout }: RoomPageProps) {
     'music:status': (data) => {
       setMusicStatus(data as api.MusicStatus);
     },
-  }, onReconnect: handleSSEReconnect });
+  }, onReconnect: handleSSEReconnect, onUnauthorized: onSessionExpired ?? onLogout });
 
   // Stop any active client-piped audio when the Room unmounts (logout, refresh).
   // The Tauri window-close handler covers app exit; this covers in-app teardown.

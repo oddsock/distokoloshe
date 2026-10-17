@@ -148,6 +148,12 @@ export function syncRoom(roomId: number) {
   return request<{ synced: boolean }>(`/rooms/${roomId}/sync`, { method: 'POST' });
 }
 
+/** Single-use ticket for opening the SSE stream (EventSource can't send headers,
+ *  and a JWT in the URL would end up in proxy logs). */
+export function getEventsTicket() {
+  return request<{ ticket: string }>('/events/ticket', { method: 'POST' });
+}
+
 /** Fire-and-forget leave signal (used on beforeunload via sendBeacon) */
 export function sendLeaveBeacon(): void {
   const token = getStoredToken();

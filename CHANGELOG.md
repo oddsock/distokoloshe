@@ -19,6 +19,12 @@
 - API responses carry the security headers again (nosniff, CSP, HSTS); the CORS headers on `/api/` had silently replaced them
 - nginx access logs no longer record query strings, so login tokens on the live-events stream stay out of the logs; only that stream accepts a token in the URL now
 - Upgraded multer to 2.x (fixes known denial-of-service vulnerabilities in 1.4.5-lts)
+- Live updates (presence, chat, votes) recover by themselves after the server restarts — previously they stopped for good until you reloaded the page. Room, user and member lists are refreshed after reconnecting, and a jail sentence that ended while you were disconnected is released
+- An expired login now returns you to the sign-in screen with "Your session expired", instead of the app silently going quiet
+- Opening the app while the server is down or restarting no longer logs you out — it waits and retries until the server is back
+- The live-events stream authenticates with a short-lived single-use ticket instead of your login token in the URL, so the token can't end up in server logs
+- The E2EE indicator only shows once encryption has actually been enabled
+- Desktop: the server location in the connection-quality tooltip now shows (it was fetched from the wrong address)
 
 ## 2.2.4 — Screen-Share-First Tiles (UI redesign phase 3)
 

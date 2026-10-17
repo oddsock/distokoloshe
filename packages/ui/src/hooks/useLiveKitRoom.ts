@@ -164,10 +164,11 @@ export function useLiveKitRoom() {
       // Connect to room
       await room.connect(wsUrl, connection.token);
 
-      // Enable E2EE after connection is established
+      // Enable E2EE after connection is established. Awaited so a failure lands in the
+      // catch below instead of the UI claiming E2EE while it's actually off.
       if (e2eeWorker && keyProvider) {
         try {
-          room.setE2EEEnabled(true);
+          await room.setE2EEEnabled(true);
           e2eeActive = true;
         } catch (err) {
           console.warn('E2EE enable failed, continuing with transport encryption:', err);

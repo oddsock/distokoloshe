@@ -99,17 +99,29 @@ merge so unmerged code never auto-updates clients.
 
 ## Slice 4 — Client resilience (`fix/04-client-resilience`) — packages/ui
 
-- [ ] **#9** SSE: when EventSource closes for good (502 during API restart, 401, 429),
-      reconnect with backoff; on 401 log out to the login screen.
-- [ ] **#10** Startup `getMe()` only clears the stored token on 401, not on network/5xx.
-- [ ] **#13 (part)** Await `room.setE2EEEnabled(true)` so the E2EE indicator is honest.
-- [ ] **#16 (rest)** SSE authenticates with a short-lived single-use ticket
-      (`POST /api/events/ticket`) instead of the JWT in the URL — nginx's *error* log
-      still records the full request line on upstream failures (e.g. every SSE reconnect
-      during an API restart). Keep accepting `?token=` until old desktop clients update.
-- [ ] Push, STOP. Test: `docker compose restart api` while connected → presence/chat
-      recover without reload; stop the api container, reload page → still logged in once
-      it's back.
+- [x] **#9** SSE reconnects itself on any error with exponential backoff + jitter (1 s →
+      15 s) and a fresh ticket — EventSource's own retry gives up for good on non-200s
+      like the 502 during an API restart. A 401 on the ticket request → login screen
+      ("Your session expired"). After reconnecting, the room/user/member lists are
+      refetched and a jail sentence that ended while disconnected is released.
+- [x] **#10** Startup `getMe()` only clears the stored token on 401/404; on network
+      errors/5xx it keeps the session and retries (loading screen says so).
+- [x] **#13 (part)** `await room.setE2EEEnabled(true)` so the E2EE indicator is honest.
+- [x] **#16 (rest)** SSE authenticates with a 30 s single-use ticket
+      (`POST /api/events/ticket`) instead of the JWT in the URL. `?token=` still accepted
+      for desktop builds that predate tickets (and the new client falls back to it if a
+      server has no ticket endpoint) — remove once old builds are gone.
+- [x] Also: `/api/server-info` was fetched with a relative URL, so the desktop app never
+      showed the server city.
+- [x] Pushed. End-pass tests:
+  - While in a room: `docker compose restart api` → within ~15 s chat works again,
+    user list/presence correct, no page reload.
+  - `docker compose stop api`, reload the page → "Can't reach the server — retrying…";
+    `docker compose start api` → logs straight back in.
+  - DevTools → Network: the events request is `/api/events?ticket=…` (no JWT).
+  - Session expiry: DevTools console `localStorage.setItem('distokoloshe_token', 'x')`,
+    then `docker compose restart api` → login screen with "Your session expired".
+  - E2EE lock still shows in Chrome/Safari.
 
 ## Slice 5 — Setup scripts & docs (`fix/05-docs`)
 

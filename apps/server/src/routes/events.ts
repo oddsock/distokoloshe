@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import db from '../db.js';
-import { requireAuth, requireAuthAllowQuery } from '../middleware/auth.js';
+import { requireAuth, requireEventsAuth, issueEventsTicket } from '../middleware/auth.js';
 import {
   addClient, removeClient, broadcast,
   isUserOnline, isUserInRoom, canAddClient,
@@ -12,8 +12,13 @@ import { releasePipeIfOwnedBy } from './music.js';
 
 const router = Router();
 
+// POST /api/events/ticket — single-use ticket for opening the SSE stream
+router.post('/ticket', requireAuth, (req: Request, res: Response) => {
+  res.json({ ticket: issueEventsTicket(req.user!) });
+});
+
 // GET /api/events — SSE stream for real-time updates
-router.get('/', requireAuthAllowQuery, (req: Request, res: Response) => {
+router.get('/', requireEventsAuth, (req: Request, res: Response) => {
   const userId = req.user!.sub;
 
   // Check connection limits

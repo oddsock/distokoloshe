@@ -7,7 +7,7 @@ import { ServerConfig } from './ServerConfig';
 
 export function App() {
   const [serverUrl, setServerUrl] = useState(getBaseUrl());
-  const { user, initialized, isLoading, error, login, register, logout } = useAuth();
+  const { user, initialized, isLoading, error, login, register, logout, expireSession } = useAuth();
 
   const handleServerConnect = useCallback((url: string) => {
     setBaseUrl(url);
@@ -31,6 +31,7 @@ export function App() {
       <div className="min-h-screen flex items-center justify-center bg-zinc-900">
         <div className="text-center">
           <p className="text-zinc-500 mb-4">Connecting to {serverUrl}...</p>
+          {error && <p className="text-zinc-600 text-sm -mt-2 mb-4">{error}</p>}
           <button
             onClick={handleDisconnect}
             className="text-sm text-zinc-600 hover:text-zinc-400 underline"
@@ -58,5 +59,5 @@ export function App() {
     );
   }
 
-  return <RoomPage user={user} onLogout={logout} />;
+  return <RoomPage user={user} onLogout={logout} onSessionExpired={expireSession} />;
 }
