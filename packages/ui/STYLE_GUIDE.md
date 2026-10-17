@@ -144,21 +144,19 @@ scroll. Provide a touch alternative to hover (tap to toggle) yourself.
 
 ## Popover Menus
 
-### Standard Popover (above trigger)
+### Standard Popover
 
-**Desktop:**
+Render popovers through `<Floating anchor={buttonEl} open={…} zClass="z-50">` — it
+positions above the trigger (flipping below when needed) and keeps the box on screen, so
+there's no separate mobile variant and no `absolute bottom-full …` positioning. The card:
+
 ```
-absolute bottom-full mb-2 right-0
 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600
-rounded-xl shadow-2xl p-4 w-[340px] z-50
+rounded-xl shadow-2xl p-4 w-[340px] max-w-[calc(100vw-1rem)] max-h-[70vh] overflow-y-auto
 ```
 
-**Mobile (full-width bottom sheet):**
-```
-fixed bottom-16 left-2 right-2
-bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600
-rounded-xl shadow-2xl p-4 z-50 max-h-[70vh] overflow-y-auto
-```
+Use `zClass="z-50"` for popovers (so modals they open, `z-[60]`, sit above them); the
+default `z-[70]` is for tooltips and hover cards.
 
 ### Compact Dropdown Menu
 
@@ -190,10 +188,12 @@ absolute bottom-full mb-2 left-1/2 -translate-x-1/2
 (Same bg/border/shadow as above)
 
 ### Close Behavior
-
-1. Add document click listener with `setTimeout(() => ..., 0)` to defer past the opening click
-2. Inside popover: `onClick={(e) => e.stopPropagation()}`
-3. Outside click: set state to false
+1. One `openPopover` state in `RoomPage`; a document click listener (registered via
+   `setTimeout(…, 0)` so the opening click doesn't close it) sets it to `null`.
+2. Inside a popover: `onClick={(e) => e.stopPropagation()}` — this still works through
+   `<Floating>`'s portal, because React listens on the portal container.
+3. A menu item that opens another popover must stop propagation too, or the outside-click
+   handler closes the popover it just opened.
 
 ---
 
@@ -348,15 +348,15 @@ Body: `flex-1 overflow-y-auto p-4 md:p-6`
 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4
 ```
 
-### Floating Control Bar
+### Control Bar
 
-```
-fixed bottom-4 left-1/2 -translate-x-1/2 z-30
-flex flex-wrap items-center justify-center gap-2 md:gap-3
-bg-white/80 dark:bg-zinc-800/80 backdrop-blur-xl
-rounded-2xl px-4 py-2.5 shadow-lg
-border border-zinc-200/50 dark:border-zinc-700/50
-```
+Docked to the stage: `absolute bottom-4 left-1/2 -translate-x-1/2 z-30
+w-[calc(100%-2rem)] max-w-2xl` inside `<main class="relative">`, so it's centred on the
+stage, not the window. One row of `ControlButton`s (`p-2.5 rounded-lg`, tones: neutral /
+danger / success) — no wrapping. Buttons fold into a "⋯" menu by **stage** width
+(`useElementWidth`): below 640px volumes, music/pipe, soundboard and settings fold; below
+420px deafen and share too. A folded button's popover anchors to "⋯". The participant area
+reserves `pb-32` beneath it.
 
 ---
 

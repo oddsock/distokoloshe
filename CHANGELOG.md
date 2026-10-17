@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.3.3 — Control Bar That Fits (room redesign R2b)
+
+- The control bar sits centred on the call area rather than the whole window, so it no longer drifts off-centre with the People panel open or covers the rooms list and side panel in narrow windows
+- It stays a single row: when space runs out, soundboard, music, settings and volumes fold into a "⋯" menu, then deafen and screen share; on phones it's mic, camera and "⋯"
+- Every popover — settings, soundboard, music, volumes, screen-share quality, the vote duration picker — stays fully on screen and opens next to its button (or the "⋯" menu when folded)
+
 ## 2.3.2 — New Rooms List & People Panel (room redesign R2a)
 
 - The rooms list shows who's in each room as coloured avatars, with whoever's speaking highlighted; on medium-width windows it shrinks to room icons with member counts

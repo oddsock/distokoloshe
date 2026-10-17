@@ -15,7 +15,6 @@ interface DeviceSettingsProps {
   room: Room;
   hotkeyBindings: HotkeyBindings;
   onHotkeyChange: (bindings: HotkeyBindings) => void;
-  isMobile?: boolean;
   noiseCancellation?: {
     enabled: boolean;
     setEnabled: (v: boolean) => void;
@@ -26,7 +25,7 @@ interface DeviceSettingsProps {
   autoUpdate?: ReturnType<typeof useAutoUpdate>;
 }
 
-export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile, noiseCancellation, autoUpdate }: DeviceSettingsProps) {
+export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, noiseCancellation, autoUpdate }: DeviceSettingsProps) {
   const { audioInputs, audioOutputs, videoInputs } = useDevices();
   const { status: updateStatus, updateInfo, error: updateError, appVersion, isTauri } = autoUpdate ?? { status: 'idle' as const, updateInfo: null, error: null, appVersion: null, isTauri: false };
   const [micLevel, setMicLevel] = useState(0);
@@ -232,10 +231,7 @@ export function DeviceSettings({ room, hotkeyBindings, onHotkeyChange, isMobile,
 
   return (
     <div
-      className={isMobile
-        ? 'fixed bottom-16 left-2 right-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-xl shadow-2xl p-4 z-50 max-h-[70vh] overflow-y-auto'
-        : 'absolute bottom-full mb-2 right-0 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-xl shadow-2xl p-4 w-[340px] z-50 max-h-[70vh] overflow-y-auto'
-      }
+      className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-xl shadow-2xl p-4 w-[340px] max-w-[calc(100vw-1rem)] max-h-[70vh] overflow-y-auto"
       onClick={(e) => e.stopPropagation()}
     >
       <h3 className="text-sm font-semibold text-zinc-900 dark:text-white mb-3">

@@ -10,14 +10,13 @@ import type { PipeController } from '../hooks/usePipePlayer';
 import { PipePanel } from './PipePanel';
 
 interface MusicControlsProps {
-  isMobile?: boolean;
   status: MusicStatus | null;
   onRefresh: () => void;
   pipe: PipeController;
   roomId: number;
 }
 
-export function MusicControls({ isMobile, status, onRefresh, pipe, roomId }: MusicControlsProps) {
+export function MusicControls({ status, onRefresh, pipe, roomId }: MusicControlsProps) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -55,9 +54,8 @@ export function MusicControls({ isMobile, status, onRefresh, pipe, roomId }: Mus
     } catch { setError('Failed to remove'); }
   };
 
-  const containerClass = isMobile
-    ? 'fixed bottom-16 left-2 right-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-xl shadow-2xl p-4 z-50 max-h-[70vh] overflow-y-auto'
-    : 'absolute bottom-full mb-2 right-0 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-xl shadow-2xl p-4 w-[340px] z-50 max-h-[70vh] overflow-y-auto';
+  // Positioned by the <Floating> it's rendered in
+  const containerClass = 'bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-xl shadow-2xl p-4 w-[340px] max-w-[calc(100vw-1rem)] max-h-[70vh] overflow-y-auto';
 
   if (!status) {
     return (

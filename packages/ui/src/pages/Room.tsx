@@ -16,6 +16,8 @@ import { StageHeader } from '../components/StageHeader';
 import { SidePanel } from '../components/SidePanel';
 import { PeopleList } from '../components/PeopleList';
 import { TooltipLayer } from '../components/TooltipLayer';
+import { Floating } from '../components/Floating';
+import { ControlButton } from '../components/ControlButton';
 import { Soundboard } from '../components/Soundboard';
 import { MusicControls } from '../components/MusicControls';
 import { PipePanel } from '../components/PipePanel';
@@ -28,11 +30,12 @@ import { useSoundbiteRecorder } from '../hooks/useSoundbiteRecorder';
 import { useNoiseCancellation } from '../hooks/useNoiseCancellation';
 import { useAutoUpdate } from '../hooks/useAutoUpdate';
 import { useMediaQuery } from '../hooks/useMediaQuery';
+import { useElementWidth } from '../hooks/useElementWidth';
 import { toggleTheme, getTheme, parseParticipantMetadata } from '../lib/utils';
 import * as api from '../lib/api';
 import { resizeImage } from '../lib/imageResize';
 import { playSound } from '../lib/sounds';
-import { Mic, MicOff, Camera, CameraOff, Ear, EarOff, Monitor, MonitorOff, Volume2, VolumeX, Settings, AudioLines, Music, X, Scissors, RefreshCw, Loader2 } from 'lucide-react';
+import { Mic, MicOff, Camera, CameraOff, Ear, EarOff, Monitor, MonitorOff, Volume2, VolumeX, Settings, AudioLines, Music, X, Scissors, RefreshCw, Loader2, Ellipsis } from 'lucide-react';
 
 const PANEL_PREF_KEY = 'distokoloshe_side_panel';
 
@@ -85,7 +88,7 @@ function getPipeTitle(metadata?: string | null): string | null {
 /** All floating popovers anchored to the control bar / tiles. Only one can be
  *  open at a time; any document click outside closes it. */
 type Popover =
-  | 'settings' | 'volumes' | 'soundboard' | 'music' | 'pipe' | 'quality' | 'stopShare'
+  | 'settings' | 'volumes' | 'soundboard' | 'music' | 'pipe' | 'quality' | 'stopShare' | 'more'
   | { durationPickerFor: number };
 
 export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
@@ -96,6 +99,8 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
   const [error, setError] = useState<{ msg: string; roomId?: number } | null>(null);
   const [errorFading, setErrorFading] = useState(false);
   const [openPopover, setOpenPopover] = useState<Popover | null>(null);
+  // Buttons popovers anchor to (a folded control-bar button anchors to "⋯" instead)
+  const ctlRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const [theme, setThemeState] = useState<'dark' | 'light'>(getTheme);
 
   // Vote state
@@ -273,6 +278,8 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
 
   // Rooms drawer (phones)
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
+  // Stage width drives how many control-bar buttons fold into "⋯"
+  const [stageRef, stageWidth] = useElementWidth<HTMLElement>();
   // Side panel (People): a column beside the stage from 1080px, an overlay drawer below.
   // Opens by default where it fits; the choice is remembered for wide windows.
   const panelOverlay = !useMediaQuery('(min-width: 1080px)');
@@ -1106,6 +1113,8 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
   if (soundboardPlaying && !mutedUsers.has(soundboardPlaying.username)) speakingUsernames.add(soundboardPlaying.username);
   const micOffUsernames = new Set(remoteParticipants.filter((p) => !p.isMicrophoneEnabled).map((p) => p.identity));
   if (localParticipant && micMuted) micOffUsernames.add(localParticipant.identity);
+  // 0 = everything in the bar; 1 = media + settings fold into "⋯"; 2 = deafen + share too
+  const foldLevel = stageWidth === 0 ? 0 : stageWidth < 420 ? 2 : stageWidth < 640 ? 1 : 0;
 
   return (
     <div className="h-screen overflow-hidden bg-zinc-100 dark:bg-zinc-900 text-zinc-900 dark:text-white flex">
@@ -1137,7 +1146,7 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
       />
 
       {/* Main content */}
-      <main className="flex-1 flex flex-col min-w-0 min-h-0">
+      <main ref={stageRef} className="relative flex-1 flex flex-col min-w-0 min-h-0">
         <StageHeader
           room={currentRoom}
           status={connectionState === ConnectionState.Connected ? `${remoteParticipants.length + 1} in room` : connectionState}
@@ -1153,7 +1162,7 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
         />
 
         {/* Participant area */}
-        <div className="flex-1 p-6 pb-20 overflow-y-auto">
+        <div className="flex-1 p-6 pb-32 overflow-y-auto">
           {error && (!error.roomId || error.roomId === currentRoom?.id) && (
             <div className={`mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm flex items-center transition-opacity duration-500 ${errorFading ? 'opacity-0' : 'opacity-100 animate-[fadeIn_0.2s_ease-out]'}`}>
               <span className="flex-1">{error.msg}</span>
@@ -1430,17 +1439,18 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
                         {!activeVote && !currentRoom?.is_jail && memberEntry && (
                           <div className="relative">
                             <button
+                              ref={(el) => { ctlRefs.current[`vote-${memberEntry.id}`] = el; }}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setOpenPopover(durationPickerOpen ? null : { durationPickerFor: memberEntry.id });
                               }}
                               className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors opacity-100 md:opacity-0 md:group-hover:opacity-100"
-                              title="Vote to punish"
+                              data-tooltip="Vote to jail"
                             >
                               Vote
                             </button>
-                            {durationPickerOpen && (
-                              <div className="absolute bottom-full mb-1 right-0 bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg py-1 min-w-[140px] z-50">
+                            <Floating anchor={ctlRefs.current[`vote-${memberEntry.id}`] ?? null} open={durationPickerOpen} zClass="z-50">
+                              <div className="bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg py-1 min-w-[140px]">
                                 <div className="px-2 py-1 text-[10px] text-zinc-500 uppercase">Punishment</div>
                                 {DURATION_OPTIONS.map((opt) => (
                                   <button
@@ -1452,7 +1462,7 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
                                   </button>
                                 ))}
                               </div>
-                            )}
+                            </Floating>
                           </div>
                         )}
                         {!isMusicOrPipeBot(p.identity) && !soundbiteOptOut && (
@@ -1509,109 +1519,184 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
           )}
         </div>
 
-        {/* Floating control bar */}
-        {connectionState === ConnectionState.Connected && room && (
-          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 w-[calc(100%-2rem)] md:w-3/5 min-w-[14rem] max-w-2xl bg-white/80 dark:bg-zinc-800/80 backdrop-blur-xl rounded-2xl px-4 py-2.5 shadow-lg border border-zinc-200/50 dark:border-zinc-700/50 flex flex-col gap-2">
-            {/* Chat input */}
-            {chatUpload?.phase === 'error' && (
-              <p className="text-xs text-red-500 px-1" role="alert">{chatUpload.message} — press Enter to retry</p>
-            )}
-            <form onSubmit={handleChatSend} className="w-full flex gap-2 items-center">
-              {chatImagePreview && (
-                <div className="relative shrink-0">
-                  <img src={chatImagePreview} className={`h-8 w-8 rounded object-cover ${chatUpload?.phase === 'error' ? 'ring-2 ring-red-500' : ''}`} alt="" />
-                  {chatBusy ? (
-                    <div className="absolute inset-0 rounded bg-black/55 flex items-center justify-center text-[9px] font-semibold text-white" aria-live="polite">
-                      {chatUpload?.phase === 'uploading'
-                        ? `${chatUpload.pct}%`
-                        : <Loader2 size={14} className="animate-spin" aria-label="Preparing image" />}
+        {/* Control bar — docked to the stage (centred on it, not the window). Buttons fold
+            into "⋯" by stage width, so the bar never spills onto the rail or side panel. */}
+        {connectionState === ConnectionState.Connected && room && (() => {
+          const fold1 = foldLevel >= 1;
+          const fold2 = foldLevel >= 2;
+          const showShare = !isMobile;
+          const showVolumes = !isMobile;
+          const showPipe = pipe.available && !!currentRoom && !hasMusicBot;
+          const anchorFor = (key: string, folded: boolean) => (folded ? ctlRefs.current.more : ctlRefs.current[key]) ?? null;
+          const setRef = (key: string) => (el: HTMLButtonElement | null) => { ctlRefs.current[key] = el; };
+          const toggle = (key: 'settings' | 'volumes' | 'soundboard' | 'music' | 'pipe' | 'more') =>
+            setOpenPopover(openPopover === key ? null : key);
+          const toggleShare = () => {
+            if (isSharing) setOpenPopover(openPopover === 'stopShare' ? null : 'stopShare');
+            else setOpenPopover(openPopover === 'quality' ? null : 'quality');
+          };
+          const toggleCamera = () => {
+            room.localParticipant.setCameraEnabled(!isCameraOn);
+            playSound(isCameraOn ? 'cameraOff' : 'cameraOn');
+          };
+          const shareTooltip = isSharing
+            ? `Stop Sharing (${shareQuality.charAt(0).toUpperCase() + shareQuality.slice(1)})`
+            : 'Share Screen';
+          const menuItem = 'w-full flex items-center gap-2.5 px-3 py-1.5 text-sm text-left text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-600 transition-colors';
+          return (
+            <>
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 w-[calc(100%-2rem)] max-w-2xl bg-white/80 dark:bg-zinc-800/80 backdrop-blur-xl rounded-2xl px-4 py-2.5 shadow-lg border border-zinc-200/50 dark:border-zinc-700/50 flex flex-col gap-2">
+                {/* Chat input (moves into the Chat tab in R4) */}
+                {chatUpload?.phase === 'error' && (
+                  <p className="text-xs text-red-500 px-1" role="alert">{chatUpload.message} — press Enter to retry</p>
+                )}
+                <form onSubmit={handleChatSend} className="w-full flex gap-2 items-center">
+                  {chatImagePreview && (
+                    <div className="relative shrink-0">
+                      <img src={chatImagePreview} className={`h-8 w-8 rounded object-cover ${chatUpload?.phase === 'error' ? 'ring-2 ring-red-500' : ''}`} alt="" />
+                      {chatBusy ? (
+                        <div className="absolute inset-0 rounded bg-black/55 flex items-center justify-center text-[9px] font-semibold text-white" aria-live="polite">
+                          {chatUpload?.phase === 'uploading'
+                            ? `${chatUpload.pct}%`
+                            : <Loader2 size={14} className="animate-spin" aria-label="Preparing image" />}
+                        </div>
+                      ) : (
+                        <button type="button" onClick={clearChatImage} aria-label="Remove image"
+                          className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center leading-none">&times;</button>
+                      )}
                     </div>
-                  ) : (
-                    <button type="button" onClick={clearChatImage} aria-label="Remove image"
-                      className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center leading-none">&times;</button>
+                  )}
+                  <input
+                    type="text"
+                    value={chatInput}
+                    readOnly={chatBusy}
+                    onChange={(e) => setChatInput(e.target.value.slice(0, 200))}
+                    onPaste={handleChatPaste}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                        e.preventDefault();
+                        handleChatSend(e as unknown as React.FormEvent);
+                      }
+                    }}
+                    placeholder={chatBusy ? 'Sending image…' : 'Send a message…'}
+                    maxLength={200}
+                    className={`flex-1 min-w-0 px-3 py-1.5 rounded-lg text-sm ${chatBusy ? 'opacity-60' : ''} bg-zinc-100 dark:bg-zinc-700 text-zinc-900 dark:text-white border border-zinc-300 dark:border-zinc-600 focus:border-indigo-500 outline-none placeholder-zinc-400 dark:placeholder-zinc-500`}
+                  />
+                </form>
+                <div className="flex items-center justify-center gap-2 md:gap-3">
+                  <ControlButton
+                    tone={micMuted ? 'danger' : 'neutral'}
+                    label={micMuted ? 'Unmute microphone' : 'Mute microphone'}
+                    tooltip={micMuted ? 'Unmute' : 'Mute'}
+                    onClick={handleToggleMute}
+                  >
+                    {micMuted ? <MicOff size={18} /> : <Mic size={18} />}
+                  </ControlButton>
+                  <ControlButton
+                    tone={isCameraOn ? 'success' : 'neutral'}
+                    label={isCameraOn ? 'Turn camera off' : 'Turn camera on'}
+                    tooltip={isCameraOn ? 'Camera Off' : 'Camera On'}
+                    onClick={toggleCamera}
+                  >
+                    {isCameraOn ? <Camera size={18} /> : <CameraOff size={18} />}
+                  </ControlButton>
+                  {!fold2 && (
+                    <ControlButton tone={deafened ? 'danger' : 'neutral'} label={deafened ? 'Undeafen' : 'Deafen'} onClick={handleToggleDeafen}>
+                      {deafened ? <EarOff size={18} /> : <Ear size={18} />}
+                    </ControlButton>
+                  )}
+                  {showShare && !fold2 && (
+                    <ControlButton
+                      ref={setRef('share')}
+                      tone={isSharing ? 'success' : 'neutral'}
+                      label={isSharing ? 'Stop screen share' : 'Share screen'}
+                      tooltip={shareTooltip}
+                      onClick={toggleShare}
+                    >
+                      {isSharing ? <Monitor size={18} /> : <MonitorOff size={18} />}
+                    </ControlButton>
+                  )}
+                  {showVolumes && !fold1 && (
+                    <ControlButton ref={setRef('volumes')} label="Adjust participant volumes" tooltip="Volumes" onClick={() => toggle('volumes')}>
+                      <Volume2 size={18} />
+                    </ControlButton>
+                  )}
+                  {hasMusicBot && !fold1 && (
+                    <ControlButton ref={setRef('music')} label="Open music controls" tooltip="Music" onClick={() => toggle('music')}>
+                      <Music size={18} />
+                    </ControlButton>
+                  )}
+                  {showPipe && !fold1 && (
+                    <ControlButton ref={setRef('pipe')} label="Pipe audio to this room" tooltip="Pipe audio" onClick={() => toggle('pipe')}>
+                      <Music size={18} />
+                    </ControlButton>
+                  )}
+                  {!fold1 && (
+                    <ControlButton ref={setRef('soundboard')} label="Open soundboard" tooltip="Soundboard" onClick={() => toggle('soundboard')}>
+                      <AudioLines size={18} />
+                    </ControlButton>
+                  )}
+                  {!fold1 && (
+                    <ControlButton ref={setRef('settings')} label="Open settings" tooltip="Settings" onClick={() => toggle('settings')}>
+                      <Settings size={18} />
+                    </ControlButton>
+                  )}
+                  {fold1 && (
+                    <ControlButton
+                      ref={setRef('more')}
+                      label="More controls"
+                      tooltip="More"
+                      aria-haspopup="menu"
+                      aria-expanded={openPopover === 'more'}
+                      onClick={() => toggle('more')}
+                    >
+                      <Ellipsis size={18} />
+                    </ControlButton>
                   )}
                 </div>
-              )}
-              <input
-                type="text"
-                value={chatInput}
-                readOnly={chatBusy}
-                onChange={(e) => setChatInput(e.target.value.slice(0, 200))}
-                onPaste={handleChatPaste}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                    e.preventDefault();
-                    handleChatSend(e as unknown as React.FormEvent);
-                  }
-                }}
-                placeholder={chatBusy ? 'Sending image…' : 'Send a message…'}
-                maxLength={200}
-                className={`flex-1 min-w-0 px-3 py-1.5 rounded-lg text-sm ${chatBusy ? 'opacity-60' : ''} bg-zinc-100 dark:bg-zinc-700 text-zinc-900 dark:text-white border border-zinc-300 dark:border-zinc-600 focus:border-indigo-500 outline-none placeholder-zinc-400 dark:placeholder-zinc-500`}
-              />
-            </form>
-            {/* Icon buttons */}
-            <div className="flex flex-wrap items-center justify-center gap-2 md:gap-3">
-            <button
-              onClick={handleToggleMute}
-              className={`p-2.5 rounded-lg transition-colors focus-visible:ring-2 focus-visible:ring-indigo-500 ${
-                micMuted
-                  ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
-                  : 'bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600'
-              }`}
-              aria-label={micMuted ? 'Unmute microphone' : 'Mute microphone'}
-              data-tooltip={micMuted ? 'Unmute' : 'Mute'}
-            >
-              {micMuted ? <MicOff size={18} /> : <Mic size={18} />}
-            </button>
+              </div>
 
-            <button
-              onClick={() => { room.localParticipant.setCameraEnabled(!isCameraOn); playSound(isCameraOn ? 'cameraOff' : 'cameraOn'); }}
-              className={`p-2.5 rounded-lg transition-colors focus-visible:ring-2 focus-visible:ring-indigo-500 ${
-                isCameraOn
-                  ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
-                  : 'bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600'
-              }`}
-              aria-label={isCameraOn ? 'Turn camera off' : 'Turn camera on'}
-              data-tooltip={isCameraOn ? 'Camera Off' : 'Camera On'}
-            >
-              {isCameraOn ? <Camera size={18} /> : <CameraOff size={18} />}
-            </button>
+              {/* "⋯" menu — whatever the bar has folded away. stopPropagation keeps the
+                  outside-click handler from closing the popover an item just opened. */}
+              <Floating anchor={ctlRefs.current.more ?? null} open={openPopover === 'more' && fold1} zClass="z-50">
+                <div role="menu" onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg py-1 min-w-[190px]">
+                  {fold2 && (
+                    <button role="menuitem" className={menuItem} onClick={() => { handleToggleDeafen(); setOpenPopover(null); }}>
+                      {deafened ? <EarOff size={16} /> : <Ear size={16} />}{deafened ? 'Undeafen' : 'Deafen'}
+                    </button>
+                  )}
+                  {fold2 && showShare && (
+                    <button role="menuitem" className={menuItem} onClick={toggleShare}>
+                      {isSharing ? <Monitor size={16} /> : <MonitorOff size={16} />}{isSharing ? 'Stop sharing…' : 'Share screen…'}
+                    </button>
+                  )}
+                  {showVolumes && (
+                    <button role="menuitem" className={menuItem} onClick={() => setOpenPopover('volumes')}>
+                      <Volume2 size={16} />Volumes…
+                    </button>
+                  )}
+                  {hasMusicBot && (
+                    <button role="menuitem" className={menuItem} onClick={() => setOpenPopover('music')}>
+                      <Music size={16} />Music…
+                    </button>
+                  )}
+                  {showPipe && (
+                    <button role="menuitem" className={menuItem} onClick={() => setOpenPopover('pipe')}>
+                      <Music size={16} />Pipe audio…
+                    </button>
+                  )}
+                  <button role="menuitem" className={menuItem} onClick={() => setOpenPopover('soundboard')}>
+                    <AudioLines size={16} />Soundboard…
+                  </button>
+                  <button role="menuitem" className={menuItem} onClick={() => setOpenPopover('settings')}>
+                    <Settings size={16} />Settings…
+                  </button>
+                </div>
+              </Floating>
 
-            <button
-              onClick={handleToggleDeafen}
-              className={`p-2.5 rounded-lg transition-colors focus-visible:ring-2 focus-visible:ring-indigo-500 ${
-                deafened
-                  ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
-                  : 'bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600'
-              }`}
-              aria-label={deafened ? 'Undeafen' : 'Deafen'}
-              data-tooltip={deafened ? 'Undeafen' : 'Deafen'}
-            >
-              {deafened ? <EarOff size={18} /> : <Ear size={18} />}
-            </button>
-
-            {/* Screen share with quality picker — hidden on mobile */}
-            {!isMobile && <div className="relative">
-              <button
-                onClick={() => {
-                  if (isSharing) {
-                    setOpenPopover(openPopover === 'stopShare' ? null : 'stopShare');
-                  } else {
-                    setOpenPopover(openPopover === 'quality' ? null : 'quality');
-                  }
-                }}
-                className={`p-2.5 rounded-lg transition-colors focus-visible:ring-2 focus-visible:ring-indigo-500 ${
-                  isSharing
-                    ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
-                    : 'bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600'
-                }`}
-                aria-label={isSharing ? 'Stop screen share' : 'Share screen'}
-                data-tooltip={isSharing ? `Stop Sharing (${shareQuality.charAt(0).toUpperCase() + shareQuality.slice(1)})` : 'Share Screen'}
-              >
-                {isSharing ? <Monitor size={18} /> : <MonitorOff size={18} />}
-              </button>
-              {openPopover === 'stopShare' && isSharing && (
-                <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg p-3 min-w-[160px] z-50">
+              {/* Share: stop confirmation / quality picker */}
+              <Floating anchor={anchorFor('share', fold2)} open={openPopover === 'stopShare' && isSharing} zClass="z-50">
+                <div className="bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg p-3 min-w-[160px]">
                   <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-2 text-center">Stop sharing?</p>
                   <div className="flex gap-2">
                     <button
@@ -1628,9 +1713,9 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
                     </button>
                   </div>
                 </div>
-              )}
-              {openPopover === 'quality' && !isSharing && (
-                <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg py-1 min-w-[180px] z-50">
+              </Floating>
+              <Floating anchor={anchorFor('share', fold2)} open={openPopover === 'quality' && !isSharing} zClass="z-50">
+                <div className="bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg py-1 min-w-[180px]">
                   {(Object.entries(QUALITY_PRESETS) as [ShareQuality, (typeof QUALITY_PRESETS)[ShareQuality]][]).map(
                     ([key, preset]) => (
                       <button
@@ -1667,20 +1752,10 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
                     </p>
                   )}
                 </div>
-              )}
-            </div>}
+              </Floating>
 
-            {!isMobile && <div className="relative">
-              <button
-                onClick={() => setOpenPopover(openPopover === 'volumes' ? null : 'volumes')}
-                className="p-2.5 rounded-lg bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors focus-visible:ring-2 focus-visible:ring-indigo-500"
-                aria-label="Adjust participant volumes"
-                data-tooltip="Volumes"
-              >
-                <Volume2 size={18} />
-              </button>
-              {openPopover === 'volumes' && (
-                <div className="absolute bottom-full mb-2 right-0 bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg py-2 px-3 min-w-[200px] z-50" onClick={(e) => e.stopPropagation()}>
+              <Floating anchor={anchorFor('volumes', fold1)} open={openPopover === 'volumes' && showVolumes} zClass="z-50">
+                <div className="bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg py-2 px-3 min-w-[200px] max-h-[60vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
                   <span className="text-xs font-semibold uppercase text-zinc-500 block mb-2">Volume</span>
                   {remoteParticipants.length === 0 ? (
                     <p className="text-xs text-zinc-500 py-1">No other participants</p>
@@ -1696,63 +1771,26 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
                     ))
                   )}
                 </div>
+              </Floating>
+
+              {currentRoom && (
+                <Floating anchor={anchorFor('music', fold1)} open={openPopover === 'music' && hasMusicBot} zClass="z-50">
+                  <MusicControls status={musicStatus} onRefresh={refreshMusicStatus} pipe={pipe} roomId={currentRoom.id} />
+                </Floating>
               )}
-            </div>}
-
-            {remoteParticipants.some((p) => p.identity === '__music-bot__') && currentRoom && (
-            <div className="relative">
-              <button
-                onClick={() => setOpenPopover(openPopover === 'music' ? null : 'music')}
-                className="p-2.5 rounded-lg bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors focus-visible:ring-2 focus-visible:ring-indigo-500"
-                aria-label="Open music controls"
-                data-tooltip="Music"
-              >
-                <Music size={18} />
-              </button>
-              {openPopover === 'music' && <MusicControls isMobile={isMobile} status={musicStatus} onRefresh={refreshMusicStatus} pipe={pipe} roomId={currentRoom.id} />}
-            </div>
-            )}
-
-            {/* Pipe-only popover for non-Music rooms (desktop only).
-                In the Music room the pipe panel already renders inside
-                MusicControls alongside the radio/queue UI. */}
-            {pipe.available
-              && currentRoom
-              && !remoteParticipants.some((p) => p.identity === '__music-bot__')
-              && (
-              <div className="relative">
-                <button
-                  onClick={() => setOpenPopover(openPopover === 'pipe' ? null : 'pipe')}
-                  className="p-2.5 rounded-lg bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors focus-visible:ring-2 focus-visible:ring-indigo-500"
-                  aria-label="Pipe audio to this room"
-                  data-tooltip="Pipe audio"
-                >
-                  <Music size={18} />
-                </button>
-                {openPopover === 'pipe' && (
+              {currentRoom && (
+                <Floating anchor={anchorFor('pipe', fold1)} open={openPopover === 'pipe' && showPipe} zClass="z-50">
                   <div
-                    className={isMobile
-                      ? 'fixed bottom-16 left-2 right-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-xl shadow-2xl p-4 z-50'
-                      : 'absolute bottom-full mb-2 right-0 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-xl shadow-2xl p-4 w-[340px] z-50'}
+                    className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-xl shadow-2xl p-4 w-[340px] max-w-[calc(100vw-1rem)]"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <h3 className="text-sm font-semibold text-zinc-900 dark:text-white mb-2">Pipe audio to {currentRoom.name}</h3>
                     <PipePanel pipe={pipe} roomId={currentRoom.id} />
                   </div>
-                )}
-              </div>
-            )}
+                </Floating>
+              )}
 
-            <div className="relative">
-              <button
-                onClick={() => setOpenPopover(openPopover === 'soundboard' ? null : 'soundboard')}
-                className="p-2.5 rounded-lg bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors focus-visible:ring-2 focus-visible:ring-indigo-500"
-                aria-label="Open soundboard"
-                data-tooltip="Soundboard"
-              >
-                <AudioLines size={18} />
-              </button>
-              {openPopover === 'soundboard' && room && (
+              <Floating anchor={anchorFor('soundboard', fold1)} open={openPopover === 'soundboard'} zClass="z-50">
                 <Soundboard
                   clips={clips}
                   playingId={playingId}
@@ -1766,25 +1804,14 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
                   onUpload={uploadClip}
                   onDelete={deleteClip}
                 />
-              )}
-            </div>
+              </Floating>
 
-            <div className="relative">
-              <button
-                onClick={() => setOpenPopover(openPopover === 'settings' ? null : 'settings')}
-                className="p-2.5 rounded-lg bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors focus-visible:ring-2 focus-visible:ring-indigo-500"
-                aria-label="Open settings"
-                data-tooltip="Settings"
-              >
-                <Settings size={18} />
-              </button>
-              {openPopover === 'settings' && room && (
-                <DeviceSettings room={room} hotkeyBindings={hotkeyBindings} onHotkeyChange={setHotkeyBindings} isMobile={isMobile} noiseCancellation={{ enabled: ncEnabled, setEnabled: setNcEnabled, engine: ncEngine, setEngine: setNcEngine, supported: ncSupported }} autoUpdate={autoUpdate} />
-              )}
-            </div>
-            </div>
-          </div>
-        )}
+              <Floating anchor={anchorFor('settings', fold1)} open={openPopover === 'settings'} zClass="z-50">
+                <DeviceSettings room={room} hotkeyBindings={hotkeyBindings} onHotkeyChange={setHotkeyBindings} noiseCancellation={{ enabled: ncEnabled, setEnabled: setNcEnabled, engine: ncEngine, setEngine: setNcEngine, supported: ncSupported }} autoUpdate={autoUpdate} />
+              </Floating>
+            </>
+          );
+        })()}
       </main>
 
       {/* Side panel — People */}

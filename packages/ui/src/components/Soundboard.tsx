@@ -67,7 +67,7 @@ export function Soundboard({ clips, playingId, previewingId, volume, onVolumeCha
 
   return (
     <div
-      className="absolute bottom-full mb-2 right-0 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-xl shadow-2xl p-4 w-[min(420px,calc(100vw-2rem))] z-50 max-h-[400px] flex flex-col"
+      className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-xl shadow-2xl p-4 w-[min(420px,calc(100vw-1rem))] max-h-[min(400px,70vh)] flex flex-col"
       onClick={(e) => e.stopPropagation()}
     >
       <div className="flex items-center gap-2 mb-3">

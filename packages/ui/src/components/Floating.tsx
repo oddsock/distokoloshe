@@ -9,6 +9,9 @@ interface FloatingProps {
   placement?: Placement;
   className?: string;
   role?: string;
+  /** Stacking layer: tooltips/cards default to z-[70]; popovers use z-50 so modals
+   *  they open (z-[60], e.g. the clip trimmer) sit above them. */
+  zClass?: string;
   children: ReactNode;
 }
 
@@ -17,7 +20,7 @@ interface FloatingProps {
  * viewport — so it's never clipped by a scrolling or overflow-hidden parent, or the
  * window edge. Re-measures when the content changes, on resize and on scroll.
  */
-export function Floating({ anchor, open, placement = 'top', className = '', role, children }: FloatingProps) {
+export function Floating({ anchor, open, placement = 'top', className = '', role, zClass = 'z-[70]', children }: FloatingProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
 
@@ -50,7 +53,7 @@ export function Floating({ anchor, open, placement = 'top', className = '', role
     <div
       ref={ref}
       role={role}
-      className={`fixed z-[70] ${className}`}
+      className={`fixed ${zClass} ${className}`}
       // Rendered off-screen for one measuring pass before the real position is known
       style={pos ?? { top: -9999, left: -9999, visibility: 'hidden' as const }}
     >

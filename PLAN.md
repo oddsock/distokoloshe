@@ -156,13 +156,26 @@ Responsive rules (apply in every phase):
       to General); a brand-new account lands in General.
 
 ### R2b — Room shell: control bar (2.3.3)
-- [ ] Control bar docked to the stage (centred on it, not the window), one row, grouped
-      (talk · share/media · panels), responsive rule 1 (container query, folds into "⋯").
-      **No leave button.**
-- [ ] Control-bar popovers (share quality, stop share, volumes, music, pipe, soundboard,
-      settings, vote duration) onto `<Floating>`.
-- [ ] Chat input stays in the bar until R4 moves it into the Chat tab.
-- [ ] Extract `ControlBar` (and `Stage`) from Room.tsx.
+- [x] Control bar docked to the stage (`absolute` in `<main class="relative">`, centred on
+      it), one row, no wrapping. Folds by **stage width measured in JS**
+      (`useElementWidth`) rather than a CSS container query — the "⋯" menu renders in a
+      portal outside the stage, where container queries can't reach: <640 px volumes,
+      music/pipe, soundboard, settings → "⋯"; <420 px deafen + share too. **No leave button.**
+- [x] All control-bar popovers (stop share, share quality, volumes, music, pipe,
+      soundboard, settings) and the tile vote-duration picker on `<Floating zClass="z-50">`;
+      a folded button's popover anchors to "⋯". MusicControls / DeviceSettings / Soundboard
+      no longer position themselves (their `isMobile` positioning variants are gone).
+- [x] `ControlButton` (tones neutral/danger/success, forwards refs) replaces nine
+      hand-styled buttons.
+- [x] Chat input stays in the bar until R4.
+- [ ] Moved to R4: extracting the whole `ControlBar` (and `Stage`) out of Room.tsx — with
+      the chat input still inside it the component needs ~40 props; it gets far smaller
+      once chat moves to the side panel.
+- [x] Released as 2.3.3. User tests: bar centred on the stage with the People panel open;
+      narrow the window → buttons fold into "⋯" (two steps), the menu lists exactly what
+      folded, each item opens its popover next to "⋯"; every popover stays on screen at the
+      window edges; soundboard's clip trimmer opens above the soundboard; phone layout (one
+      row: mic, camera, ⋯); vote-duration picker on tiles in the top row.
 
 ### R3 — Stage grid & tiles
 - [ ] Fit-to-stage grid (ResizeObserver): columns/rows from participant count and stage
