@@ -1,19 +1,29 @@
-# UI Redesign Plan — Theater Mode, Multiview & Cleanup
+# UI Redesign Plan
 
-Goal: replace the inline spotlight with a proper theater layout, make screen-share-first
-tiles with camera PIP, support multiple simultaneous shares (switch + multiview), and have
-non-spotlighted/small panes drop **resolution** (spatial SVC layers) instead of framerate.
-Includes code cleanup found during review.
+Phases 1–3 (done, shipped in 2.2.2–2.2.4): code cleanup, spatial-layer screen share,
+share-first tiles with camera PIP. The original phases 4–7 (theater, multiview, desktop
+fullscreen/pop-out, release) are **superseded by the Room Redesign below**, which folds
+them in.
 
-Scope is frontend-only (`packages/ui`) — no server or protocol changes
-(except the possible popout presence flag in Phase 6).
+**Mockup:** `design/mockups/room-redesign.html` (self-contained; open locally). Its
+dashed top bar flips stage layout, side panel, device, theme and overlay states.
 
-**Workflow**: one phase at a time. Each phase ends with a version bump (package.json,
-tauri.conf.json, Cargo.toml, Cargo.lock + CHANGELOG entry), commit + push, and a `v*`
-tag so GitHub Actions builds the desktop client for testing — then **STOP** while the
-user pulls onto their dev server / installs the client build and tests. Do **not**
-build locally (no `docker compose build`, no `npm run build`). Next phase starts only
-after the user confirms.
+**Product rules (decided with the user, 2026-10-18):**
+- No "leave room" option, ever, and no not-in-a-room state — you can switch rooms but are
+  always in one; nobody can watch or listen to a room without being in it.
+- Side panel opens on **People** by default (where it fits beside the stage).
+- Grid tiles **shrink to fit** — the stage never scrolls.
+- Chat keeps tile bubbles (fixed so they stay inside the tile) **and** a Chat tab showing
+  every message since you joined; cleared when you switch rooms; never stored on the server.
+- Keep all of today's connection details (RTT, jitter, distance, loss, ICE, bitrate,
+  codecs, transport, server) in a hover card.
+- Server location shown as "≈ City — estimated from the server's IP" (no triangulation).
+
+**Workflow** (agreed 2026-10-18): one phase at a time on `main`. Each phase ends with a
+version bump (apps/desktop package.json, tauri.conf.json, Cargo.toml, Cargo.lock) + a
+CHANGELOG entry, a pushed commit and a pushed `v*` tag (GitHub Actions builds and releases
+the desktop client) — then **STOP** while the user tests on the dev server and the client
+build. No local builds (no Node on this machine; the dev-server build is the first compile).
 
 ---
 
@@ -84,96 +94,121 @@ thumbnail below it (Room.tsx 1588–1670), making the share tiny and tile height
 - [x] Apply the same logic to the local tile (self-preview) — also wired up
       `onSpotlightCamera` for the local tile, which previously had no camera
       spotlight click target at all (camera always filled the main area).
-- [ ] Commit + push, STOP. User verifies on dev server: one user with camera+share
+- [x] Commit + push, STOP. User verifies on dev server: one user with camera+share
       on — grid rows stay aligned, PIP swap works, stream-audio mute reachable.
+      (Shipped in 2.2.4.)
 
-## Phase 4 — Theater mode (single spotlight, done right)
+## Room Redesign (supersedes old phases 4–7)
 
-Current problem: spotlight renders inline above the full-size grid capped at 70vh
-(Room.tsx 1377–1465); native fullscreen is the only real viewing mode and its controls
-are hover-only (ScreenShareView.tsx 91).
+Review findings this addresses: CSS tooltips clip and run off-screen; tile chat bubbles
+stack out of the scroll area and vanish after 15 s with no history; the control bar is
+centred on the window (not the stage), covers the bottom tile row and, in narrow windows,
+spills over the rail (connection bars, logout) and the side panel (chat box); spotlight
+sits above the grid in one scrolling area; banners stack inline and shift the layout
+("Reconnecting" renders below the grid); tile actions are hover-only; settings is 8
+sections in a 340 px scrolling popover; "Lift" shows for every member though only the
+room creator may lift; mobile control bar wraps over content.
 
-- [ ] **Layout**: when something is pinned, the main content area becomes the video
-      filling all available height; the participant grid collapses to a horizontal
-      **filmstrip** (small fixed-height tiles, `overflow-x: auto`) along the bottom,
-      above the control bar. Banners (vote/punishment/errors) overlay or sit above.
-- [ ] **Filmstrip tiles**: reuse `ParticipantTile` in a `compact` variant; tiles with
-      an active share get a monitor badge.
-- [ ] **Controls in fullscreen**: show on `mousemove` and fade after ~2s idle
-      (not hover-only); always visible on touch devices; auto-hide cursor with the
-      controls in fullscreen.
-- [ ] **Double-click video** toggles fullscreen.
-- [ ] **Hide the "X is sharing their screen" header bar in fullscreen**
-      (ScreenShareView.tsx 64–71).
-- [ ] **Safari fullscreen fallback**: use `webkitRequestFullscreen` /
-      `webkitfullscreenchange` / `document.webkitFullscreenElement` when the
-      unprefixed API is missing.
-- [ ] **Auto-spotlight**: when a remote share starts and nothing is pinned, pin it
-      (replaces the sound-only reaction at Room.tsx 775–777 — keep the sound).
-- [ ] Commit + push, STOP. User verifies on dev server: pin/dismiss, filmstrip scroll
-      with 6+ participants, fullscreen controls on mouse + touch, Escape exits,
-      camera spotlight PIP-swap still works.
+Responsive rules (apply in every phase):
+1. The control bar sizes to the **stage** (container query, not the window) and folds by
+   priority into "⋯": soundboard, music, settings first; then deafen and share. It never
+   grows wider than the stage.
+2. Below ~1080 px window width the side panel is an overlay drawer (starts closed there).
+3. Below ~860 px the room rail collapses to icons (connection bars + lock stay visible).
+4. Below 640 px: mobile layout (R10).
 
-## Phase 5 — Multiview (multiple simultaneous shares)
+### R1 — Foundations
+- [ ] `Tooltip` component: rendered in a portal, clamped to the viewport, flips below when
+      there's no room above; no hover tooltips on touch. Replace every `data-tooltip`
+      (16 in Room.tsx, more in components) and the hand-rolled SignalStrength tooltip.
+- [ ] Shared positioning primitive (`placeFloating` + `<Floating>`: portal, flip, clamp to
+      viewport) — used by tooltips and the connection card now; the control-bar popovers
+      move onto it in R2 (rebuilding them here would be redone there).
+- [ ] Move the shared CSS (tooltip, keyframes) from the duplicated
+      `apps/web` + `apps/desktop` `globals.css` into `packages/ui`.
+- [ ] Update `STYLE_GUIDE.md` as components land.
 
-- [ ] **State**: `spotlight: {identity, source} | null` →
-      `pinned: Array<{identity, source}>`, capped at **4**, deduped by identity+source.
-- [ ] **Layouts** in the theater area: 1 pin = full; 2 pins = side-by-side (stack
-      vertically if the container is portrait); 3–4 pins = 2×2 grid.
-- [ ] **Switch vs add**: clicking a share (tile or filmstrip) **replaces** the pins
-      with just that one (the common "look at yours now" case). A small pin/+ button
-      on hover — and ctrl/cmd-click — **adds** it as a pane.
-- [ ] **Per-pane controls**: each pane keeps its own dismiss / stream-audio mute /
-      fullscreen via `ScreenShareView`; add a "make solo" button (collapse to 1 pin).
-- [ ] **Auto-dismiss**: generalize the existing effect (Room.tsx 980–997) to filter
-      ended tracks out of the array; exiting theater = clear array.
-- [ ] **New-share toast**: when a share starts while ≥1 pin is active, do NOT steal
-      focus — show a dismissible toast "Dave started sharing" with **View** (replace)
-      and **Add to split** actions.
-- [ ] **Fullscreen the whole multiview container**, not individual panes.
-- [ ] Commit + push, STOP. User verifies on dev server with 3 sharing participants:
-      switch, add, 2×2, one sharer stops (pane auto-removed, layout reflows),
-      fullscreen split view, per-pane audio mute.
+### R2 — Room shell
+- [ ] Split Room.tsx (~1,850 lines) into `RoomRail`, `StageHeader`, `Stage`,
+      `ControlBar`, `SidePanel` while restyling.
+- [ ] Rail: rooms with member avatar stacks + speaking highlight (replaces the nested
+      member lists); user card with avatar, name, signal bars (→ connection card, R8),
+      E2EE lock, settings, logout.
+- [ ] Stage header: room badge, count, Whispers pill, layout switcher (wired in R6/R7),
+      fullscreen, room "⋯" menu (Whispers toggle; delete room for its creator).
+- [ ] Side panel with People (default) / Chat tabs; open state remembered per device.
+- [ ] Control bar docked to the stage, one row, grouped (talk · share/media · panels),
+      responsive rule 1; chat input moves into the Chat tab. **No leave button.**
 
-Stretch:
-- [ ] When `lockStreamQuality` is on, manually call `setVideoDimensions()` on
-      non-pinned publications so filmstrip tiles don't pull full-res streams.
+### R3 — Stage grid & tiles
+- [ ] Fit-to-stage grid (ResizeObserver): columns/rows from participant count and stage
+      size so tiles shrink; below a minimum tile width, fall back to scrolling.
+- [ ] New tile: full-bleed media, name tag with mic state bottom-left, actions top-right
+      (pin, volume, soundbite, "⋯" → mute for me, vote to jail); always visible on touch.
+- [ ] Per-person volume moves to the tile action + People panel slider (Volumes popover
+      removed from the control bar).
 
-## Phase 6 — Desktop app (Tauri): fullscreen + pop-out
+### R4 — Chat
+- [ ] Tile bubbles: max 2, each clamped to 2 lines, older one faded, "+N more · view
+      messages" opens the Chat tab; bubbles can't leave the tile.
+- [ ] Chat tab: every message since joining (client-side only, cleared on room switch),
+      grouped by sender, image thumbnails → full size, unread badge on the tab and the
+      control-bar button.
+- [ ] Composer in the Chat tab with the existing image flow (resize, thumbnail, progress,
+      retry, paste).
 
-The web Fullscreen API behaves differently per webview engine — WKWebView (macOS),
-WebView2 (Windows), webkit2gtk (Linux) — and a pop-out is a separate webview window
-with its own JS context (it cannot share the main window's MediaStream objects).
+### R5 — Overlays & states
+- [ ] Toast stack (top-centre of the stage) for errors, joins, soundboard plays,
+      reconnecting, muted-mic warning — replaces all inline banners.
+- [ ] Vote card docked above the control bar (countdown, tally bar, Jail / Keep).
+- [ ] Jail: header pill with countdown + toast; "Lift" only for the room creator (bug fix).
 
-- [ ] **Fullscreen fallback in Tauri**: feature-detect `document.fullscreenEnabled`;
-      where the element-fullscreen API is missing/broken (notably WKWebView), fall
-      back to `getCurrentWindow().setFullscreen(true)` + a CSS fixed-inset overlay
-      that makes the theater container fill the window. Wire Escape to exit both.
-      Test on all three OSes via the CI build.
-- [ ] **Pop-out window (desktop only)**: "Pop out" button on each pane/share opens a
-      new `WebviewWindow` with a minimal route (e.g. `#/popout?roomId=…&identity=…&source=…`).
-      The popout is its own LiveKit client: it calls `api.joinRoom(roomId)` for a
-      fresh token + e2eeKey and subscribes **video-only** (no mic publish, no audio
-      playback — main window keeps audio, avoids double playback and echo).
-- [ ] Server check (likely none needed): confirm a second join by the same user
-      doesn't kick the first session's presence — if it does, add a
-      `viewer`/`popout` flag to the join endpoint that skips presence/membership.
-- [ ] Popout window chrome: always-on-top toggle, resizable, remembers size/position;
-      closes automatically when the underlying share ends; main window "pop back in".
-- [ ] Web browsers get a cheap variant for free where supported: Document
-      Picture-in-Picture (Chromium) or `video.requestPictureInPicture()` for
-      single-share panes. Optional, behind feature detection.
-- [ ] Commit + push, STOP. User verifies desktop builds (via GitHub Actions artifacts)
-      on mac + windows/linux: fullscreen enter/exit (button, double-click, Escape),
-      pop-out opens and plays, no double audio, close/reopen, share ends while
-      popped out.
+### R6 — Theater mode (was phase 4)
+- [ ] Pinned item fills the stage; the rest in a filmstrip (side on wide stages, bottom on
+      narrow); filmstrip tiles = compact `ParticipantTile`, monitor badge on sharers.
+- [ ] Fullscreen controls show on mouse move and fade after ~2 s (always on touch), cursor
+      hides with them; double-click toggles fullscreen; hide the "X is sharing" bar in
+      fullscreen; Safari `webkit*` fullscreen fallback.
+- [ ] Auto-pin a remote share when nothing is pinned (keep the sound).
 
-## Phase 7 — Verification & release
+### R7 — Multiview (was phase 5)
+- [ ] `pinned: Array<{identity, source}>`, max 4, deduped; 1 = full, 2 = side by side
+      (stacked if portrait), 3–4 = 2×2.
+- [ ] Click a share = replace pins; pin button / ctrl-cmd-click = add a pane; per-pane
+      unpin / fullscreen / stream-audio mute / "make solo"; ended tracks auto-removed.
+- [ ] New share while pinned: toast "Dave started sharing" with View / Add to split.
+- [ ] Fullscreen the whole multiview container. Stretch: with `lockStreamQuality` on,
+      `setVideoDimensions()` for non-pinned publications.
 
-- [ ] Typecheck only locally (`tsc --noEmit`) — all builds happen on the user's dev
-      server / GitHub Actions.
-- [ ] Manual matrix on dev server: Chrome↔Chrome, Chrome↔Firefox, Safari viewer, mobile layout
-      (share button hidden — filmstrip/theater must still work as viewer), E2EE room,
-      each quality preset, `lockStreamQuality` on/off.
-- [ ] Update CHANGELOG.md; bump version.
-- [ ] Desktop release via GitHub Actions tag+release flow (not local builds).
+### R8 — Connection card & server location
+- [ ] Rich connection card on the signal bars (hover; tap on touch) keeping everything
+      today's tooltip shows.
+- [ ] Server location "≈ City — estimated from the server's IP": the API finds its public
+      IP (resolve `DOMAIN`, or LiveKit's STUN result), geolocates it once and caches it,
+      re-checking when the IP changes; `SERVER_CITY` still overrides. Decide at this
+      phase: local GeoIP database (no third-party call) vs a one-off lookup service.
+
+### R9 — Settings dialog
+- [ ] Modal with tabs: Audio, Video & sharing, Hotkeys, Notifications, Privacy,
+      Connection, App & updates — moves `DeviceSettings` sections; full-screen sheet on mobile.
+
+### R10 — Mobile
+- [ ] One-row bar: mic, camera, deafen, chat, "⋯" (share, soundboard, music, settings).
+- [ ] Chat / People as a bottom sheet; rooms as a full-height drawer from ☰; stacked
+      tiles fill the screen.
+
+### R11 — Desktop: fullscreen + pop-out (was phase 6)
+- [ ] Tauri fullscreen fallback where element fullscreen is missing/broken (WKWebView):
+      `getCurrentWindow().setFullscreen(true)` + fixed-inset overlay; Escape exits both.
+- [ ] Pop-out `WebviewWindow` per pane: its own LiveKit client, video-only (no mic, no
+      audio playback). Needs its **own LiveKit identity** (same identity would kick the
+      main window) — and the slice-6 jail webhook must map that identity back to the user
+      so a jailed user can't watch their source room through a pop-out. Join endpoint
+      gets a viewer/pop-out flag that skips presence and applies the punishment check.
+- [ ] Always-on-top toggle, remembers size/position, closes when the share ends, "pop back in".
+- [ ] Web: Document Picture-in-Picture (Chromium) / `requestPictureInPicture()` where available.
+
+### R12 — Verification & release (was phase 7)
+- [ ] Manual matrix: Chrome↔Chrome, Chrome↔Firefox, Safari viewer, mobile, E2EE room,
+      each quality preset, `lockStreamQuality` on/off, narrow windows (responsive rules).
+- [ ] CHANGELOG + version bump; desktop release via the tag flow.
