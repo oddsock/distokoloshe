@@ -11,15 +11,17 @@ const TONES: Record<ToastTone, string> = {
 interface ToastsProps {
   toasts: Toast[];
   onDismiss: (toast: Toast) => void;
+  /** Vertical position; the default clears the stage header */
+  topClass?: string;
 }
 
 /**
  * Toast stack, top-centre of the stage just under the header. It overlays the stage, so
  * nothing shifts when toasts come and go.
  */
-export function Toasts({ toasts, onDismiss }: ToastsProps) {
+export function Toasts({ toasts, onDismiss, topClass = 'top-[4.25rem]' }: ToastsProps) {
   return (
-    <div aria-live="polite" className="absolute top-[4.25rem] inset-x-4 z-30 flex flex-col items-center gap-1.5 pointer-events-none">
+    <div aria-live="polite" className={`absolute ${topClass} inset-x-4 z-30 flex flex-col items-center gap-1.5 pointer-events-none`}>
       {toasts.map((t) => (
         <div
           key={t.id}

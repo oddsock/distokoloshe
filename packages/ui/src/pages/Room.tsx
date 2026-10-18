@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, type MouseEvent, type ReactNode } from 'react';
 import { ConnectionState, Track, RoomEvent } from 'livekit-client';
 import type { RemoteTrackPublication, RemoteParticipant, TrackPublication } from 'livekit-client';
 import { useLiveKitRoom, type RoomConnection } from '../hooks/useLiveKitRoom';
@@ -7,9 +7,9 @@ import { useScreenShare, QUALITY_PRESETS, type ShareQuality } from '../hooks/use
 import { useEvents } from '../hooks/useEvents';
 import { DeviceSettings } from '../components/DeviceSettings';
 import { VolumeSlider } from '../components/VolumeSlider';
-import { ScreenShareView } from '../components/ScreenShareView';
-import { VideoTrackView } from '../components/VideoTrackView';
 import { ParticipantTile, TileAction } from '../components/ParticipantTile';
+import { PinnedView, type PinSource } from '../components/PinnedView';
+import { TheaterLayout } from '../components/TheaterLayout';
 import type { ChatLine } from '../components/ChatBubbles';
 import { ChatPanel, type ChatEntry } from '../components/ChatPanel';
 import { ControlBar } from '../components/ControlBar';
@@ -34,12 +34,13 @@ import { useNoiseCancellation } from '../hooks/useNoiseCancellation';
 import { useAutoUpdate } from '../hooks/useAutoUpdate';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { useElementSize } from '../hooks/useElementSize';
-import { useToasts } from '../hooks/useToasts';
+import { useToasts, type Toast } from '../hooks/useToasts';
+import { useFullscreen } from '../hooks/useFullscreen';
 import { toggleTheme, getTheme, parseParticipantMetadata } from '../lib/utils';
 import { layoutGrid } from '../lib/gridLayout';
 import * as api from '../lib/api';
 import { playSound } from '../lib/sounds';
-import { Mic, MicOff, EarOff, Volume2, VolumeX, X, Scissors, RefreshCw, Ellipsis, Gavel, DoorOpen, UserPlus, AudioLines } from 'lucide-react';
+import { Mic, MicOff, EarOff, Volume2, VolumeX, Scissors, RefreshCw, Ellipsis, Gavel, DoorOpen, UserPlus, AudioLines, Monitor } from 'lucide-react';
 
 const PANEL_PREF_KEY = 'distokoloshe_side_panel';
 
@@ -155,7 +156,12 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
 
   const isSafari = /Safari\//.test(navigator.userAgent) && !/Chrome\//.test(navigator.userAgent);
   const [safariWarnDismissed, setSafariWarnDismissed] = useState(() => localStorage.getItem('safariCodecWarnDismissed') === '1');
-  const [spotlight, setSpotlight] = useState<{ identity: string; source: 'screen_share' | 'camera' } | null>(null);
+  // Theater: the pinned share/camera fills the stage (null = grid)
+  const [pinned, setPinned] = useState<{ identity: string; source: PinSource } | null>(null);
+  // Shares showing when you went back to the grid (track sids) — auto-pin leaves them be
+  const declinedSharesRef = useRef(new Set<string>());
+  const [pinnedEl, setPinnedEl] = useState<HTMLDivElement | null>(null);
+  const pinnedFullscreen = useFullscreen(pinnedEl);
   const [audioTrackVersion, setAudioTrackVersion] = useState(0);
   const [videoTrackVersion, setVideoTrackVersion] = useState(0);
 
@@ -862,7 +868,7 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
     async (roomId: number) => {
       const myJoinId = ++joinIdRef.current;
       setLeftSidebarOpen(false);
-      setSpotlight(null);
+      setPinned(null);
       try {
         await disconnect();
         if (joinIdRef.current !== myJoinId) return; // superseded by newer join
@@ -945,25 +951,57 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
     return () => dismissToast('reconnecting');
   }, [connectionState, pushToast, dismissToast]);
 
-  // Auto-dismiss spotlight when the spotlighted track disappears
-  useEffect(() => {
-    if (!spotlight) return;
-    const { identity, source } = spotlight;
-    if (identity === localParticipant?.identity) {
-      const hasPub = source === 'screen_share' ? !!localScreenShare : Array.from(localParticipant!.trackPublications.values()).some(
-        (pub) => pub.source === Track.Source.Camera && pub.track && !pub.isMuted,
-      );
-      if (!hasPub) setSpotlight(null);
-      return;
-    }
-    const remote = remoteParticipants.find((p) => p.identity === identity);
-    if (!remote) { setSpotlight(null); return; }
+  /** Someone's live screen share or camera, exactly as their tile shows it (null if none). */
+  const findVideoPub = (identity: string, source: PinSource): TrackPublication | null => {
+    const isLocal = !!localParticipant && identity === localParticipant.identity;
+    if (isLocal && source === 'screen_share') return localScreenShare ?? null;
+    const pubs: TrackPublication[] = isLocal
+      ? Array.from(localParticipant!.trackPublications.values())
+      : Array.from(remoteParticipants.find((p) => p.identity === identity)?.trackPublications.values() ?? []);
     const trackSource = source === 'screen_share' ? Track.Source.ScreenShare : Track.Source.Camera;
-    const hasTrack = Array.from(remote.trackPublications.values()).some(
-      (pub) => pub.source === trackSource && pub.isSubscribed && pub.track && !pub.isMuted,
-    );
-    if (!hasTrack) setSpotlight(null);
-  }, [spotlight, localParticipant, localScreenShare, remoteParticipants]);
+    return pubs.find((pub) =>
+      pub.source === trackSource && !!pub.track && (isLocal || pub.isSubscribed) && (source === 'screen_share' || !pub.isMuted),
+    ) ?? null;
+  };
+
+  // Unpin when the pinned video ends. (Runs after every render: cheap, and track changes
+  // don't always change a dependency.)
+  useEffect(() => {
+    if (pinned && !findVideoPub(pinned.identity, pinned.source)) setPinned(null);
+  });
+
+  // Auto-pin: with nothing pinned, someone else's share takes the stage (its sound is left
+  // as it is). Shares that were showing when you went back to the grid stay in the grid.
+  useEffect(() => {
+    if (pinned || connectionState !== ConnectionState.Connected) return;
+    for (const p of remoteParticipants) {
+      const pub = findVideoPub(p.identity, 'screen_share');
+      if (pub && !declinedSharesRef.current.has(pub.trackSid)) {
+        setPinned({ identity: p.identity, source: 'screen_share' });
+        return;
+      }
+    }
+  });
+
+  /** Back to the grid; every share showing now stays out of auto-pin. */
+  const unpin = () => {
+    for (const p of remoteParticipants) {
+      const pub = findVideoPub(p.identity, 'screen_share');
+      if (pub) declinedSharesRef.current.add(pub.trackSid);
+    }
+    setPinned(null);
+  };
+
+  /** What the Theater button pins: a share (others' before yours), else a camera — speakers first. */
+  const theaterPick = ((): { identity: string; source: PinSource } | null => {
+    if (pinned) return pinned;
+    const remoteIds = remoteParticipants.map((p) => p.identity);
+    const everyone = localParticipant ? [...remoteIds, localParticipant.identity] : remoteIds;
+    const share = everyone.find((id) => findVideoPub(id, 'screen_share'));
+    if (share) return { identity: share, source: 'screen_share' };
+    const camera = [...activeSpeakers.filter((id) => remoteIds.includes(id)), ...everyone].find((id) => findVideoPub(id, 'camera'));
+    return camera ? { identity: camera, source: 'camera' } : null;
+  })();
 
   const toggleMuteUser = useCallback((identity: string) => {
     const muted = !isMuted(identity);
@@ -1059,6 +1097,233 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
   const setCtlRef = (key: string) => (el: HTMLButtonElement | null) => { ctlRefs.current[key] = el; };
   const tileMenuItem = 'w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-left text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-600 transition-colors';
 
+  // ── Tiles: one builder each for you and for others, used by the grid and the filmstrip.
+  // `hide` drops the source that's on the stage, so the pinned person's strip tile shows
+  // their other video (or avatar) instead of the same picture twice.
+  type TileOpts = { compact?: boolean; hide?: PinSource };
+  const pinTo = (identity: string, source: PinSource) => () => setPinned({ identity, source });
+
+  const renderLocalTile = ({ compact, hide }: TileOpts = {}) => {
+    if (!localParticipant) return null;
+    const id = localParticipant.identity;
+    return (
+      <ParticipantTile
+        displayName={localParticipant.name || id}
+        isLocal
+        speakingGlow={activeSpeakers.includes(id)}
+        cameraPub={hide === 'camera' ? null : findVideoPub(id, 'camera')}
+        screenSharePub={hide === 'screen_share' ? null : localScreenShare}
+        onPinCamera={pinTo(id, 'camera')}
+        onPinScreenShare={pinTo(id, 'screen_share')}
+        compact={compact}
+        chatLines={bubbleLines.get(id) ?? []}
+        chatColor="blue"
+        onViewMessages={() => showPanelTab('chat')}
+        status={
+          <>
+            {hide === 'screen_share' && <Monitor size={12} className="text-green-400 shrink-0" aria-label="Sharing screen" />}
+            {deafened && <EarOff size={12} className="text-red-400 shrink-0" aria-label="Deafened" />}
+            {micMuted ? <MicOff size={12} className="text-red-400 shrink-0" aria-label="Mic off" /> : <Mic size={12} className="shrink-0" />}
+          </>
+        }
+      />
+    );
+  };
+
+  const renderRemoteTile = (p: RemoteParticipant, { compact, hide }: TileOpts = {}) => {
+    const name = p.name || p.identity;
+    const isBot = isMusicOrPipeBot(p.identity);
+    const userMuted = mutedUsers.has(p.identity);
+    const speaking = activeSpeakers.includes(p.identity);
+    const playingSB = soundboardPlaying?.username === p.identity;
+    const memberEntry = currentRoom ? roomMembers[currentRoom.id]?.find((m) => m.username === p.identity) : null;
+    const isMyWhisperSource = whisperSource?.username === p.identity;
+    const whisperDimmed = isWhispersMode && !isMyWhisperSource;
+    const soundbiteOptOut = !!parseParticipantMetadata(p.metadata).soundbiteOptOut;
+    const cameraPub = hide === 'camera' ? null : findVideoPub(p.identity, 'camera');
+    const screenSharePub = hide === 'screen_share' ? null : findVideoPub(p.identity, 'screen_share');
+    const hasStreamAudio = Array.from(p.trackPublications.values()).some(
+      (pub) => pub.source === Track.Source.ScreenShareAudio && pub.isSubscribed && pub.track,
+    );
+    const streamAudioMuted = hasStreamAudio && mutedStreamAudio.has(p.identity);
+    const botLabel = p.identity === '__music-bot__'
+      ? musicNowPlaying
+      : p.identity.startsWith('__pipe-')
+        ? (getPipeTitle(p.metadata) ?? p.name ?? 'Streaming')
+        : null;
+    const canVote = !activeVote && !currentRoom?.is_jail && memberEntry != null;
+    const volumeOpen = popoverIs('volumeFor', p.identity);
+    const menuOpen = popoverIs('tileMenuFor', p.identity);
+    const durationPickerOpen = memberEntry != null && popoverIs('durationPickerFor', memberEntry.id);
+    const volKey = `vol-${p.identity}`;
+    const moreKey = `more-${p.identity}`;
+
+    return (
+      <ParticipantTile
+        key={p.identity}
+        displayName={name}
+        speakingGlow={(speaking || playingSB) && !userMuted && !whisperDimmed}
+        dimmed={whisperDimmed}
+        isMyWhisperSource={isMyWhisperSource}
+        cameraPub={cameraPub}
+        screenSharePub={screenSharePub}
+        botLabel={botLabel}
+        hasStreamAudio={hasStreamAudio}
+        streamAudioMuted={streamAudioMuted}
+        onToggleStreamAudio={() => toggleStreamAudioMute(p.identity)}
+        onPinCamera={pinTo(p.identity, 'camera')}
+        onPinScreenShare={pinTo(p.identity, 'screen_share')}
+        compact={compact}
+        chatLines={bubbleLines.get(p.identity) ?? []}
+        chatColor="green"
+        onViewMessages={() => showPanelTab('chat')}
+        nameSuffix={playingSB ? (
+          <span className="text-[10px] text-amber-300 truncate shrink-0">🔊 {soundboardPlaying.clipName}</span>
+        ) : undefined}
+        status={
+          <>
+            {hide === 'screen_share' && <Monitor size={12} className="text-green-400 shrink-0" aria-label="Sharing screen" />}
+            {userMuted && <VolumeX size={12} className="text-red-400 shrink-0" aria-label="Muted for you" />}
+            {!isBot && (p.isMicrophoneEnabled
+              ? <Mic size={12} className="shrink-0" />
+              : <MicOff size={12} className="text-red-400 shrink-0" aria-label="Mic off" />)}
+          </>
+        }
+        actionsVisible={volumeOpen || menuOpen || durationPickerOpen}
+        actions={
+          <>
+            <TileAction
+              ref={setCtlRef(volKey)}
+              label={`Volume for ${name}`}
+              onClick={() => setOpenPopover(volumeOpen ? null : { volumeFor: p.identity })}
+            >
+              <Volume2 size={14} />
+            </TileAction>
+            {!isBot && !soundbiteOptOut && (
+              <TileAction label="Save soundbite (last 10 s)" onClick={() => captureSoundbite(p.identity, name)}>
+                <Scissors size={14} />
+              </TileAction>
+            )}
+            <TileAction
+              ref={setCtlRef(moreKey)}
+              label="More"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              onClick={() => setOpenPopover(menuOpen || durationPickerOpen ? null : { tileMenuFor: p.identity })}
+            >
+              <Ellipsis size={14} />
+            </TileAction>
+
+            <Floating anchor={ctlRefs.current[volKey] ?? null} open={volumeOpen} placement="bottom" zClass="z-50">
+              <div onClick={(e) => e.stopPropagation()} className="w-60 bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg p-3">
+                <p className="text-xs font-medium text-zinc-700 dark:text-zinc-200 mb-1 truncate">{name}</p>
+                <VolumeSlider
+                  identity={p.identity}
+                  displayName={name}
+                  volume={getVolume(p.identity)}
+                  onChange={(v) => setVolume(p.identity, v)}
+                  compact
+                />
+                <p className="text-[10px] text-zinc-500 mt-1">Only changes what you hear</p>
+              </div>
+            </Floating>
+            <Floating anchor={ctlRefs.current[moreKey] ?? null} open={menuOpen} placement="bottom" zClass="z-50">
+              <div role="menu" onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg py-1 min-w-[170px]">
+                <button role="menuitem" className={tileMenuItem} onClick={() => { toggleMuteUser(p.identity); setOpenPopover(null); }}>
+                  {userMuted ? <Volume2 size={14} /> : <VolumeX size={14} />}
+                  {userMuted ? 'Unmute for me' : 'Mute for me'}
+                </button>
+                {canVote && (
+                  <button
+                    role="menuitem"
+                    className={`${tileMenuItem} text-red-500 dark:text-red-400`}
+                    onClick={() => setOpenPopover({ durationPickerFor: memberEntry!.id })}
+                  >
+                    <Gavel size={14} />Vote to jail…
+                  </button>
+                )}
+              </div>
+            </Floating>
+            {memberEntry && (
+              <Floating anchor={ctlRefs.current[moreKey] ?? null} open={durationPickerOpen} placement="bottom" zClass="z-50">
+                <div onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg py-1 min-w-[150px]">
+                  <div className="px-3 py-1 text-[10px] text-zinc-500 uppercase">Jail {name} for</div>
+                  {DURATION_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.secs}
+                      onClick={() => handleStartVote(memberEntry.id, opt.secs)}
+                      className="w-full text-left px-3 py-1.5 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-600 transition-colors"
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </Floating>
+            )}
+          </>
+        }
+      />
+    );
+  };
+
+  // ── Theater: the pinned video on the stage, everyone in the filmstrip
+  const pinnedPub = pinned ? findVideoPub(pinned.identity, pinned.source) : null;
+  const dismissToastByUser = (t: Toast) => { t.onDismiss?.(); dismissToast(t.id); };
+  let theater: { main: ReactNode; strip: Array<{ key: string; node: ReactNode }> } | null = null;
+  if (pinned && pinnedPub) {
+    const isLocalPin = pinned.identity === localParticipant?.identity;
+    const pinnedRemote = isLocalPin ? undefined : remoteParticipants.find((p) => p.identity === pinned.identity);
+    const altSource: PinSource = pinned.source === 'screen_share' ? 'camera' : 'screen_share';
+    const hasStreamAudio = !!pinnedRemote && pinned.source === 'screen_share' && Array.from(pinnedRemote.trackPublications.values()).some(
+      (pub) => pub.source === Track.Source.ScreenShareAudio && pub.isSubscribed && pub.track,
+    );
+    const strip: Array<{ key: string; node: ReactNode }> = [];
+    // The pinned person first, then you, then everyone else
+    if (isLocalPin) strip.push({ key: 'local', node: renderLocalTile({ compact: true, hide: pinned.source }) });
+    else if (pinnedRemote) strip.push({ key: pinnedRemote.identity, node: renderRemoteTile(pinnedRemote, { compact: true, hide: pinned.source }) });
+    if (!isLocalPin && localParticipant) strip.push({ key: 'local', node: renderLocalTile({ compact: true }) });
+    for (const rp of remoteParticipants) {
+      if (rp.identity !== pinned.identity) strip.push({ key: rp.identity, node: renderRemoteTile(rp, { compact: true }) });
+    }
+    const stop = (e: MouseEvent) => e.stopPropagation();
+    theater = {
+      strip,
+      main: (
+        <PinnedView
+          publication={pinnedPub}
+          source={pinned.source}
+          name={isLocalPin ? 'You' : (pinnedRemote?.name || pinned.identity)}
+          isLocal={isLocalPin}
+          altPublication={findVideoPub(pinned.identity, altSource)}
+          onPinAlt={() => setPinned({ identity: pinned.identity, source: altSource })}
+          hasStreamAudio={hasStreamAudio}
+          streamAudioMuted={mutedStreamAudio.has(pinned.identity)}
+          onToggleStreamAudio={() => toggleStreamAudioMute(pinned.identity)}
+          onUnpin={unpin}
+          isFullscreen={pinnedFullscreen.isFullscreen}
+          onToggleFullscreen={pinnedFullscreen.toggle}
+          rootRef={setPinnedEl}
+          fullscreenOverlay={
+            // Fullscreen hides the rest of the page — bring the toasts and the vote along
+            <div onDoubleClick={stop}>
+              <Toasts toasts={toasts} onDismiss={dismissToastByUser} topClass="top-3" />
+              {activeVote && (
+                <div className="absolute bottom-4 inset-x-4 z-30 flex justify-center pointer-events-none">
+                  <VoteCard
+                    vote={activeVote}
+                    currentUserId={user.id}
+                    myBallot={myBallot}
+                    onBallot={(yes) => handleCastBallot(activeVote.id, yes)}
+                  />
+                </div>
+              )}
+            </div>
+          }
+        />
+      ),
+    };
+  }
+
   return (
     <div className="h-screen overflow-hidden bg-zinc-100 dark:bg-zinc-900 text-zinc-900 dark:text-white flex">
       <TooltipLayer />
@@ -1105,276 +1370,38 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
           jailed={currentRoom?.is_jail ? [] : jailedUsers}
           releaseBlockedReason={releaseBlockedReason}
           onVoteRelease={handleStartLiftVote}
+          layout={connectionState === ConnectionState.Connected ? (theater ? 'theater' : 'grid') : null}
+          canTheater={!!theaterPick}
+          onLayout={(layout) => {
+            if (layout === 'grid') { if (pinned) unpin(); }
+            else if (theaterPick) setPinned(theaterPick);
+          }}
+          canFullscreen={!!theater}
+          onFullscreen={pinnedFullscreen.toggle}
           onOpenRail={() => setLeftSidebarOpen(true)}
           panelOpen={panelOpen && panelTab === 'people'}
           onTogglePanel={() => togglePanelTab('people')}
         />
 
-        <Toasts toasts={toasts} onDismiss={(t) => { t.onDismiss?.(); dismissToast(t.id); }} />
+        {!pinnedFullscreen.isFullscreen && <Toasts toasts={toasts} onDismiss={dismissToastByUser} />}
 
         {/* Participant area */}
         <div className="flex-1 min-h-0 flex flex-col p-4 md:p-6 pb-24 overflow-y-auto">
-          {/* Spotlighted view */}
-          {spotlight && (() => {
-            const { identity, source } = spotlight;
-            const isLocal = identity === localParticipant?.identity;
-            const remote = !isLocal ? remoteParticipants.find((p) => p.identity === identity) : null;
-            const name = isLocal ? 'You' : (remote?.name || remote?.identity || identity);
-
-            // Helper to find a track by source
-            const findPub = (src: 'screen_share' | 'camera') => {
-              if (src === 'screen_share') {
-                if (isLocal) return localScreenShare || null;
-                if (!remote) return null;
-                return Array.from(remote.trackPublications.values()).find(
-                  (pub) => pub.source === Track.Source.ScreenShare && pub.isSubscribed && pub.track,
-                ) || null;
-              }
-              if (isLocal && localParticipant) {
-                return Array.from(localParticipant.trackPublications.values()).find(
-                  (pub) => pub.source === Track.Source.Camera && pub.track && !pub.isMuted,
-                ) || null;
-              }
-              if (remote) {
-                return Array.from(remote.trackPublications.values()).find(
-                  (pub) => pub.source === Track.Source.Camera && pub.isSubscribed && pub.track && !pub.isMuted,
-                ) || null;
-              }
-              return null;
-            };
-
-            const mainPub = findPub(source);
-            const altSource = source === 'screen_share' ? 'camera' as const : 'screen_share' as const;
-            const altPub = findPub(altSource);
-
-            // Check if remote participant has screen share audio
-            const hasScreenShareAudio = !isLocal && remote
-              ? Array.from(remote.trackPublications.values()).some(
-                  (pub) => pub.source === Track.Source.ScreenShareAudio && pub.isSubscribed && pub.track,
-                )
-              : false;
-            const screenShareAudioMuted = !isLocal
-              ? mutedStreamAudio.has(identity)
-              : false;
-
-            if (!mainPub) return null;
-            return (
-              <div className="mb-4">
-                <div className="relative group/spotlight">
-                  {source === 'screen_share' ? (
-                    <ScreenShareView
-                      publication={mainPub}
-                      participantName={name}
-                      hasAudio={hasScreenShareAudio}
-                      audioMuted={screenShareAudioMuted}
-                      onToggleAudioMute={() => toggleStreamAudioMute(identity)}
-                      onDismiss={() => setSpotlight(null)}
-                    />
-                  ) : (
-                    <div className="bg-black rounded-xl overflow-hidden">
-                      <VideoTrackView publication={mainPub} mirror={isLocal} fit="contain" className="max-h-[70vh]" />
-                    </div>
-                  )}
-                  {/* Dismiss — bottom-left overlay (camera spotlight only; screen share has it in ScreenShareView) */}
-                  {source !== 'screen_share' && (
-                    <button
-                      onClick={() => setSpotlight(null)}
-                      className="absolute bottom-2 left-2 z-20 p-1.5 rounded-lg bg-black/60 text-white hover:bg-black/80 transition-colors opacity-0 group-hover/spotlight:opacity-100"
-                      data-tooltip="Dismiss"
-                    >
-                      <X size={14} />
-                    </button>
-                  )}
-                  {/* PIP of alternate source — click to swap */}
-                  {altPub && (
-                    <button
-                      onClick={() => setSpotlight({ identity, source: altSource })}
-                      className="absolute bottom-3 right-3 w-40 h-24 rounded-lg overflow-hidden border-2 border-zinc-500 hover:border-indigo-500 transition-colors shadow-lg bg-black z-10"
-                      data-tooltip={`Switch to ${altSource === 'screen_share' ? 'screen share' : 'camera'}`}
-                    >
-                      <VideoTrackView
-                        publication={altPub}
-                        mirror={isLocal && altSource === 'camera'}
-                        fit={altSource === 'screen_share' ? 'contain' : 'cover'}
-                      />
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })()}
-
           {connectionState === ConnectionState.Connected && (
             <div ref={setGridEl} className="relative flex-1 min-h-[200px]">
-              <div className="absolute inset-0 overflow-y-auto">
-                <div
-                  className={`grid gap-3 justify-center p-1 ${gridLayout.scroll ? 'content-start' : 'h-full content-center'}`}
-                  style={{ gridTemplateColumns: gridColumns }}
-                >
-                  {/* Local participant */}
-                  {localParticipant && (
-                    <ParticipantTile
-                      displayName={localParticipant.name || localParticipant.identity}
-                      isLocal
-                      speakingGlow={activeSpeakers.includes(localParticipant.identity)}
-                      cameraPub={Array.from(localParticipant.trackPublications.values()).find(
-                        (pub) => pub.source === Track.Source.Camera && pub.track && !pub.isMuted,
-                      )}
-                      screenSharePub={localScreenShare}
-                      onSpotlightCamera={() => setSpotlight({ identity: localParticipant.identity, source: 'camera' })}
-                      onSpotlightScreenShare={() => setSpotlight({ identity: localParticipant.identity, source: 'screen_share' })}
-                      chatLines={bubbleLines.get(localParticipant.identity) ?? []}
-                      chatColor="blue"
-                      onViewMessages={() => showPanelTab('chat')}
-                      status={
-                        <>
-                          {deafened && <EarOff size={12} className="text-red-400 shrink-0" aria-label="Deafened" />}
-                          {micMuted ? <MicOff size={12} className="text-red-400 shrink-0" aria-label="Mic off" /> : <Mic size={12} className="shrink-0" />}
-                        </>
-                      }
-                    />
-                  )}
-
-                  {/* Remote participants */}
-                  {remoteParticipants.map((p) => {
-                    const name = p.name || p.identity;
-                    const isBot = isMusicOrPipeBot(p.identity);
-                    const userMuted = mutedUsers.has(p.identity);
-                    const speaking = activeSpeakers.includes(p.identity);
-                    const playingSB = soundboardPlaying?.username === p.identity;
-                    const memberEntry = currentRoom ? roomMembers[currentRoom.id]?.find((m) => m.username === p.identity) : null;
-                    const isMyWhisperSource = whisperSource?.username === p.identity;
-                    const whisperDimmed = isWhispersMode && !isMyWhisperSource;
-                    const soundbiteOptOut = !!parseParticipantMetadata(p.metadata).soundbiteOptOut;
-                    const cameraPub = Array.from(p.trackPublications.values()).find(
-                      (pub) => pub.source === Track.Source.Camera && pub.isSubscribed && pub.track && !pub.isMuted,
-                    );
-                    const screenSharePub = Array.from(p.trackPublications.values()).find(
-                      (pub) => pub.source === Track.Source.ScreenShare && pub.isSubscribed && pub.track,
-                    );
-                    const hasStreamAudio = Array.from(p.trackPublications.values()).some(
-                      (pub) => pub.source === Track.Source.ScreenShareAudio && pub.isSubscribed && pub.track,
-                    );
-                    const streamAudioMuted = hasStreamAudio && mutedStreamAudio.has(p.identity);
-                    const botLabel = p.identity === '__music-bot__'
-                      ? musicNowPlaying
-                      : p.identity.startsWith('__pipe-')
-                        ? (getPipeTitle(p.metadata) ?? p.name ?? 'Streaming')
-                        : null;
-                    const canVote = !activeVote && !currentRoom?.is_jail && memberEntry != null;
-                    const volumeOpen = popoverIs('volumeFor', p.identity);
-                    const menuOpen = popoverIs('tileMenuFor', p.identity);
-                    const durationPickerOpen = memberEntry != null && popoverIs('durationPickerFor', memberEntry.id);
-                    const volKey = `vol-${p.identity}`;
-                    const moreKey = `more-${p.identity}`;
-
-                    return (
-                      <ParticipantTile
-                        key={p.identity}
-                        displayName={name}
-                        speakingGlow={(speaking || playingSB) && !userMuted && !whisperDimmed}
-                        dimmed={whisperDimmed}
-                        isMyWhisperSource={isMyWhisperSource}
-                        cameraPub={cameraPub}
-                        screenSharePub={screenSharePub}
-                        botLabel={botLabel}
-                        hasStreamAudio={hasStreamAudio}
-                        streamAudioMuted={streamAudioMuted}
-                        onToggleStreamAudio={() => toggleStreamAudioMute(p.identity)}
-                        onSpotlightCamera={() => setSpotlight({ identity: p.identity, source: 'camera' })}
-                        onSpotlightScreenShare={() => setSpotlight({ identity: p.identity, source: 'screen_share' })}
-                        chatLines={bubbleLines.get(p.identity) ?? []}
-                        chatColor="green"
-                        onViewMessages={() => showPanelTab('chat')}
-                        nameSuffix={playingSB ? (
-                          <span className="text-[10px] text-amber-300 truncate shrink-0">🔊 {soundboardPlaying.clipName}</span>
-                        ) : undefined}
-                        status={
-                          <>
-                            {userMuted && <VolumeX size={12} className="text-red-400 shrink-0" aria-label="Muted for you" />}
-                            {!isBot && (p.isMicrophoneEnabled
-                              ? <Mic size={12} className="shrink-0" />
-                              : <MicOff size={12} className="text-red-400 shrink-0" aria-label="Mic off" />)}
-                          </>
-                        }
-                        actionsVisible={volumeOpen || menuOpen || durationPickerOpen}
-                        actions={
-                          <>
-                            <TileAction
-                              ref={setCtlRef(volKey)}
-                              label={`Volume for ${name}`}
-                              onClick={() => setOpenPopover(volumeOpen ? null : { volumeFor: p.identity })}
-                            >
-                              <Volume2 size={14} />
-                            </TileAction>
-                            {!isBot && !soundbiteOptOut && (
-                              <TileAction label="Save soundbite (last 10 s)" onClick={() => captureSoundbite(p.identity, name)}>
-                                <Scissors size={14} />
-                              </TileAction>
-                            )}
-                            <TileAction
-                              ref={setCtlRef(moreKey)}
-                              label="More"
-                              aria-haspopup="menu"
-                              aria-expanded={menuOpen}
-                              onClick={() => setOpenPopover(menuOpen || durationPickerOpen ? null : { tileMenuFor: p.identity })}
-                            >
-                              <Ellipsis size={14} />
-                            </TileAction>
-
-                            <Floating anchor={ctlRefs.current[volKey] ?? null} open={volumeOpen} placement="bottom" zClass="z-50">
-                              <div onClick={(e) => e.stopPropagation()} className="w-60 bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg p-3">
-                                <p className="text-xs font-medium text-zinc-700 dark:text-zinc-200 mb-1 truncate">{name}</p>
-                                <VolumeSlider
-                                  identity={p.identity}
-                                  displayName={name}
-                                  volume={getVolume(p.identity)}
-                                  onChange={(v) => setVolume(p.identity, v)}
-                                  compact
-                                />
-                                <p className="text-[10px] text-zinc-500 mt-1">Only changes what you hear</p>
-                              </div>
-                            </Floating>
-                            <Floating anchor={ctlRefs.current[moreKey] ?? null} open={menuOpen} placement="bottom" zClass="z-50">
-                              <div role="menu" onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg py-1 min-w-[170px]">
-                                <button role="menuitem" className={tileMenuItem} onClick={() => { toggleMuteUser(p.identity); setOpenPopover(null); }}>
-                                  {userMuted ? <Volume2 size={14} /> : <VolumeX size={14} />}
-                                  {userMuted ? 'Unmute for me' : 'Mute for me'}
-                                </button>
-                                {canVote && (
-                                  <button
-                                    role="menuitem"
-                                    className={`${tileMenuItem} text-red-500 dark:text-red-400`}
-                                    onClick={() => setOpenPopover({ durationPickerFor: memberEntry!.id })}
-                                  >
-                                    <Gavel size={14} />Vote to jail…
-                                  </button>
-                                )}
-                              </div>
-                            </Floating>
-                            {memberEntry && (
-                              <Floating anchor={ctlRefs.current[moreKey] ?? null} open={durationPickerOpen} placement="bottom" zClass="z-50">
-                                <div onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg py-1 min-w-[150px]">
-                                  <div className="px-3 py-1 text-[10px] text-zinc-500 uppercase">Jail {name} for</div>
-                                  {DURATION_OPTIONS.map((opt) => (
-                                    <button
-                                      key={opt.secs}
-                                      onClick={() => handleStartVote(memberEntry.id, opt.secs)}
-                                      className="w-full text-left px-3 py-1.5 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-600 transition-colors"
-                                    >
-                                      {opt.label}
-                                    </button>
-                                  ))}
-                                </div>
-                              </Floating>
-                            )}
-                          </>
-                        }
-                      />
-                    );
-                  })}
+              {theater ? (
+                <TheaterLayout width={gridSize.width} height={gridSize.height} main={theater.main} strip={theater.strip} />
+              ) : (
+                <div className="absolute inset-0 overflow-y-auto">
+                  <div
+                    className={`grid gap-3 justify-center p-1 ${gridLayout.scroll ? 'content-start' : 'h-full content-center'}`}
+                    style={{ gridTemplateColumns: gridColumns }}
+                  >
+                    {renderLocalTile()}
+                    {remoteParticipants.map((p) => renderRemoteTile(p))}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
 

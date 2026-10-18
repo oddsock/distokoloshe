@@ -145,8 +145,8 @@ Responsive rules (apply in every phase):
       Settings gear waits for the settings dialog (R9).
 - [x] `StageHeader`: room badge, count, Whispers pill, room "⋯" menu (on `<Floating>`)
       with Whispers on/off and **Delete room…** for its creator (new — the server endpoint
-      existed, the client never had a button); People toggle at every width. Layout
-      switcher + fullscreen arrive with R6.
+      existed, the client never had a button); People toggle at every width. (Layout
+      switcher + fullscreen added in R6.)
 - [x] `SidePanel` + `PeopleList` (replaces `UserList`): In this room (speaking / mic off /
       mute-for-me toggle, moved from the rail) · Elsewhere (with room name) · Offline.
       Column from 1080 px, open by default, remembered; overlay drawer below, starts closed.
@@ -175,8 +175,8 @@ Responsive rules (apply in every phase):
 - [x] Folding reverted after testing (shipped with R3): buttons folded, then snapped back
       once the rail/panel collapsed and the stage widened. No "⋯"; the row always shows
       everything (wraps only as a fallback). `useElementWidth` removed.
-- [x] Done in R4: `ControlBar` extracted once chat left the bar. (`Stage` extraction
-      folds into R6, which reworks the stage for theater mode.)
+- [x] Done in R4: `ControlBar` extracted once chat left the bar. (Stage extraction was
+      done in R6 as `TheaterLayout` / `PinnedView` + tile builders.)
 - [x] Released as 2.3.3. User tests: bar centred on the stage with the People panel open;
       narrow the window → buttons fold into "⋯" (two steps), the menu lists exactly what
       folded, each item opens its popover next to "⋯"; every popover stays on screen at the
@@ -235,13 +235,26 @@ User chose (2026-10-18): the message box moves into the Chat tab; the bar gets a
       pill counts down, the room's orange pill lists them; Vote to release → card →
       passes → they're back; failed and time-ran-out-mid-vote cases; creator has no Lift.
 
-### R6 — Theater mode (was phase 4)
-- [ ] Pinned item fills the stage; the rest in a filmstrip (side on wide stages, bottom on
-      narrow); filmstrip tiles = compact `ParticipantTile`, monitor badge on sharers.
-- [ ] Fullscreen controls show on mouse move and fade after ~2 s (always on touch), cursor
-      hides with them; double-click toggles fullscreen; hide the "X is sharing" bar in
-      fullscreen; Safari `webkit*` fullscreen fallback.
-- [ ] Auto-pin a remote share when nothing is pinned (keep the sound).
+### R6 — Theater mode (was phase 4) (2.3.7)
+- [x] Pinned item fills the stage; the rest in a filmstrip (side on wide stages, bottom on
+      narrow); filmstrip tiles = compact `ParticipantTile`, monitor badge on the pinned
+      sharer's strip tile. Replaces the spotlight that sat above the grid.
+- [x] Pin from a tile (click the media or the new Pin action) or the header's Grid /
+      Theater switch; unpin with ✕ or Grid.
+- [x] Fullscreen = the pinned view (header button, tile action, double-click). Controls
+      and cursor fade after 2 s still (always on touch); no "X is sharing" bar at all now;
+      Safari `webkit*` fallback (`lib/fullscreen.ts`); toasts + vote card shown inside it.
+- [x] Auto-pin a remote share when nothing is pinned (sound untouched); going back to the
+      grid keeps the shares showing then out of auto-pin, a new share can auto-pin.
+- [x] Stage extraction, as far as it pays: `TheaterLayout` + `PinnedView` components;
+      tiles built by `renderLocalTile` / `renderRemoteTile` in Room (grid and strip share
+      them). `ScreenShareView` removed.
+- [x] Released as 2.3.7. User tests: someone shares → it pins itself; strip at the side
+      (wide window) and bottom (narrow); click a strip tile / its Pin → it takes the stage;
+      PIP swaps share ↔ camera; ✕ / Grid → back to the grid and that share doesn't re-pin,
+      a new share does; Theater button with only cameras; fullscreen via button, tile
+      action and double-click — controls + cursor fade, a toast and a vote still show;
+      Safari fullscreen; stream-audio mute on the pinned share.
 
 ### R7 — Multiview (was phase 5)
 - [ ] `pinned: Array<{identity, source}>`, max 4, deduped; 1 = full, 2 = side by side

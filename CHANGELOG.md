@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.3.7 — Theater Mode (room redesign R6)
+
+- Theater mode: pin a screen share or camera and it fills the call area, with everyone else in a strip down the side (or along the bottom in narrow windows). Pin by clicking a tile's video or its new pin button, or use the Grid / Theater switch in the room header; ✕ or Grid goes back. This replaces the old spotlight above the grid
+- When someone starts sharing and nothing is pinned, their share is pinned for you automatically. Going back to the grid keeps it there; a new share will pin itself again
+- The camera of whoever is pinned shows as a small picture in the corner — click it to swap between their screen and camera
+- Fullscreen (header button, the button on the pinned video, or double-click): the controls and the mouse pointer fade after two seconds of no movement, and toasts and votes still show. Works in Safari too
+- The "… is sharing their screen" bar above shares is gone — the name sits in the corner instead
+
 ## 2.3.6 — Toasts & Votes to Release (room redesign R5)
 
 - Notices are now small toasts at the top of the call area instead of banners that pushed the video down: errors, someone joining, soundboard plays, vote results, jail news, "Reconnecting…" and "You're muted" (the last two stay until the situation clears)

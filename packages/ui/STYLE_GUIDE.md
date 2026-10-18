@@ -374,6 +374,29 @@ picks the column count that makes 16:9 tiles largest. Columns are fixed-width
 (`repeat(n, Wpx)`, `gap-3`, `p-1` so speaking rings aren't clipped); below a 180px tile it
 switches to scrolling.
 
+### Theater — `TheaterLayout`, `PinnedView`
+
+One pinned video fills the same measured region; everyone else sits in a filmstrip —
+a side column (`w-[clamp(160px,18%,240px)]`) when the region is ≥720px wide and wider than
+1.25:1, otherwise a bottom row (`h-[clamp(96px,22%,132px)]`, tiles `h-full aspect-video`).
+Strip tiles are `ParticipantTile compact` (no camera PIP); the pinned person comes first
+with the pinned source hidden (`hide`), so their tile shows their other video or avatar
+plus a green `Monitor` in the name tag when it's their share that's on the stage.
+
+`PinnedView`: black, `rounded-xl` (square in fullscreen), media `object-contain`; name tag
+bottom-left ("Sam · screen"), `TileAction`s top-right (stream audio, fullscreen, unpin),
+the other video as a PIP bottom-right (click to swap). Pin with a tile's media or its Pin
+action; the header's Grid / Theater switch picks something to pin (a share first, then a
+speaker's camera). Remote shares auto-pin while nothing is pinned; going back to the grid
+keeps the shares showing at that moment out of auto-pin.
+
+**Fullscreen** is the pinned view only (header button, the tile action, or double-click).
+Use `lib/fullscreen.ts` (`enterFullscreen` / `getFullscreenElement` /
+`onFullscreenChange`, which cover Safari's webkit API; on iPhone the video itself goes
+fullscreen) or `useFullscreen(el)`. In fullscreen the controls and cursor fade after 2 s
+still (`useIdle`; always shown on touch), and toasts plus the vote card render inside the
+pinned view, since nothing else on the page is visible.
+
 ### Participant Tile
 
 Full-bleed 16:9 media (`rounded-xl overflow-hidden`), no card padding or footer:
@@ -381,9 +404,10 @@ Full-bleed 16:9 media (`rounded-xl overflow-hidden`), no card padding or footer:
   with status icons (`size={12}`; mic off / deafened / muted-for-me in `text-red-400`).
 - **Actions** top-right: `TileAction` buttons (`w-7 h-7 bg-black/55`, red when "on"), shown
   on hover/focus, always on touch (`[@media(hover:none)]:opacity-100`), and kept visible
-  while one of their popovers is open. Their container stops click propagation so actions
-  never spotlight the tile. Tile popovers open with `placement="bottom"`.
-- **Camera PIP** bottom-right when a share fills the tile; "Your source" badge top-left.
+  while one of their popovers is open. A Pin action leads whenever the tile shows video.
+  Their container stops click propagation so actions never pin the tile. Tile popovers
+  open with `placement="bottom"`.
+- **Camera PIP** bottom-right when a share fills the tile (not on compact strip tiles).
 - Tile is a size container (`@container`) — scale avatars/text with `@max-[260px]:` etc.
 
 ### Control Bar

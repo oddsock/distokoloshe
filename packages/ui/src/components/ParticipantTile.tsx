@@ -1,6 +1,6 @@
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import type { TrackPublication } from 'livekit-client';
-import { Music, Volume2, VolumeX } from 'lucide-react';
+import { Music, Pin, Volume2, VolumeX } from 'lucide-react';
 import { VideoTrackView } from './VideoTrackView';
 import { ChatBubbles, type ChatLine } from './ChatBubbles';
 
@@ -47,8 +47,11 @@ interface ParticipantTileProps {
   hasStreamAudio?: boolean;
   streamAudioMuted?: boolean;
   onToggleStreamAudio?: () => void;
-  onSpotlightCamera?: () => void;
-  onSpotlightScreenShare?: () => void;
+  /** Pin this camera / share to the stage (theater) */
+  onPinCamera?: () => void;
+  onPinScreenShare?: () => void;
+  /** Filmstrip tile: no camera PIP */
+  compact?: boolean;
   /** Recent chat lines shown as bubbles inside the tile */
   chatLines: ChatLine[];
   chatColor: 'blue' | 'green';
@@ -66,7 +69,7 @@ interface ParticipantTileProps {
 
 /**
  * One participant: full-bleed media (screen share > camera > bot marquee > avatar) with
- * the name tag bottom-left and actions top-right. Sized by the grid; always 16:9.
+ * the name tag bottom-left and actions top-right. Sized by the grid or filmstrip; always 16:9.
  */
 export function ParticipantTile({
   displayName,
@@ -80,8 +83,9 @@ export function ParticipantTile({
   hasStreamAudio,
   streamAudioMuted,
   onToggleStreamAudio,
-  onSpotlightCamera,
-  onSpotlightScreenShare,
+  onPinCamera,
+  onPinScreenShare,
+  compact,
   chatLines,
   chatColor,
   onViewMessages,
@@ -91,10 +95,10 @@ export function ParticipantTile({
   actionsVisible,
 }: ParticipantTileProps) {
   // Screen share always wins the main area — it's the thing worth watching. The camera
-  // (if also on) becomes a small PIP; clicking the main area spotlights whichever source
-  // occupies it, the PIP spotlights the camera.
-  const hasBoth = !!screenSharePub && !!cameraPub;
-  const mainClick = screenSharePub ? onSpotlightScreenShare : cameraPub ? onSpotlightCamera : undefined;
+  // (if also on) becomes a small PIP; clicking the main area (or Pin) pins whichever source
+  // occupies it, the PIP pins the camera.
+  const hasBoth = !!screenSharePub && !!cameraPub && !compact;
+  const mainClick = screenSharePub ? onPinScreenShare : cameraPub ? onPinCamera : undefined;
   const showStreamAudio = !!screenSharePub && !!hasStreamAudio && !!onToggleStreamAudio;
 
   return (
@@ -142,7 +146,7 @@ export function ParticipantTile({
         {/* Camera PIP — only when a share is also occupying the main area */}
         {hasBoth && (
           <button
-            onClick={(e) => { e.stopPropagation(); onSpotlightCamera?.(); }}
+            onClick={(e) => { e.stopPropagation(); onPinCamera?.(); }}
             className="absolute bottom-2 right-2 w-1/4 min-w-[3.5rem] aspect-video rounded-md overflow-hidden border-2 border-white/30 hover:border-indigo-400 transition-colors shadow-lg bg-black z-10"
             data-tooltip="Switch to camera"
             aria-label="Switch to camera"
@@ -159,14 +163,19 @@ export function ParticipantTile({
           {nameSuffix}
         </div>
 
-        {/* Actions — clicks here must not spotlight the tile */}
-        {(actions || showStreamAudio) && (
+        {/* Actions — clicks here must not pin the tile */}
+        {(actions || showStreamAudio || mainClick) && (
           <div
             className={`absolute top-2 right-2 z-10 flex gap-1 transition-opacity [@media(hover:none)]:opacity-100 ${
               actionsVisible ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
             }`}
             onClick={(e) => e.stopPropagation()}
           >
+            {mainClick && (
+              <TileAction label="Pin to stage" onClick={mainClick}>
+                <Pin size={14} />
+              </TileAction>
+            )}
             {showStreamAudio && (
               <TileAction
                 label={streamAudioMuted ? 'Unmute stream audio' : 'Mute stream audio'}

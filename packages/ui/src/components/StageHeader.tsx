@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Ellipsis, Users, Menu, Gavel } from 'lucide-react';
+import { Ellipsis, Users, Menu, Gavel, LayoutGrid, PanelRight, Maximize2 } from 'lucide-react';
 import type * as api from '../lib/api';
 import { formatCountdown, getRoomInitials, secondsUntil } from '../lib/utils';
 import { useNow } from '../hooks/useNow';
@@ -31,6 +31,14 @@ interface StageHeaderProps {
   /** Why a release vote can't start right now (shown in the list), or null */
   releaseBlockedReason: string | null;
   onVoteRelease: (punishmentId: number) => void;
+  /** Grid / Theater switch (shown once connected) */
+  layout: 'grid' | 'theater' | null;
+  /** Theater needs something to pin (a share or a camera) */
+  canTheater: boolean;
+  onLayout: (layout: 'grid' | 'theater') => void;
+  /** Fullscreen the pinned item (theater only) */
+  canFullscreen: boolean;
+  onFullscreen: () => void;
   onOpenRail: () => void;
   panelOpen: boolean;
   onTogglePanel: () => void;
@@ -114,6 +122,9 @@ export function StageHeader(props: StageHeaderProps) {
 
   const iconButton = 'p-1.5 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700 focus-visible:ring-2 focus-visible:ring-indigo-500 shrink-0';
   const menuItem = 'w-full text-left px-3 py-1.5 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-600 transition-colors';
+  const segButton = 'w-8 h-7 rounded-md flex items-center justify-center transition-colors focus-visible:ring-2 focus-visible:ring-indigo-500';
+  const segOn = 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-sm';
+  const segOff = 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200';
 
   return (
     <header className="h-14 flex items-center gap-2 md:gap-3 px-3 md:px-6 border-b border-zinc-200 dark:border-zinc-700 bg-white/50 dark:bg-zinc-800/50 shrink-0">
@@ -161,6 +172,36 @@ export function StageHeader(props: StageHeaderProps) {
             />
           </Floating>
         </>
+      )}
+
+      {props.layout && (
+        <div role="group" aria-label="Stage layout" className="hidden sm:inline-flex p-0.5 rounded-lg bg-zinc-200/70 dark:bg-zinc-700/60 shrink-0">
+          <button
+            onClick={() => props.onLayout('grid')}
+            aria-label="Grid"
+            aria-pressed={props.layout === 'grid'}
+            data-tooltip="Grid — everyone the same size"
+            className={`${segButton} ${props.layout === 'grid' ? segOn : segOff}`}
+          >
+            <LayoutGrid size={15} />
+          </button>
+          <button
+            onClick={() => { if (props.canTheater) props.onLayout('theater'); }}
+            aria-label="Theater"
+            aria-pressed={props.layout === 'theater'}
+            aria-disabled={!props.canTheater}
+            data-tooltip={props.canTheater ? 'Theater — one pinned, the rest in a strip' : 'Theater — needs someone sharing or on camera'}
+            className={`${segButton} ${props.layout === 'theater' ? segOn : segOff} ${props.canTheater ? '' : 'opacity-40 cursor-not-allowed'}`}
+          >
+            <PanelRight size={15} />
+          </button>
+        </div>
+      )}
+
+      {props.canFullscreen && (
+        <button onClick={props.onFullscreen} className={iconButton} aria-label="Fullscreen" data-tooltip="Fullscreen (or double-click the stage)">
+          <Maximize2 size={18} />
+        </button>
       )}
 
       {hasMenu && (
