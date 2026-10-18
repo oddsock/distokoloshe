@@ -1413,6 +1413,7 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
         <PinnedStage
           panes={panes}
           isFullscreen={stageFullscreen.isFullscreen}
+          windowFullscreen={stageFullscreen.windowMode}
           onToggleFullscreen={stageFullscreen.toggle}
           rootRef={setStageEl}
           fullscreenOverlay={

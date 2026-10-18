@@ -25,6 +25,7 @@ export default defineConfig({
         '@tauri-apps/api/app',
         '@tauri-apps/api/path',
         '@tauri-apps/api/event',
+        '@tauri-apps/api/window',
       ],
     },
   },

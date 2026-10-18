@@ -4,6 +4,7 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
+    "core:window:allow-set-fullscreen",
     "opener:default",
     "global-shortcut:allow-register",
     "global-shortcut:allow-unregister",

@@ -1,5 +1,7 @@
 // Element fullscreen across browsers: the standard API, Safari's webkit-prefixed one, and
-// iPhone Safari, which can only fullscreen a <video> (in the system player).
+// iPhone Safari, which can only fullscreen a <video> (in the system player). The desktop
+// app doesn't use element fullscreen at all (unreliable in the macOS webview): it makes
+// the window fullscreen and pins the element over it — see useFullscreen.
 
 type WebkitDocument = Document & {
   webkitFullscreenElement?: Element | null;
@@ -46,4 +48,39 @@ export function onFullscreenChange(cb: () => void): () => void {
     document.removeEventListener('fullscreenchange', cb);
     document.removeEventListener('webkitfullscreenchange', cb);
   };
+}
+
+export function isTauri(): boolean {
+  return '__TAURI_INTERNALS__' in window;
+}
+
+async function appWindow() {
+  const { getCurrentWindow } = await import('@tauri-apps/api/window');
+  return getCurrentWindow();
+}
+
+/** Desktop app: whether the window is fullscreen. */
+export async function isWindowFullscreen(): Promise<boolean> {
+  try {
+    return await (await appWindow()).isFullscreen();
+  } catch {
+    return false;
+  }
+}
+
+/** Desktop app: make the window fullscreen, or not. */
+export async function setWindowFullscreen(on: boolean): Promise<void> {
+  try {
+    await (await appWindow()).setFullscreen(on);
+  } catch (err) {
+    console.warn('Window fullscreen failed:', err);
+  }
+}
+
+/** Desktop app: call `cb` when the window leaves fullscreen (e.g. the green button). Returns the unsubscribe. */
+export async function onWindowFullscreenExit(cb: () => void): Promise<() => void> {
+  const win = await appWindow();
+  return win.onResized(async () => {
+    if (!(await win.isFullscreen())) cb();
+  });
 }

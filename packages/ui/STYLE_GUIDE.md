@@ -401,7 +401,11 @@ starts while something is pinned gets a toast with **View** / **Add to split** (
 **Fullscreen** is the whole pinned stage (header button, a pane's action, or double-click).
 Use `lib/fullscreen.ts` (`enterFullscreen` / `getFullscreenElement` /
 `onFullscreenChange`, which cover Safari's webkit API; on iPhone the video itself goes
-fullscreen) or `useFullscreen(el)`. In fullscreen the controls and cursor fade after 2 s
+fullscreen) or `useFullscreen(el)`. In the desktop app `useFullscreen` doesn't use element
+fullscreen (unreliable in the macOS webview): the window goes fullscreen and the stage is
+pinned over it (`windowMode` → `fixed inset-0 z-[55]`); Escape or leaving the window's
+fullscreen ends it, and a window that was already fullscreen is left that way. Panes get a
+**Picture in picture** action where the browser has the video PiP API. In fullscreen the controls and cursor fade after 2 s
 still (`useIdle`; always shown on touch), and toasts plus the vote card render inside the
 pinned view, since nothing else on the page is visible.
 

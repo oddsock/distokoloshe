@@ -1,7 +1,9 @@
 # Changelog
 
-## Unreleased
+## 2.3.11 — Fullscreen in the Desktop App, Picture-in-Picture (room redesign R11a)
 
+- Desktop app: fullscreen now uses the app window's own fullscreen, with the pinned share or camera filling it, instead of the webview's element fullscreen (which the macOS webview doesn't handle dependably). Escape or the window's green button leaves it; if the window was already fullscreen it stays that way
+- In browsers that support it (Chrome, Edge, Safari), a pinned share or camera can pop out into a floating picture-in-picture window, so you can keep watching while you use other apps
 - Quieter web logs: the container healthcheck uses a new `/healthz` endpoint over plain HTTP instead of following the HTTPS redirect (which logged a 301, a page load and two "unknown process exited" notices every 30 seconds), and the browser's `/favicon.ico` probe no longer logs an error
 
 ## 2.3.10 — Settings Window (room redesign R9)

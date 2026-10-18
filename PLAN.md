@@ -305,14 +305,28 @@ User chose (2026-10-18): the message box moves into the Chat tab; the bar gets a
       cancels without closing); noise cancellation toggle + engine; sound pack + preview;
       soundbite opt-out; lock quality; theme; phone layout; Tab/Escape/backdrop.
 
-### R10 — Mobile
+### R10 — Mobile — skipped for now (user, 2026-10-18: "should be ok with what we have")
+Open question if it's picked up again: the user's "never hide buttons" rule came from
+desktop panels collapsing — ask whether phones may use a "⋯" overflow or should wrap.
 - [ ] One-row bar: mic, camera, deafen, chat, "⋯" (share, soundboard, music, settings).
 - [ ] Chat / People as a bottom sheet; rooms as a full-height drawer from ☰; stacked
       tiles fill the screen.
 
-### R11 — Desktop: fullscreen + pop-out (was phase 6)
-- [ ] Tauri fullscreen fallback where element fullscreen is missing/broken (WKWebView):
-      `getCurrentWindow().setFullscreen(true)` + fixed-inset overlay; Escape exits both.
+### R11a — Desktop fullscreen + web picture-in-picture (2.3.11)
+- [x] Tauri: fullscreen = `getCurrentWindow().setFullscreen(true)` + the stage pinned
+      `fixed inset-0` over the window (`useFullscreen` `windowMode`), always in the app
+      rather than only as a fallback; Escape exits both; leaving the window's fullscreen
+      (green button / ⌃⌘F) ends it; an already-fullscreen window stays fullscreen.
+      Capability `core:window:allow-set-fullscreen`; `@tauri-apps/api/window` added to the
+      web build's externals.
+- [x] Web: video picture-in-picture (`requestPictureInPicture`) as a pane action where
+      supported (Chrome, Edge, Safari). Document Picture-in-Picture (custom controls in the
+      PiP window) not done — the plain video PiP covers watching a share elsewhere.
+- [x] Released as 2.3.11. User tests: desktop app — fullscreen via button / double-click,
+      Escape, the green button, a window already fullscreen; web — PiP on a pinned share,
+      unpin while in PiP closes it.
+
+### R11b — Desktop pop-out windows (was phase 6)
 - [ ] Pop-out `WebviewWindow` per pane: its own LiveKit client, video-only (no mic, no
       audio playback). Needs its **own LiveKit identity** (same identity would kick the
       main window) — and the slice-6 jail webhook must map that identity back to the user

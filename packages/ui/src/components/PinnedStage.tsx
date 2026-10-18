@@ -1,6 +1,6 @@
-import { useCallback, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
+import { useCallback, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
 import type { TrackPublication } from 'livekit-client';
-import { Camera, Maximize2, Minimize2, Monitor, Square, Volume2, VolumeX, X } from 'lucide-react';
+import { Camera, Maximize2, Minimize2, Monitor, PictureInPicture2, Square, Volume2, VolumeX, X } from 'lucide-react';
 import { VideoTrackView } from './VideoTrackView';
 import { TileAction } from './ParticipantTile';
 import { useIdle } from '../hooks/useIdle';
@@ -31,6 +31,8 @@ export interface StagePane {
 interface PinnedStageProps {
   panes: StagePane[];
   isFullscreen: boolean;
+  /** Desktop app: the window is fullscreen and the stage covers it (instead of element fullscreen) */
+  windowFullscreen?: boolean;
   onToggleFullscreen: () => void;
   /** Receives the element that goes fullscreen (the whole stage, every pane) */
   rootRef: (el: HTMLDivElement | null) => void;
@@ -40,6 +42,20 @@ interface PinnedStageProps {
 
 const stop = (e: MouseEvent) => e.stopPropagation();
 
+// Video picture-in-picture (Chrome, Edge, Safari); Firefox offers its own PiP button instead
+const PIP_SUPPORTED = typeof document !== 'undefined' && !!document.pictureInPictureEnabled
+  && typeof HTMLVideoElement !== 'undefined' && 'requestPictureInPicture' in HTMLVideoElement.prototype;
+
+async function togglePictureInPicture(video: HTMLVideoElement | null | undefined): Promise<void> {
+  if (!video) return;
+  try {
+    if (document.pictureInPictureElement === video) await document.exitPictureInPicture();
+    else await video.requestPictureInPicture();
+  } catch (err) {
+    console.warn('Picture-in-picture failed:', err);
+  }
+}
+
 /** Width a 16:9 picture gets inside a w×h box */
 const fitWidth = (w: number, h: number) => Math.max(0, Math.min(w, (h * 16) / 9));
 
@@ -48,7 +64,7 @@ const fitWidth = (w: number, h: number) => Math.max(0, Math.min(w, (h * 16) / 9)
  * that makes them bigger), or three or four in a 2×2. Double-click toggles fullscreen;
  * in fullscreen the controls and cursor fade after 2 s still (always shown on touch).
  */
-export function PinnedStage({ panes, isFullscreen, onToggleFullscreen, rootRef, fullscreenOverlay }: PinnedStageProps) {
+export function PinnedStage({ panes, isFullscreen, windowFullscreen, onToggleFullscreen, rootRef, fullscreenOverlay }: PinnedStageProps) {
   const [el, setEl] = useState<HTMLDivElement | null>(null);
   const setRoot = useCallback((node: HTMLDivElement | null) => {
     setEl(node);
@@ -68,7 +84,7 @@ export function PinnedStage({ panes, isFullscreen, onToggleFullscreen, rootRef, 
     <div
       ref={setRoot}
       onDoubleClick={onToggleFullscreen}
-      className={`relative w-full h-full ${isFullscreen ? 'bg-black' : ''} ${hideChrome ? 'cursor-none' : ''}`}
+      className={`${windowFullscreen ? 'fixed inset-0 z-[55]' : 'relative w-full h-full'} ${isFullscreen ? 'bg-black' : ''} ${hideChrome ? 'cursor-none' : ''}`}
     >
       <div className={`grid w-full h-full ${cells}`} style={{ gap }}>
         {panes.map((pane, i) => (
@@ -103,6 +119,7 @@ function Pane({ pane, className, style, rounded, hoverActions, isFullscreen, onT
   hideChrome: boolean;
 }) {
   const isShare = pane.source === 'screen_share';
+  const paneRef = useRef<HTMLDivElement>(null);
   const chrome = `transition-opacity duration-300 ${
     hideChrome ? 'opacity-0 pointer-events-none [@media(hover:none)]:opacity-100 [@media(hover:none)]:pointer-events-auto' : 'opacity-100'
   }`;
@@ -111,7 +128,7 @@ function Pane({ pane, className, style, rounded, hoverActions, isFullscreen, onT
     isFullscreen ? { [side]: `calc(env(safe-area-inset-${side}, 0px) + 0.75rem)` } : undefined;
 
   return (
-    <div className={`group/pane relative min-w-0 min-h-0 bg-black overflow-hidden ${rounded ? 'rounded-xl' : ''} ${className}`} style={style}>
+    <div ref={paneRef} className={`group/pane relative min-w-0 min-h-0 bg-black overflow-hidden ${rounded ? 'rounded-xl' : ''} ${className}`} style={style}>
       <VideoTrackView publication={pane.publication} fit="contain" mirror={pane.isLocal && !isShare} />
 
       {/* Name tag */}
@@ -140,6 +157,11 @@ function Pane({ pane, className, style, rounded, hoverActions, isFullscreen, onT
             onClick={pane.onToggleStreamAudio}
           >
             {pane.streamAudioMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+          </TileAction>
+        )}
+        {PIP_SUPPORTED && (
+          <TileAction label="Picture in picture" onClick={() => togglePictureInPicture(paneRef.current?.querySelector('video'))}>
+            <PictureInPicture2 size={14} />
           </TileAction>
         )}
         {pane.onSolo && (
