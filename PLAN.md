@@ -110,9 +110,9 @@ sections in a 340 px scrolling popover; "Lift" shows for every member though onl
 room creator may lift; mobile control bar wraps over content.
 
 Responsive rules (apply in every phase):
-1. The control bar sizes to the **stage** (container query, not the window) and folds by
-   priority into "⋯": soundboard, music, settings first; then deafen and share. It never
-   grows wider than the stage.
+1. The control bar is docked to the **stage** and never hides buttons (user, 2026-10-18:
+   folding made buttons snap back as the side panels collapsed and the stage widened). At
+   every width the panels allow, the full row fits; it wraps only as a last resort.
 2. Below ~1080 px window width the side panel is an overlay drawer (starts closed there).
 3. Below ~860 px the room rail collapses to icons (connection bars + lock stay visible).
 4. Below 640 px: mobile layout (R10).
@@ -168,6 +168,9 @@ Responsive rules (apply in every phase):
 - [x] `ControlButton` (tones neutral/danger/success, forwards refs) replaces nine
       hand-styled buttons.
 - [x] Chat input stays in the bar until R4.
+- [x] Folding reverted after testing (shipped with R3): buttons folded, then snapped back
+      once the rail/panel collapsed and the stage widened. No "⋯"; the row always shows
+      everything (wraps only as a fallback). `useElementWidth` removed.
 - [ ] Moved to R4: extracting the whole `ControlBar` (and `Stage`) out of Room.tsx — with
       the chat input still inside it the component needs ~40 props; it gets far smaller
       once chat moves to the side panel.

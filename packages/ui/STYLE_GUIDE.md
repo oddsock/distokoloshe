@@ -353,10 +353,9 @@ grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4
 Docked to the stage: `absolute bottom-4 left-1/2 -translate-x-1/2 z-30
 w-[calc(100%-2rem)] max-w-2xl` inside `<main class="relative">`, so it's centred on the
 stage, not the window. One row of `ControlButton`s (`p-2.5 rounded-lg`, tones: neutral /
-danger / success) — no wrapping. Buttons fold into a "⋯" menu by **stage** width
-(`useElementWidth`): below 640px volumes, music/pipe, soundboard and settings fold; below
-420px deafen and share too. A folded button's popover anchors to "⋯". The participant area
-reserves `pb-32` beneath it.
+danger / success). Never hide buttons to save space — the full row fits at every width the
+side panels allow; `flex-wrap` is only a fallback. The participant area reserves `pb-32`
+beneath it.
 
 ---
 

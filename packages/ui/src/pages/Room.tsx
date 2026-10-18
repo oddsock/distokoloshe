@@ -30,12 +30,11 @@ import { useSoundbiteRecorder } from '../hooks/useSoundbiteRecorder';
 import { useNoiseCancellation } from '../hooks/useNoiseCancellation';
 import { useAutoUpdate } from '../hooks/useAutoUpdate';
 import { useMediaQuery } from '../hooks/useMediaQuery';
-import { useElementWidth } from '../hooks/useElementWidth';
 import { toggleTheme, getTheme, parseParticipantMetadata } from '../lib/utils';
 import * as api from '../lib/api';
 import { resizeImage } from '../lib/imageResize';
 import { playSound } from '../lib/sounds';
-import { Mic, MicOff, Camera, CameraOff, Ear, EarOff, Monitor, MonitorOff, Volume2, VolumeX, Settings, AudioLines, Music, X, Scissors, RefreshCw, Loader2, Ellipsis } from 'lucide-react';
+import { Mic, MicOff, Camera, CameraOff, Ear, EarOff, Monitor, MonitorOff, Volume2, VolumeX, Settings, AudioLines, Music, X, Scissors, RefreshCw, Loader2 } from 'lucide-react';
 
 const PANEL_PREF_KEY = 'distokoloshe_side_panel';
 
@@ -88,7 +87,7 @@ function getPipeTitle(metadata?: string | null): string | null {
 /** All floating popovers anchored to the control bar / tiles. Only one can be
  *  open at a time; any document click outside closes it. */
 type Popover =
-  | 'settings' | 'volumes' | 'soundboard' | 'music' | 'pipe' | 'quality' | 'stopShare' | 'more'
+  | 'settings' | 'volumes' | 'soundboard' | 'music' | 'pipe' | 'quality' | 'stopShare'
   | { durationPickerFor: number };
 
 export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
@@ -99,7 +98,7 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
   const [error, setError] = useState<{ msg: string; roomId?: number } | null>(null);
   const [errorFading, setErrorFading] = useState(false);
   const [openPopover, setOpenPopover] = useState<Popover | null>(null);
-  // Buttons popovers anchor to (a folded control-bar button anchors to "⋯" instead)
+  // Buttons that popovers anchor to
   const ctlRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const [theme, setThemeState] = useState<'dark' | 'light'>(getTheme);
 
@@ -278,8 +277,6 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
 
   // Rooms drawer (phones)
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
-  // Stage width drives how many control-bar buttons fold into "⋯"
-  const [stageRef, stageWidth] = useElementWidth<HTMLElement>();
   // Side panel (People): a column beside the stage from 1080px, an overlay drawer below.
   // Opens by default where it fits; the choice is remembered for wide windows.
   const panelOverlay = !useMediaQuery('(min-width: 1080px)');
@@ -1113,8 +1110,6 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
   if (soundboardPlaying && !mutedUsers.has(soundboardPlaying.username)) speakingUsernames.add(soundboardPlaying.username);
   const micOffUsernames = new Set(remoteParticipants.filter((p) => !p.isMicrophoneEnabled).map((p) => p.identity));
   if (localParticipant && micMuted) micOffUsernames.add(localParticipant.identity);
-  // 0 = everything in the bar; 1 = media + settings fold into "⋯"; 2 = deafen + share too
-  const foldLevel = stageWidth === 0 ? 0 : stageWidth < 420 ? 2 : stageWidth < 640 ? 1 : 0;
 
   return (
     <div className="h-screen overflow-hidden bg-zinc-100 dark:bg-zinc-900 text-zinc-900 dark:text-white flex">
@@ -1146,7 +1141,7 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
       />
 
       {/* Main content */}
-      <main ref={stageRef} className="relative flex-1 flex flex-col min-w-0 min-h-0">
+      <main className="relative flex-1 flex flex-col min-w-0 min-h-0">
         <StageHeader
           room={currentRoom}
           status={connectionState === ConnectionState.Connected ? `${remoteParticipants.length + 1} in room` : connectionState}
@@ -1519,17 +1514,16 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
           )}
         </div>
 
-        {/* Control bar — docked to the stage (centred on it, not the window). Buttons fold
-            into "⋯" by stage width, so the bar never spills onto the rail or side panel. */}
+        {/* Control bar — docked to the stage (centred on it, not the window). Every button
+            always shows: at every width the side panels allow, the full row fits; wrapping is
+            only a last-resort fallback. */}
         {connectionState === ConnectionState.Connected && room && (() => {
-          const fold1 = foldLevel >= 1;
-          const fold2 = foldLevel >= 2;
           const showShare = !isMobile;
           const showVolumes = !isMobile;
           const showPipe = pipe.available && !!currentRoom && !hasMusicBot;
-          const anchorFor = (key: string, folded: boolean) => (folded ? ctlRefs.current.more : ctlRefs.current[key]) ?? null;
+          const anchorFor = (key: string) => ctlRefs.current[key] ?? null;
           const setRef = (key: string) => (el: HTMLButtonElement | null) => { ctlRefs.current[key] = el; };
-          const toggle = (key: 'settings' | 'volumes' | 'soundboard' | 'music' | 'pipe' | 'more') =>
+          const toggle = (key: 'settings' | 'volumes' | 'soundboard' | 'music' | 'pipe') =>
             setOpenPopover(openPopover === key ? null : key);
           const toggleShare = () => {
             if (isSharing) setOpenPopover(openPopover === 'stopShare' ? null : 'stopShare');
@@ -1542,7 +1536,6 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
           const shareTooltip = isSharing
             ? `Stop Sharing (${shareQuality.charAt(0).toUpperCase() + shareQuality.slice(1)})`
             : 'Share Screen';
-          const menuItem = 'w-full flex items-center gap-2.5 px-3 py-1.5 text-sm text-left text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-600 transition-colors';
           return (
             <>
               <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 w-[calc(100%-2rem)] max-w-2xl bg-white/80 dark:bg-zinc-800/80 backdrop-blur-xl rounded-2xl px-4 py-2.5 shadow-lg border border-zinc-200/50 dark:border-zinc-700/50 flex flex-col gap-2">
@@ -1583,7 +1576,7 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
                     className={`flex-1 min-w-0 px-3 py-1.5 rounded-lg text-sm ${chatBusy ? 'opacity-60' : ''} bg-zinc-100 dark:bg-zinc-700 text-zinc-900 dark:text-white border border-zinc-300 dark:border-zinc-600 focus:border-indigo-500 outline-none placeholder-zinc-400 dark:placeholder-zinc-500`}
                   />
                 </form>
-                <div className="flex items-center justify-center gap-2 md:gap-3">
+                <div className="flex flex-wrap items-center justify-center gap-2 md:gap-3">
                   <ControlButton
                     tone={micMuted ? 'danger' : 'neutral'}
                     label={micMuted ? 'Unmute microphone' : 'Mute microphone'}
@@ -1600,12 +1593,10 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
                   >
                     {isCameraOn ? <Camera size={18} /> : <CameraOff size={18} />}
                   </ControlButton>
-                  {!fold2 && (
-                    <ControlButton tone={deafened ? 'danger' : 'neutral'} label={deafened ? 'Undeafen' : 'Deafen'} onClick={handleToggleDeafen}>
-                      {deafened ? <EarOff size={18} /> : <Ear size={18} />}
-                    </ControlButton>
-                  )}
-                  {showShare && !fold2 && (
+                  <ControlButton tone={deafened ? 'danger' : 'neutral'} label={deafened ? 'Undeafen' : 'Deafen'} onClick={handleToggleDeafen}>
+                    {deafened ? <EarOff size={18} /> : <Ear size={18} />}
+                  </ControlButton>
+                  {showShare && (
                     <ControlButton
                       ref={setRef('share')}
                       tone={isSharing ? 'success' : 'neutral'}
@@ -1616,86 +1607,32 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
                       {isSharing ? <Monitor size={18} /> : <MonitorOff size={18} />}
                     </ControlButton>
                   )}
-                  {showVolumes && !fold1 && (
+                  {showVolumes && (
                     <ControlButton ref={setRef('volumes')} label="Adjust participant volumes" tooltip="Volumes" onClick={() => toggle('volumes')}>
                       <Volume2 size={18} />
                     </ControlButton>
                   )}
-                  {hasMusicBot && !fold1 && (
+                  {hasMusicBot && (
                     <ControlButton ref={setRef('music')} label="Open music controls" tooltip="Music" onClick={() => toggle('music')}>
                       <Music size={18} />
                     </ControlButton>
                   )}
-                  {showPipe && !fold1 && (
+                  {showPipe && (
                     <ControlButton ref={setRef('pipe')} label="Pipe audio to this room" tooltip="Pipe audio" onClick={() => toggle('pipe')}>
                       <Music size={18} />
                     </ControlButton>
                   )}
-                  {!fold1 && (
-                    <ControlButton ref={setRef('soundboard')} label="Open soundboard" tooltip="Soundboard" onClick={() => toggle('soundboard')}>
-                      <AudioLines size={18} />
-                    </ControlButton>
-                  )}
-                  {!fold1 && (
-                    <ControlButton ref={setRef('settings')} label="Open settings" tooltip="Settings" onClick={() => toggle('settings')}>
-                      <Settings size={18} />
-                    </ControlButton>
-                  )}
-                  {fold1 && (
-                    <ControlButton
-                      ref={setRef('more')}
-                      label="More controls"
-                      tooltip="More"
-                      aria-haspopup="menu"
-                      aria-expanded={openPopover === 'more'}
-                      onClick={() => toggle('more')}
-                    >
-                      <Ellipsis size={18} />
-                    </ControlButton>
-                  )}
+                  <ControlButton ref={setRef('soundboard')} label="Open soundboard" tooltip="Soundboard" onClick={() => toggle('soundboard')}>
+                    <AudioLines size={18} />
+                  </ControlButton>
+                  <ControlButton ref={setRef('settings')} label="Open settings" tooltip="Settings" onClick={() => toggle('settings')}>
+                    <Settings size={18} />
+                  </ControlButton>
                 </div>
               </div>
 
-              {/* "⋯" menu — whatever the bar has folded away. stopPropagation keeps the
-                  outside-click handler from closing the popover an item just opened. */}
-              <Floating anchor={ctlRefs.current.more ?? null} open={openPopover === 'more' && fold1} zClass="z-50">
-                <div role="menu" onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg py-1 min-w-[190px]">
-                  {fold2 && (
-                    <button role="menuitem" className={menuItem} onClick={() => { handleToggleDeafen(); setOpenPopover(null); }}>
-                      {deafened ? <EarOff size={16} /> : <Ear size={16} />}{deafened ? 'Undeafen' : 'Deafen'}
-                    </button>
-                  )}
-                  {fold2 && showShare && (
-                    <button role="menuitem" className={menuItem} onClick={toggleShare}>
-                      {isSharing ? <Monitor size={16} /> : <MonitorOff size={16} />}{isSharing ? 'Stop sharing…' : 'Share screen…'}
-                    </button>
-                  )}
-                  {showVolumes && (
-                    <button role="menuitem" className={menuItem} onClick={() => setOpenPopover('volumes')}>
-                      <Volume2 size={16} />Volumes…
-                    </button>
-                  )}
-                  {hasMusicBot && (
-                    <button role="menuitem" className={menuItem} onClick={() => setOpenPopover('music')}>
-                      <Music size={16} />Music…
-                    </button>
-                  )}
-                  {showPipe && (
-                    <button role="menuitem" className={menuItem} onClick={() => setOpenPopover('pipe')}>
-                      <Music size={16} />Pipe audio…
-                    </button>
-                  )}
-                  <button role="menuitem" className={menuItem} onClick={() => setOpenPopover('soundboard')}>
-                    <AudioLines size={16} />Soundboard…
-                  </button>
-                  <button role="menuitem" className={menuItem} onClick={() => setOpenPopover('settings')}>
-                    <Settings size={16} />Settings…
-                  </button>
-                </div>
-              </Floating>
-
               {/* Share: stop confirmation / quality picker */}
-              <Floating anchor={anchorFor('share', fold2)} open={openPopover === 'stopShare' && isSharing} zClass="z-50">
+              <Floating anchor={anchorFor('share')} open={openPopover === 'stopShare' && isSharing} zClass="z-50">
                 <div className="bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg p-3 min-w-[160px]">
                   <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-2 text-center">Stop sharing?</p>
                   <div className="flex gap-2">
@@ -1714,7 +1651,7 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
                   </div>
                 </div>
               </Floating>
-              <Floating anchor={anchorFor('share', fold2)} open={openPopover === 'quality' && !isSharing} zClass="z-50">
+              <Floating anchor={anchorFor('share')} open={openPopover === 'quality' && !isSharing} zClass="z-50">
                 <div className="bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg py-1 min-w-[180px]">
                   {(Object.entries(QUALITY_PRESETS) as [ShareQuality, (typeof QUALITY_PRESETS)[ShareQuality]][]).map(
                     ([key, preset]) => (
@@ -1754,7 +1691,7 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
                 </div>
               </Floating>
 
-              <Floating anchor={anchorFor('volumes', fold1)} open={openPopover === 'volumes' && showVolumes} zClass="z-50">
+              <Floating anchor={anchorFor('volumes')} open={openPopover === 'volumes' && showVolumes} zClass="z-50">
                 <div className="bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg py-2 px-3 min-w-[200px] max-h-[60vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
                   <span className="text-xs font-semibold uppercase text-zinc-500 block mb-2">Volume</span>
                   {remoteParticipants.length === 0 ? (
@@ -1774,12 +1711,12 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
               </Floating>
 
               {currentRoom && (
-                <Floating anchor={anchorFor('music', fold1)} open={openPopover === 'music' && hasMusicBot} zClass="z-50">
+                <Floating anchor={anchorFor('music')} open={openPopover === 'music' && hasMusicBot} zClass="z-50">
                   <MusicControls status={musicStatus} onRefresh={refreshMusicStatus} pipe={pipe} roomId={currentRoom.id} />
                 </Floating>
               )}
               {currentRoom && (
-                <Floating anchor={anchorFor('pipe', fold1)} open={openPopover === 'pipe' && showPipe} zClass="z-50">
+                <Floating anchor={anchorFor('pipe')} open={openPopover === 'pipe' && showPipe} zClass="z-50">
                   <div
                     className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 rounded-xl shadow-2xl p-4 w-[340px] max-w-[calc(100vw-1rem)]"
                     onClick={(e) => e.stopPropagation()}
@@ -1790,7 +1727,7 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
                 </Floating>
               )}
 
-              <Floating anchor={anchorFor('soundboard', fold1)} open={openPopover === 'soundboard'} zClass="z-50">
+              <Floating anchor={anchorFor('soundboard')} open={openPopover === 'soundboard'} zClass="z-50">
                 <Soundboard
                   clips={clips}
                   playingId={playingId}
@@ -1806,7 +1743,7 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
                 />
               </Floating>
 
-              <Floating anchor={anchorFor('settings', fold1)} open={openPopover === 'settings'} zClass="z-50">
+              <Floating anchor={anchorFor('settings')} open={openPopover === 'settings'} zClass="z-50">
                 <DeviceSettings room={room} hotkeyBindings={hotkeyBindings} onHotkeyChange={setHotkeyBindings} noiseCancellation={{ enabled: ncEnabled, setEnabled: setNcEnabled, engine: ncEngine, setEngine: setNcEngine, supported: ncSupported }} autoUpdate={autoUpdate} />
               </Floating>
             </>
