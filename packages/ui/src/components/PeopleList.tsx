@@ -1,7 +1,8 @@
-import type { ReactNode } from 'react';
-import { Volume2, VolumeX, MicOff } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import { Volume2, VolumeX, MicOff, SlidersHorizontal } from 'lucide-react';
 import type * as api from '../lib/api';
 import { avatarColor } from '../lib/utils';
+import { VolumeSlider } from './VolumeSlider';
 
 interface PeopleListProps {
   users: api.UserListItem[];
@@ -16,6 +17,9 @@ interface PeopleListProps {
   /** Usernames you've muted for yourself */
   mutedForMe: Set<string>;
   onToggleMute: (username: string) => void;
+  /** Per-person playback volume (only affects what you hear) */
+  getVolume: (username: string) => number;
+  onVolumeChange: (username: string, volume: number) => void;
 }
 
 function formatLastSeen(lastSeen: string | null): string {
@@ -50,6 +54,7 @@ function Avatar({ id, name, speaking, faded }: { id: number; name: string; speak
 
 export function PeopleList(props: PeopleListProps) {
   const { users, currentUserId, currentRoomId, roomMembers, speaking, micOff, mutedForMe } = props;
+  const [volumeOpenFor, setVolumeOpenFor] = useState<string | null>(null);
   const here = currentRoomId != null ? roomMembers[currentRoomId] ?? [] : [];
   const hereIds = new Set(here.map((m) => m.id));
 
@@ -70,8 +75,11 @@ export function PeopleList(props: PeopleListProps) {
         const isMe = m.id === currentUserId;
         const isSpeaking = speaking.has(m.username);
         const muted = mutedForMe.has(m.username);
+        const volumeOpen = volumeOpenFor === m.username;
+        const hoverReveal = 'md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100';
         return (
-          <div key={m.id} className="group flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-700/60">
+          <div key={m.id}>
+          <div className="group flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-700/60">
             <Avatar id={m.id} name={m.display_name} speaking={isSpeaking} />
             <div className="min-w-0 flex-1">
               <p className="truncate text-zinc-800 dark:text-zinc-200">{m.display_name}{isMe && <span className="text-zinc-500"> (you)</span>}</p>
@@ -82,9 +90,22 @@ export function PeopleList(props: PeopleListProps) {
             {micOff.has(m.username) && <MicOff size={13} className="text-red-400 shrink-0" aria-label="Mic off" />}
             {!isMe && (
               <button
+                onClick={() => setVolumeOpenFor(volumeOpen ? null : m.username)}
+                className={`p-1 rounded-md shrink-0 transition-opacity focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                  volumeOpen ? 'text-indigo-500 dark:text-indigo-400 bg-indigo-500/15' : `text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 ${hoverReveal}`
+                }`}
+                aria-label={`Volume for ${m.display_name}`}
+                aria-expanded={volumeOpen}
+                data-tooltip="Volume (only for you)"
+              >
+                <SlidersHorizontal size={14} />
+              </button>
+            )}
+            {!isMe && (
+              <button
                 onClick={() => props.onToggleMute(m.username)}
                 className={`p-1 rounded-md shrink-0 transition-opacity focus-visible:ring-2 focus-visible:ring-indigo-500 ${
-                  muted ? 'text-red-400 bg-red-500/15' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100'
+                  muted ? 'text-red-400 bg-red-500/15' : `text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 ${hoverReveal}`
                 }`}
                 aria-label={muted ? `Unmute ${m.display_name} for you` : `Mute ${m.display_name} for you`}
                 data-tooltip={muted ? 'Unmute (only for you)' : 'Mute (only for you)'}
@@ -92,6 +113,18 @@ export function PeopleList(props: PeopleListProps) {
                 {muted ? <VolumeX size={14} /> : <Volume2 size={14} />}
               </button>
             )}
+          </div>
+          {!isMe && volumeOpen && (
+            <div className="pl-11 pr-2 pb-1">
+              <VolumeSlider
+                identity={m.username}
+                displayName={m.display_name}
+                volume={props.getVolume(m.username)}
+                onChange={(v) => props.onVolumeChange(m.username, v)}
+                compact
+              />
+            </div>
+          )}
           </div>
         );
       })}

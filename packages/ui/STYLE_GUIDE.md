@@ -344,9 +344,24 @@ Body: `flex-1 overflow-y-auto p-4 md:p-6`
 
 ### Participant Grid
 
-```
-grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4
-```
+Fit-to-stage, never `grid-cols-*` breakpoints: the grid region (`relative flex-1
+min-h-[200px]`, with an `absolute inset-0 overflow-y-auto` scroller inside so content can't
+change its size) is measured with `useElementSize`, and `layoutGrid()` (`lib/gridLayout.ts`)
+picks the column count that makes 16:9 tiles largest. Columns are fixed-width
+(`repeat(n, Wpx)`, `gap-3`, `p-1` so speaking rings aren't clipped); below a 180px tile it
+switches to scrolling.
+
+### Participant Tile
+
+Full-bleed 16:9 media (`rounded-xl overflow-hidden`), no card padding or footer:
+- **Name tag** bottom-left: `bg-black/55 backdrop-blur-sm text-white text-xs rounded-md`
+  with status icons (`size={12}`; mic off / deafened / muted-for-me in `text-red-400`).
+- **Actions** top-right: `TileAction` buttons (`w-7 h-7 bg-black/55`, red when "on"), shown
+  on hover/focus, always on touch (`[@media(hover:none)]:opacity-100`), and kept visible
+  while one of their popovers is open. Their container stops click propagation so actions
+  never spotlight the tile. Tile popovers open with `placement="bottom"`.
+- **Camera PIP** bottom-right when a share fills the tile; "Your source" badge top-left.
+- Tile is a size container (`@container`) — scale avatars/text with `@max-[260px]:` etc.
 
 ### Control Bar
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.3.4 — Tiles That Fit (room redesign R3)
+
+- Video tiles now grow and shrink to fill the call area — no more scrolling to find people; with a lot of people the grid scrolls once tiles would get too small
+- Tiles are edge-to-edge video with the name and mic status in the corner; hover a tile (or tab to it, or just look on a touch screen) for its controls: volume, save soundbite, and "⋯" for mute for me and vote to jail
+- Per-person volume moved from the control bar onto each tile and into the People panel (sliders button next to each person)
+- The control bar always shows every button again — folding them into "⋯" made them jump back as the side panels collapsed
+
 ## 2.3.3 — Control Bar That Fits (room redesign R2b)
 
 - The control bar sits centred on the call area rather than the whole window, so it no longer drifts off-centre with the People panel open or covers the rooms list and side panel in narrow windows

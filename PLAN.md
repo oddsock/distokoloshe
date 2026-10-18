@@ -180,13 +180,21 @@ Responsive rules (apply in every phase):
       window edges; soundboard's clip trimmer opens above the soundboard; phone layout (one
       row: mic, camera, ⋯); vote-duration picker on tiles in the top row.
 
-### R3 — Stage grid & tiles
-- [ ] Fit-to-stage grid (ResizeObserver): columns/rows from participant count and stage
-      size so tiles shrink; below a minimum tile width, fall back to scrolling.
-- [ ] New tile: full-bleed media, name tag with mic state bottom-left, actions top-right
-      (pin, volume, soundbite, "⋯" → mute for me, vote to jail); always visible on touch.
-- [ ] Per-person volume moves to the tile action + People panel slider (Volumes popover
-      removed from the control bar).
+### R3 — Stage grid & tiles (2.3.4, together with the R2b no-fold fix)
+- [x] Fit-to-stage grid: `layoutGrid()` picks the column count that makes 16:9 tiles
+      largest in the measured grid region (`useElementSize`; region sized independently of
+      its content, so no feedback loop); below 180 px per tile it scrolls instead.
+- [x] New tile: full-bleed media, name tag with status icons bottom-left, `TileAction`s
+      top-right (volume, soundbite, "⋯" → mute/unmute for me, vote to jail → duration),
+      stream-audio mute among them; visible on hover/focus, always on touch, held while a
+      tile popover is open. Camera PIP bottom-right, "Your source" top-left. Pin waits for
+      theater mode (R6) — clicking the media still spotlights.
+- [x] Per-person volume on the tile and in the People panel (sliders button per row);
+      Volumes popover removed from the control bar.
+- [x] Released as 2.3.4. User tests: 1, 2, 3, 5, 8+ people (tiles grow/shrink, no page
+      scroll; many → scrolls), resize the window, spotlight above the grid, tile actions on
+      hover / keyboard / touch, volume popover + People slider, ⋯ → mute for me, vote to
+      jail picker, stream-audio mute on a share with audio.
 
 ### R4 — Chat
 - [ ] Tile bubbles: max 2, each clamped to 2 lines, older one faded, "+N more · view

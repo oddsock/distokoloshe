@@ -1,29 +1,41 @@
-import type { ReactNode } from 'react';
+import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import type { TrackPublication } from 'livekit-client';
 import { Music, Volume2, VolumeX } from 'lucide-react';
 import { VideoTrackView } from './VideoTrackView';
 import { ChatBubbles, type ChatMsg } from './ChatBubbles';
 
-function StreamAudioMuteButton({ muted, onToggle }: { muted: boolean; onToggle: () => void }) {
+interface TileActionProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> {
+  label: string;
+  /** Red when this action's state is "on" (e.g. muted for me) */
+  active?: boolean;
+  children: ReactNode;
+}
+
+/** Small dark button for the tile's top-right action cluster. Forwards its ref for popovers. */
+export const TileAction = forwardRef<HTMLButtonElement, TileActionProps>(function TileAction(
+  { label, active, className = '', children, ...rest },
+  ref,
+) {
   return (
     <button
-      onClick={(e) => { e.stopPropagation(); onToggle(); }}
-      className={`absolute bottom-1 right-1 z-10 p-1 rounded transition-colors ${
-        muted
-          ? 'bg-red-500/80 text-white hover:bg-red-500'
-          : 'bg-black/50 text-white hover:bg-black/70'
-      }`}
-      data-tooltip={muted ? 'Unmute stream audio' : 'Mute stream audio'}
+      ref={ref}
+      type="button"
+      aria-label={label}
+      data-tooltip={label}
+      className={`w-7 h-7 rounded-lg flex items-center justify-center backdrop-blur-sm transition-colors focus-visible:ring-2 focus-visible:ring-indigo-400 ${
+        active ? 'bg-red-500/85 text-white hover:bg-red-500' : 'bg-black/55 text-white hover:bg-black/75'
+      } ${className}`}
+      {...rest}
     >
-      {muted ? <VolumeX size={12} /> : <Volume2 size={12} />}
+      {children}
     </button>
   );
-}
+});
 
 interface ParticipantTileProps {
   displayName: string;
   isLocal?: boolean;
-  /** Blue speaking ring on the card + glow on the avatar */
+  /** Blue speaking ring on the tile + glow on the avatar */
   speakingGlow: boolean;
   /** Whispers mode: dim participants who aren't my source */
   dimmed?: boolean;
@@ -39,12 +51,20 @@ interface ParticipantTileProps {
   onSpotlightScreenShare?: () => void;
   chatMessages: ChatMsg[];
   chatColor: 'blue' | 'green';
-  /** Right side of the footer row (mic status, mute/vote/soundbite buttons) */
-  footer: ReactNode;
-  /** Shown next to the name (e.g. soundboard "now playing") */
+  /** Icons in the name tag (mic state, deafened, muted for me) */
+  status?: ReactNode;
+  /** Shown after the name (e.g. soundboard "now playing") */
   nameSuffix?: ReactNode;
+  /** Top-right action buttons (TileAction) — shown on hover/focus, always on touch */
+  actions?: ReactNode;
+  /** Keep the actions visible (e.g. while one of their popovers is open) */
+  actionsVisible?: boolean;
 }
 
+/**
+ * One participant: full-bleed media (screen share > camera > bot marquee > avatar) with
+ * the name tag bottom-left and actions top-right. Sized by the grid; always 16:9.
+ */
 export function ParticipantTile({
   displayName,
   isLocal,
@@ -61,37 +81,39 @@ export function ParticipantTile({
   onSpotlightScreenShare,
   chatMessages,
   chatColor,
-  footer,
+  status,
   nameSuffix,
+  actions,
+  actionsVisible,
 }: ParticipantTileProps) {
-  // Screen share always wins the main area — it's the thing worth watching.
-  // The camera (if also on) becomes a small PIP overlay instead of a second,
-  // tile-height-inflating thumbnail. Main-area click spotlights whichever
-  // source occupies it; the PIP has its own click to spotlight the camera.
+  // Screen share always wins the main area — it's the thing worth watching. The camera
+  // (if also on) becomes a small PIP; clicking the main area spotlights whichever source
+  // occupies it, the PIP spotlights the camera.
   const hasBoth = !!screenSharePub && !!cameraPub;
   const mainClick = screenSharePub ? onSpotlightScreenShare : cameraPub ? onSpotlightCamera : undefined;
+  const showStreamAudio = !!screenSharePub && !!hasStreamAudio && !!onToggleStreamAudio;
 
   return (
-    <div className="relative">
+    <div className="relative min-w-0">
       <ChatBubbles messages={chatMessages} color={chatColor} />
       <div
-        className={`group bg-white dark:bg-zinc-800 rounded-xl p-4 border border-zinc-200 dark:border-zinc-700 ring-2 transition-all ${
+        className={`@container group relative aspect-video rounded-xl overflow-hidden bg-zinc-200 dark:bg-zinc-800 ring-2 transition-[box-shadow,opacity] ${
           speakingGlow
-            ? 'ring-blue-400 shadow-[0_0_12px_rgba(96,165,250,0.5)]'
+            ? 'ring-blue-400 shadow-[0_0_14px_rgba(96,165,250,0.5)]'
             : isLocal ? 'ring-indigo-500/30' : 'ring-transparent'
-        } ${dimmed ? 'opacity-40' : ''}`}
+        } ${dimmed ? 'opacity-40' : ''} ${mainClick ? 'cursor-pointer' : ''}`}
+        onClick={mainClick}
       >
-        {/* Main video area: screen share > camera > bot marquee > avatar */}
-        <div
-          className={`aspect-video bg-zinc-200 dark:bg-zinc-700 rounded-lg mb-3 flex items-center justify-center relative overflow-hidden ${
-            mainClick ? 'cursor-pointer ring-1 ring-zinc-600 hover:ring-indigo-500 transition-all' : ''
-          }`}
-          onClick={mainClick}
-        >
+        {/* Media */}
+        <div className="absolute inset-0 flex items-center justify-center">
           {screenSharePub ? (
-            <VideoTrackView publication={screenSharePub} fit="contain" />
+            <div className="absolute inset-0 bg-black">
+              <VideoTrackView publication={screenSharePub} fit="contain" />
+            </div>
           ) : cameraPub ? (
-            <VideoTrackView publication={cameraPub} mirror={isLocal} />
+            <div className="absolute inset-0">
+              <VideoTrackView publication={cameraPub} mirror={isLocal} />
+            </div>
           ) : botLabel ? (
             <div className="flex flex-col items-center justify-center gap-1 px-3 w-full">
               <Music size={20} className="text-indigo-400 shrink-0" />
@@ -102,41 +124,61 @@ export function ParticipantTile({
               </div>
             </div>
           ) : (
-            <div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold text-white transition-shadow ${
-              isMyWhisperSource ? 'bg-purple-600' : 'bg-indigo-600'
-            } ${speakingGlow ? 'shadow-[0_0_16px_rgba(96,165,250,0.6)]' : ''}`}>
+            <div
+              className={`w-16 h-16 text-2xl @max-[260px]:w-11 @max-[260px]:h-11 @max-[260px]:text-lg rounded-full flex items-center justify-center font-bold text-white transition-shadow ${
+                isMyWhisperSource ? 'bg-purple-600' : 'bg-indigo-600'
+              } ${speakingGlow ? 'shadow-[0_0_16px_rgba(96,165,250,0.6)]' : ''}`}
+            >
               {displayName.charAt(0).toUpperCase()}
             </div>
           )}
-          {isMyWhisperSource && (
-            <span className="absolute top-1 right-1 text-[10px] bg-purple-500/30 text-purple-300 px-1.5 py-0.5 rounded z-10">
-              Your source
-            </span>
-          )}
-          {/* Camera PIP — only when a share is also occupying the main area */}
-          {hasBoth && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onSpotlightCamera?.(); }}
-              className="absolute bottom-1.5 left-1.5 w-1/4 min-w-[3.5rem] aspect-video rounded-md overflow-hidden border-2 border-zinc-500 hover:border-indigo-500 transition-colors shadow-lg bg-black z-10"
-              data-tooltip="Switch to camera"
-            >
-              <VideoTrackView publication={cameraPub!} mirror={isLocal} />
-            </button>
-          )}
-          {/* Stream audio mute — always in the main area corner, share is always primary now */}
-          {screenSharePub && hasStreamAudio && onToggleStreamAudio && (
-            <StreamAudioMuteButton muted={!!streamAudioMuted} onToggle={onToggleStreamAudio} />
-          )}
         </div>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <span className="text-sm font-medium truncate">
-              {displayName}{isLocal ? ' (You)' : ''}
-            </span>
-            {nameSuffix}
+
+        {isMyWhisperSource && (
+          <span className="absolute top-2 left-2 text-[10px] bg-purple-500/40 text-purple-100 px-1.5 py-0.5 rounded z-10">
+            Your source
+          </span>
+        )}
+
+        {/* Camera PIP — only when a share is also occupying the main area */}
+        {hasBoth && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onSpotlightCamera?.(); }}
+            className="absolute bottom-2 right-2 w-1/4 min-w-[3.5rem] aspect-video rounded-md overflow-hidden border-2 border-white/30 hover:border-indigo-400 transition-colors shadow-lg bg-black z-10"
+            data-tooltip="Switch to camera"
+            aria-label="Switch to camera"
+          >
+            <VideoTrackView publication={cameraPub!} mirror={isLocal} />
+          </button>
+        )}
+
+        {/* Name tag */}
+        <div className="absolute left-2 bottom-2 z-10 max-w-[calc(100%-1rem)] flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-black/55 backdrop-blur-sm text-white text-xs @max-[200px]:text-[10px] font-medium pointer-events-none">
+          {status}
+          <span className="truncate">{displayName}{isLocal ? ' (you)' : ''}</span>
+          {nameSuffix}
+        </div>
+
+        {/* Actions — clicks here must not spotlight the tile */}
+        {(actions || showStreamAudio) && (
+          <div
+            className={`absolute top-2 right-2 z-10 flex gap-1 transition-opacity [@media(hover:none)]:opacity-100 ${
+              actionsVisible ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+            }`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {showStreamAudio && (
+              <TileAction
+                label={streamAudioMuted ? 'Unmute stream audio' : 'Mute stream audio'}
+                active={streamAudioMuted}
+                onClick={onToggleStreamAudio}
+              >
+                {streamAudioMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+              </TileAction>
+            )}
+            {actions}
           </div>
-          <div className="flex items-center gap-1.5">{footer}</div>
-        </div>
+        )}
       </div>
     </div>
   );

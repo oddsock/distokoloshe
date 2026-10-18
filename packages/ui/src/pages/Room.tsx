@@ -9,7 +9,7 @@ import { DeviceSettings } from '../components/DeviceSettings';
 import { VolumeSlider } from '../components/VolumeSlider';
 import { ScreenShareView } from '../components/ScreenShareView';
 import { VideoTrackView } from '../components/VideoTrackView';
-import { ParticipantTile } from '../components/ParticipantTile';
+import { ParticipantTile, TileAction } from '../components/ParticipantTile';
 import type { ChatLine, ChatMsg } from '../components/ChatBubbles';
 import { RoomRail } from '../components/RoomRail';
 import { StageHeader } from '../components/StageHeader';
@@ -30,11 +30,13 @@ import { useSoundbiteRecorder } from '../hooks/useSoundbiteRecorder';
 import { useNoiseCancellation } from '../hooks/useNoiseCancellation';
 import { useAutoUpdate } from '../hooks/useAutoUpdate';
 import { useMediaQuery } from '../hooks/useMediaQuery';
+import { useElementSize } from '../hooks/useElementSize';
 import { toggleTheme, getTheme, parseParticipantMetadata } from '../lib/utils';
+import { layoutGrid } from '../lib/gridLayout';
 import * as api from '../lib/api';
 import { resizeImage } from '../lib/imageResize';
 import { playSound } from '../lib/sounds';
-import { Mic, MicOff, Camera, CameraOff, Ear, EarOff, Monitor, MonitorOff, Volume2, VolumeX, Settings, AudioLines, Music, X, Scissors, RefreshCw, Loader2 } from 'lucide-react';
+import { Mic, MicOff, Camera, CameraOff, Ear, EarOff, Monitor, MonitorOff, Volume2, VolumeX, Settings, AudioLines, Music, X, Scissors, RefreshCw, Loader2, Ellipsis, Gavel } from 'lucide-react';
 
 const PANEL_PREF_KEY = 'distokoloshe_side_panel';
 
@@ -87,8 +89,8 @@ function getPipeTitle(metadata?: string | null): string | null {
 /** All floating popovers anchored to the control bar / tiles. Only one can be
  *  open at a time; any document click outside closes it. */
 type Popover =
-  | 'settings' | 'volumes' | 'soundboard' | 'music' | 'pipe' | 'quality' | 'stopShare'
-  | { durationPickerFor: number };
+  | 'settings' | 'soundboard' | 'music' | 'pipe' | 'quality' | 'stopShare'
+  | { durationPickerFor: number } | { volumeFor: string } | { tileMenuFor: string };
 
 export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
   const [rooms, setRooms] = useState<api.Room[]>([]);
@@ -277,6 +279,9 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
 
   // Rooms drawer (phones)
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
+  // The grid's available space (measured independently of its content) sizes the tiles
+  const [gridEl, setGridEl] = useState<HTMLDivElement | null>(null);
+  const gridSize = useElementSize(gridEl);
   // Side panel (People): a column beside the stage from 1080px, an overlay drawer below.
   // Opens by default where it fits; the choice is remembered for wide windows.
   const panelOverlay = !useMediaQuery('(min-width: 1080px)');
@@ -1111,6 +1116,18 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
   const micOffUsernames = new Set(remoteParticipants.filter((p) => !p.isMicrophoneEnabled).map((p) => p.identity));
   if (localParticipant && micMuted) micOffUsernames.add(localParticipant.identity);
 
+  // Tiles shrink to fit the stage; p-1 around the grid keeps speaking rings unclipped
+  const tileCount = remoteParticipants.length + (localParticipant ? 1 : 0);
+  const gridLayout = layoutGrid(tileCount, gridSize.width - 8, gridSize.height - 8, 12);
+  const gridColumns = gridSize.width > 0
+    ? `repeat(${gridLayout.columns}, ${gridLayout.tileWidth}px)`
+    : `repeat(${Math.min(Math.max(tileCount, 1), 3)}, minmax(0, 1fr))`;
+  const popoverIs = (kind: 'durationPickerFor' | 'volumeFor' | 'tileMenuFor', id: string | number) =>
+    typeof openPopover === 'object' && openPopover !== null && kind in openPopover
+    && (openPopover as Record<string, string | number>)[kind] === id;
+  const setCtlRef = (key: string) => (el: HTMLButtonElement | null) => { ctlRefs.current[key] = el; };
+  const tileMenuItem = 'w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-left text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-600 transition-colors';
+
   return (
     <div className="h-screen overflow-hidden bg-zinc-100 dark:bg-zinc-900 text-zinc-900 dark:text-white flex">
       <TooltipLayer />
@@ -1157,7 +1174,7 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
         />
 
         {/* Participant area */}
-        <div className="flex-1 p-6 pb-32 overflow-y-auto">
+        <div className="flex-1 min-h-0 flex flex-col p-4 md:p-6 pb-32 overflow-y-auto">
           {error && (!error.roomId || error.roomId === currentRoom?.id) && (
             <div className={`mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm flex items-center transition-opacity duration-500 ${errorFading ? 'opacity-0' : 'opacity-100 animate-[fadeIn_0.2s_ease-out]'}`}>
               <span className="flex-1">{error.msg}</span>
@@ -1352,145 +1369,174 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
           })()}
 
           {connectionState === ConnectionState.Connected && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {/* Local participant */}
-              {localParticipant && (() => {
-                const localSpeaking = activeSpeakers.includes(localParticipant.identity);
-                const localCameraPub = Array.from(localParticipant.trackPublications.values()).find(
-                  (pub) => pub.source === Track.Source.Camera && pub.track && !pub.isMuted,
-                );
-                return (
-                  <ParticipantTile
-                    displayName={localParticipant.name || localParticipant.identity}
-                    isLocal
-                    speakingGlow={localSpeaking}
-                    cameraPub={localCameraPub}
-                    screenSharePub={localScreenShare}
-                    onSpotlightCamera={() => setSpotlight({ identity: localParticipant.identity, source: 'camera' })}
-                    onSpotlightScreenShare={() => setSpotlight({ identity: localParticipant.identity, source: 'screen_share' })}
-                    chatMessages={chatBubbles.get(localParticipant.identity) || []}
-                    chatColor="blue"
-                    footer={
-                      <>
-                        {deafened && <span className="text-red-400" data-tooltip="Deafened"><EarOff size={14} /></span>}
-                        <span>{micMuted ? <MicOff size={14} className="text-red-400" /> : <Mic size={14} />}</span>
-                      </>
-                    }
-                  />
-                );
-              })()}
+            <div ref={setGridEl} className="relative flex-1 min-h-[200px]">
+              <div className="absolute inset-0 overflow-y-auto">
+                <div
+                  className={`grid gap-3 justify-center p-1 ${gridLayout.scroll ? 'content-start' : 'h-full content-center'}`}
+                  style={{ gridTemplateColumns: gridColumns }}
+                >
+                  {/* Local participant */}
+                  {localParticipant && (
+                    <ParticipantTile
+                      displayName={localParticipant.name || localParticipant.identity}
+                      isLocal
+                      speakingGlow={activeSpeakers.includes(localParticipant.identity)}
+                      cameraPub={Array.from(localParticipant.trackPublications.values()).find(
+                        (pub) => pub.source === Track.Source.Camera && pub.track && !pub.isMuted,
+                      )}
+                      screenSharePub={localScreenShare}
+                      onSpotlightCamera={() => setSpotlight({ identity: localParticipant.identity, source: 'camera' })}
+                      onSpotlightScreenShare={() => setSpotlight({ identity: localParticipant.identity, source: 'screen_share' })}
+                      chatMessages={chatBubbles.get(localParticipant.identity) || []}
+                      chatColor="blue"
+                      status={
+                        <>
+                          {deafened && <EarOff size={12} className="text-red-400 shrink-0" aria-label="Deafened" />}
+                          {micMuted ? <MicOff size={12} className="text-red-400 shrink-0" aria-label="Mic off" /> : <Mic size={12} className="shrink-0" />}
+                        </>
+                      }
+                    />
+                  )}
 
-              {/* Remote participants */}
-              {remoteParticipants.map((p) => {
-                const userMuted = mutedUsers.has(p.identity);
-                const speaking = activeSpeakers.includes(p.identity);
-                const playingSB = soundboardPlaying?.username === p.identity;
-                const memberEntry = currentRoom ? roomMembers[currentRoom.id]?.find((m) => m.username === p.identity) : null;
-                const isMyWhisperSource = whisperSource?.username === p.identity;
-                const whisperDimmed = isWhispersMode && !isMyWhisperSource;
-                const soundbiteOptOut = !!parseParticipantMetadata(p.metadata).soundbiteOptOut;
-                const cameraPub = Array.from(p.trackPublications.values()).find(
-                  (pub) => pub.source === Track.Source.Camera && pub.isSubscribed && pub.track && !pub.isMuted,
-                );
-                const screenSharePub = Array.from(p.trackPublications.values()).find(
-                  (pub) => pub.source === Track.Source.ScreenShare && pub.isSubscribed && pub.track,
-                );
-                const hasStreamAudio = Array.from(p.trackPublications.values()).some(
-                  (pub) => pub.source === Track.Source.ScreenShareAudio && pub.isSubscribed && pub.track,
-                );
-                const streamAudioMuted = hasStreamAudio && mutedStreamAudio.has(p.identity);
-                const botLabel = p.identity === '__music-bot__'
-                  ? musicNowPlaying
-                  : p.identity.startsWith('__pipe-')
-                    ? (getPipeTitle(p.metadata) ?? p.name ?? 'Streaming')
-                    : null;
-                const durationPickerOpen = typeof openPopover === 'object' && openPopover !== null
-                  && memberEntry != null && openPopover.durationPickerFor === memberEntry.id;
+                  {/* Remote participants */}
+                  {remoteParticipants.map((p) => {
+                    const name = p.name || p.identity;
+                    const isBot = isMusicOrPipeBot(p.identity);
+                    const userMuted = mutedUsers.has(p.identity);
+                    const speaking = activeSpeakers.includes(p.identity);
+                    const playingSB = soundboardPlaying?.username === p.identity;
+                    const memberEntry = currentRoom ? roomMembers[currentRoom.id]?.find((m) => m.username === p.identity) : null;
+                    const isMyWhisperSource = whisperSource?.username === p.identity;
+                    const whisperDimmed = isWhispersMode && !isMyWhisperSource;
+                    const soundbiteOptOut = !!parseParticipantMetadata(p.metadata).soundbiteOptOut;
+                    const cameraPub = Array.from(p.trackPublications.values()).find(
+                      (pub) => pub.source === Track.Source.Camera && pub.isSubscribed && pub.track && !pub.isMuted,
+                    );
+                    const screenSharePub = Array.from(p.trackPublications.values()).find(
+                      (pub) => pub.source === Track.Source.ScreenShare && pub.isSubscribed && pub.track,
+                    );
+                    const hasStreamAudio = Array.from(p.trackPublications.values()).some(
+                      (pub) => pub.source === Track.Source.ScreenShareAudio && pub.isSubscribed && pub.track,
+                    );
+                    const streamAudioMuted = hasStreamAudio && mutedStreamAudio.has(p.identity);
+                    const botLabel = p.identity === '__music-bot__'
+                      ? musicNowPlaying
+                      : p.identity.startsWith('__pipe-')
+                        ? (getPipeTitle(p.metadata) ?? p.name ?? 'Streaming')
+                        : null;
+                    const canVote = !activeVote && !currentRoom?.is_jail && memberEntry != null;
+                    const volumeOpen = popoverIs('volumeFor', p.identity);
+                    const menuOpen = popoverIs('tileMenuFor', p.identity);
+                    const durationPickerOpen = memberEntry != null && popoverIs('durationPickerFor', memberEntry.id);
+                    const volKey = `vol-${p.identity}`;
+                    const moreKey = `more-${p.identity}`;
 
-                return (
-                  <ParticipantTile
-                    key={p.identity}
-                    displayName={p.name || p.identity}
-                    speakingGlow={(speaking || playingSB) && !userMuted && !whisperDimmed}
-                    dimmed={whisperDimmed}
-                    isMyWhisperSource={isMyWhisperSource}
-                    cameraPub={cameraPub}
-                    screenSharePub={screenSharePub}
-                    botLabel={botLabel}
-                    hasStreamAudio={hasStreamAudio}
-                    streamAudioMuted={streamAudioMuted}
-                    onToggleStreamAudio={() => toggleStreamAudioMute(p.identity)}
-                    onSpotlightCamera={() => setSpotlight({ identity: p.identity, source: 'camera' })}
-                    onSpotlightScreenShare={() => setSpotlight({ identity: p.identity, source: 'screen_share' })}
-                    chatMessages={chatBubbles.get(p.identity) || []}
-                    chatColor="green"
-                    nameSuffix={playingSB ? (
-                      <span className="text-[10px] text-amber-500 dark:text-amber-400 truncate shrink-0">
-                        🔊 {soundboardPlaying.clipName}
-                      </span>
-                    ) : undefined}
-                    footer={
-                      <>
-                        {!activeVote && !currentRoom?.is_jail && memberEntry && (
-                          <div className="relative">
-                            <button
-                              ref={(el) => { ctlRefs.current[`vote-${memberEntry.id}`] = el; }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setOpenPopover(durationPickerOpen ? null : { durationPickerFor: memberEntry.id });
-                              }}
-                              className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors opacity-100 md:opacity-0 md:group-hover:opacity-100"
-                              data-tooltip="Vote to jail"
+                    return (
+                      <ParticipantTile
+                        key={p.identity}
+                        displayName={name}
+                        speakingGlow={(speaking || playingSB) && !userMuted && !whisperDimmed}
+                        dimmed={whisperDimmed}
+                        isMyWhisperSource={isMyWhisperSource}
+                        cameraPub={cameraPub}
+                        screenSharePub={screenSharePub}
+                        botLabel={botLabel}
+                        hasStreamAudio={hasStreamAudio}
+                        streamAudioMuted={streamAudioMuted}
+                        onToggleStreamAudio={() => toggleStreamAudioMute(p.identity)}
+                        onSpotlightCamera={() => setSpotlight({ identity: p.identity, source: 'camera' })}
+                        onSpotlightScreenShare={() => setSpotlight({ identity: p.identity, source: 'screen_share' })}
+                        chatMessages={chatBubbles.get(p.identity) || []}
+                        chatColor="green"
+                        nameSuffix={playingSB ? (
+                          <span className="text-[10px] text-amber-300 truncate shrink-0">🔊 {soundboardPlaying.clipName}</span>
+                        ) : undefined}
+                        status={
+                          <>
+                            {userMuted && <VolumeX size={12} className="text-red-400 shrink-0" aria-label="Muted for you" />}
+                            {!isBot && (p.isMicrophoneEnabled
+                              ? <Mic size={12} className="shrink-0" />
+                              : <MicOff size={12} className="text-red-400 shrink-0" aria-label="Mic off" />)}
+                          </>
+                        }
+                        actionsVisible={volumeOpen || menuOpen || durationPickerOpen}
+                        actions={
+                          <>
+                            <TileAction
+                              ref={setCtlRef(volKey)}
+                              label={`Volume for ${name}`}
+                              onClick={() => setOpenPopover(volumeOpen ? null : { volumeFor: p.identity })}
                             >
-                              Vote
-                            </button>
-                            <Floating anchor={ctlRefs.current[`vote-${memberEntry.id}`] ?? null} open={durationPickerOpen} zClass="z-50">
-                              <div className="bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg py-1 min-w-[140px]">
-                                <div className="px-2 py-1 text-[10px] text-zinc-500 uppercase">Punishment</div>
-                                {DURATION_OPTIONS.map((opt) => (
-                                  <button
-                                    key={opt.secs}
-                                    onClick={() => handleStartVote(memberEntry.id, opt.secs)}
-                                    className="w-full text-left px-3 py-1.5 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-600 transition-colors"
-                                  >
-                                    {opt.label}
-                                  </button>
-                                ))}
+                              <Volume2 size={14} />
+                            </TileAction>
+                            {!isBot && !soundbiteOptOut && (
+                              <TileAction label="Save soundbite (last 10 s)" onClick={() => captureSoundbite(p.identity, name)}>
+                                <Scissors size={14} />
+                              </TileAction>
+                            )}
+                            <TileAction
+                              ref={setCtlRef(moreKey)}
+                              label="More"
+                              aria-haspopup="menu"
+                              aria-expanded={menuOpen}
+                              onClick={() => setOpenPopover(menuOpen || durationPickerOpen ? null : { tileMenuFor: p.identity })}
+                            >
+                              <Ellipsis size={14} />
+                            </TileAction>
+
+                            <Floating anchor={ctlRefs.current[volKey] ?? null} open={volumeOpen} placement="bottom" zClass="z-50">
+                              <div onClick={(e) => e.stopPropagation()} className="w-60 bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg p-3">
+                                <p className="text-xs font-medium text-zinc-700 dark:text-zinc-200 mb-1 truncate">{name}</p>
+                                <VolumeSlider
+                                  identity={p.identity}
+                                  displayName={name}
+                                  volume={getVolume(p.identity)}
+                                  onChange={(v) => setVolume(p.identity, v)}
+                                  compact
+                                />
+                                <p className="text-[10px] text-zinc-500 mt-1">Only changes what you hear</p>
                               </div>
                             </Floating>
-                          </div>
-                        )}
-                        {!isMusicOrPipeBot(p.identity) && !soundbiteOptOut && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              captureSoundbite(p.identity, p.name || p.identity);
-                            }}
-                            className="text-sm px-2 py-1 rounded-md transition-colors bg-zinc-100 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-600 md:opacity-0 md:group-hover:opacity-100"
-                            data-tooltip="Save soundbite"
-                          >
-                            <Scissors size={14} />
-                          </button>
-                        )}
-                        <button
-                          onClick={() => toggleMuteUser(p.identity)}
-                          className={`text-sm px-2 py-1 rounded-md transition-colors ${
-                            userMuted
-                              ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
-                              : 'bg-zinc-100 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-600'
-                          }`}
-                          data-tooltip={userMuted ? 'Unmute (local)' : 'Mute (local)'}
-                        >
-                          {userMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
-                        </button>
-                        <span>
-                          {p.isMicrophoneEnabled ? <Mic size={14} /> : <MicOff size={14} className="text-red-400" />}
-                        </span>
-                      </>
-                    }
-                  />
-                );
-              })}
+                            <Floating anchor={ctlRefs.current[moreKey] ?? null} open={menuOpen} placement="bottom" zClass="z-50">
+                              <div role="menu" onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg py-1 min-w-[170px]">
+                                <button role="menuitem" className={tileMenuItem} onClick={() => { toggleMuteUser(p.identity); setOpenPopover(null); }}>
+                                  {userMuted ? <Volume2 size={14} /> : <VolumeX size={14} />}
+                                  {userMuted ? 'Unmute for me' : 'Mute for me'}
+                                </button>
+                                {canVote && (
+                                  <button
+                                    role="menuitem"
+                                    className={`${tileMenuItem} text-red-500 dark:text-red-400`}
+                                    onClick={() => setOpenPopover({ durationPickerFor: memberEntry!.id })}
+                                  >
+                                    <Gavel size={14} />Vote to jail…
+                                  </button>
+                                )}
+                              </div>
+                            </Floating>
+                            {memberEntry && (
+                              <Floating anchor={ctlRefs.current[moreKey] ?? null} open={durationPickerOpen} placement="bottom" zClass="z-50">
+                                <div onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg py-1 min-w-[150px]">
+                                  <div className="px-3 py-1 text-[10px] text-zinc-500 uppercase">Jail {name} for</div>
+                                  {DURATION_OPTIONS.map((opt) => (
+                                    <button
+                                      key={opt.secs}
+                                      onClick={() => handleStartVote(memberEntry.id, opt.secs)}
+                                      className="w-full text-left px-3 py-1.5 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-600 transition-colors"
+                                    >
+                                      {opt.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              </Floating>
+                            )}
+                          </>
+                        }
+                      />
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           )}
 
@@ -1519,11 +1565,10 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
             only a last-resort fallback. */}
         {connectionState === ConnectionState.Connected && room && (() => {
           const showShare = !isMobile;
-          const showVolumes = !isMobile;
           const showPipe = pipe.available && !!currentRoom && !hasMusicBot;
           const anchorFor = (key: string) => ctlRefs.current[key] ?? null;
           const setRef = (key: string) => (el: HTMLButtonElement | null) => { ctlRefs.current[key] = el; };
-          const toggle = (key: 'settings' | 'volumes' | 'soundboard' | 'music' | 'pipe') =>
+          const toggle = (key: 'settings' | 'soundboard' | 'music' | 'pipe') =>
             setOpenPopover(openPopover === key ? null : key);
           const toggleShare = () => {
             if (isSharing) setOpenPopover(openPopover === 'stopShare' ? null : 'stopShare');
@@ -1607,11 +1652,6 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
                       {isSharing ? <Monitor size={18} /> : <MonitorOff size={18} />}
                     </ControlButton>
                   )}
-                  {showVolumes && (
-                    <ControlButton ref={setRef('volumes')} label="Adjust participant volumes" tooltip="Volumes" onClick={() => toggle('volumes')}>
-                      <Volume2 size={18} />
-                    </ControlButton>
-                  )}
                   {hasMusicBot && (
                     <ControlButton ref={setRef('music')} label="Open music controls" tooltip="Music" onClick={() => toggle('music')}>
                       <Music size={18} />
@@ -1691,25 +1731,6 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
                 </div>
               </Floating>
 
-              <Floating anchor={anchorFor('volumes')} open={openPopover === 'volumes' && showVolumes} zClass="z-50">
-                <div className="bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg shadow-lg py-2 px-3 min-w-[200px] max-h-[60vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                  <span className="text-xs font-semibold uppercase text-zinc-500 block mb-2">Volume</span>
-                  {remoteParticipants.length === 0 ? (
-                    <p className="text-xs text-zinc-500 py-1">No other participants</p>
-                  ) : (
-                    remoteParticipants.map((p) => (
-                      <VolumeSlider
-                        key={p.identity}
-                        identity={p.identity}
-                        displayName={p.name || p.identity}
-                        volume={getVolume(p.identity)}
-                        onChange={(v) => setVolume(p.identity, v)}
-                      />
-                    ))
-                  )}
-                </div>
-              </Floating>
-
               {currentRoom && (
                 <Floating anchor={anchorFor('music')} open={openPopover === 'music' && hasMusicBot} zClass="z-50">
                   <MusicControls status={musicStatus} onRefresh={refreshMusicStatus} pipe={pipe} roomId={currentRoom.id} />
@@ -1763,6 +1784,8 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
           micOff={micOffUsernames}
           mutedForMe={mutedUsers}
           onToggleMute={toggleMuteUser}
+          getVolume={getVolume}
+          onVolumeChange={setVolume}
         />
       </SidePanel>
     </div>
