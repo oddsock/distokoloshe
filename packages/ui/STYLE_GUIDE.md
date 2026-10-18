@@ -374,23 +374,31 @@ picks the column count that makes 16:9 tiles largest. Columns are fixed-width
 (`repeat(n, Wpx)`, `gap-3`, `p-1` so speaking rings aren't clipped); below a 180px tile it
 switches to scrolling.
 
-### Theater — `TheaterLayout`, `PinnedView`
+### Theater & Multiview — `TheaterLayout`, `PinnedStage`
 
-One pinned video fills the same measured region; everyone else sits in a filmstrip —
+What's pinned (1–4 videos, `MAX_PINS`) fills the same measured region; everyone else sits
+in a filmstrip —
 a side column (`w-[clamp(160px,18%,240px)]`) when the region is ≥720px wide and wider than
 1.25:1, otherwise a bottom row (`h-[clamp(96px,22%,132px)]`, tiles `h-full aspect-video`).
-Strip tiles are `ParticipantTile compact` (no camera PIP); the pinned person comes first
-with the pinned source hidden (`hide`), so their tile shows their other video or avatar
-plus a green `Monitor` in the name tag when it's their share that's on the stage.
+Strip tiles are `ParticipantTile compact` (no camera PIP); pinned people come first with
+their pinned sources hidden (`hideShare` / `hideCamera`), so their tile shows what isn't on
+the stage, plus a green `Monitor` in the name tag when their share is.
 
-`PinnedView`: black, `rounded-xl` (square in fullscreen), media `object-contain`; name tag
-bottom-left ("Sam · screen"), `TileAction`s top-right (stream audio, fullscreen, unpin),
-the other video as a PIP bottom-right (click to swap). Pin with a tile's media or its Pin
-action; the header's Grid / Theater switch picks something to pin (a share first, then a
-speaker's camera). Remote shares auto-pin while nothing is pinned; going back to the grid
-keeps the shares showing at that moment out of auto-pin.
+`PinnedStage` panes: black, `rounded-xl`, media `object-contain`; name tag bottom-left
+("Sam · screen"), `TileAction`s top-right (stream audio, "Show only this" with 2+ panes,
+fullscreen, unpin). 1 pane fills the stage and gets the person's other video as a PIP
+(click to swap); 2 sit side by side or stacked, whichever makes them bigger; 3–4 are a
+2×2 (the third of three centred). With 2+ panes each pane's buttons show on hover/focus.
 
-**Fullscreen** is the pinned view only (header button, the tile action, or double-click).
+Clicking a tile's media **replaces** the stage; its Pin action or Ctrl/⌘-click **adds** a
+pane (an error toast at four). The header's Grid / Theater / Multiview switch: Grid clears
+the stage, Theater keeps the first pane (or picks a share, then a speaker's camera),
+Multiview fills up to four from the same order. Remote shares auto-pin while nothing is
+pinned; going back to the grid keeps the shares showing then out of auto-pin. A share that
+starts while something is pinned gets a toast with **View** / **Add to split** (toast
+`actions`, `durationMs` 8 s).
+
+**Fullscreen** is the whole pinned stage (header button, a pane's action, or double-click).
 Use `lib/fullscreen.ts` (`enterFullscreen` / `getFullscreenElement` /
 `onFullscreenChange`, which cover Safari's webkit API; on iPhone the video itself goes
 fullscreen) or `useFullscreen(el)`. In fullscreen the controls and cursor fade after 2 s

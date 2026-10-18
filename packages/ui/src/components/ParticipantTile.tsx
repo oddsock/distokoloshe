@@ -1,4 +1,4 @@
-import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { forwardRef, type ButtonHTMLAttributes, type MouseEvent, type ReactNode } from 'react';
 import type { TrackPublication } from 'livekit-client';
 import { Music, Pin, Volume2, VolumeX } from 'lucide-react';
 import { VideoTrackView } from './VideoTrackView';
@@ -47,9 +47,13 @@ interface ParticipantTileProps {
   hasStreamAudio?: boolean;
   streamAudioMuted?: boolean;
   onToggleStreamAudio?: () => void;
-  /** Pin this camera / share to the stage (theater) */
-  onPinCamera?: () => void;
-  onPinScreenShare?: () => void;
+  /**
+   * Put this camera / share on the stage: `add` (Pin button, Ctrl/⌘-click) adds a
+   * multiview pane, otherwise it replaces whatever is pinned.
+   */
+  onPin?: (source: 'camera' | 'screen_share', add: boolean) => void;
+  /** Tooltip for the Pin button ("Pin to stage", "Add to stage", …) */
+  pinLabel?: string;
   /** Filmstrip tile: no camera PIP */
   compact?: boolean;
   /** Recent chat lines shown as bubbles inside the tile */
@@ -83,8 +87,8 @@ export function ParticipantTile({
   hasStreamAudio,
   streamAudioMuted,
   onToggleStreamAudio,
-  onPinCamera,
-  onPinScreenShare,
+  onPin,
+  pinLabel = 'Pin to stage',
   compact,
   chatLines,
   chatColor,
@@ -98,7 +102,10 @@ export function ParticipantTile({
   // (if also on) becomes a small PIP; clicking the main area (or Pin) pins whichever source
   // occupies it, the PIP pins the camera.
   const hasBoth = !!screenSharePub && !!cameraPub && !compact;
-  const mainClick = screenSharePub ? onPinScreenShare : cameraPub ? onPinCamera : undefined;
+  const mainSource = screenSharePub ? 'screen_share' as const : cameraPub ? 'camera' as const : null;
+  const mainClick = mainSource && onPin
+    ? (e: MouseEvent) => onPin(mainSource, e.ctrlKey || e.metaKey)
+    : undefined;
   const showStreamAudio = !!screenSharePub && !!hasStreamAudio && !!onToggleStreamAudio;
 
   return (
@@ -146,7 +153,7 @@ export function ParticipantTile({
         {/* Camera PIP — only when a share is also occupying the main area */}
         {hasBoth && (
           <button
-            onClick={(e) => { e.stopPropagation(); onPinCamera?.(); }}
+            onClick={(e) => { e.stopPropagation(); onPin?.('camera', e.ctrlKey || e.metaKey); }}
             className="absolute bottom-2 right-2 w-1/4 min-w-[3.5rem] aspect-video rounded-md overflow-hidden border-2 border-white/30 hover:border-indigo-400 transition-colors shadow-lg bg-black z-10"
             data-tooltip="Switch to camera"
             aria-label="Switch to camera"
@@ -164,15 +171,15 @@ export function ParticipantTile({
         </div>
 
         {/* Actions — clicks here must not pin the tile */}
-        {(actions || showStreamAudio || mainClick) && (
+        {(actions || showStreamAudio || (mainSource && onPin)) && (
           <div
             className={`absolute top-2 right-2 z-10 flex gap-1 transition-opacity [@media(hover:none)]:opacity-100 ${
               actionsVisible ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
             }`}
             onClick={(e) => e.stopPropagation()}
           >
-            {mainClick && (
-              <TileAction label="Pin to stage" onClick={mainClick}>
+            {mainSource && onPin && (
+              <TileAction label={pinLabel} onClick={() => onPin(mainSource, true)}>
                 <Pin size={14} />
               </TileAction>
             )}

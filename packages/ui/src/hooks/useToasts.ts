@@ -13,6 +13,10 @@ export interface Toast {
   sticky?: boolean;
   /** Called when the person closes it with ✕ */
   onDismiss?: () => void;
+  /** Buttons after the text (e.g. View / Add to split); clicking one also closes the toast */
+  actions?: Array<{ label: string; onClick: () => void }>;
+  /** Override the tone's display time (e.g. longer when there are actions to click) */
+  durationMs?: number;
 }
 
 const DURATION_MS: Record<ToastTone, number> = { info: 4000, success: 4000, warn: 5000, error: 6000 };
@@ -43,7 +47,7 @@ export function useToasts() {
       const timer = setTimeout(() => {
         timers.current.delete(timer);
         dismiss(id);
-      }, DURATION_MS[toast.tone]);
+      }, toast.durationMs ?? DURATION_MS[toast.tone]);
       timers.current.add(timer);
     }
     return id;

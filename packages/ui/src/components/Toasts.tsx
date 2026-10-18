@@ -10,6 +10,7 @@ const TONES: Record<ToastTone, string> = {
 
 interface ToastsProps {
   toasts: Toast[];
+  /** The person closed it (✕ or one of its actions) */
   onDismiss: (toast: Toast) => void;
   /** Vertical position; the default clears the stage header */
   topClass?: string;
@@ -29,6 +30,15 @@ export function Toasts({ toasts, onDismiss, topClass = 'top-[4.25rem]' }: Toasts
         >
           {t.icon && <span className="shrink-0 flex">{t.icon}</span>}
           <span className="min-w-0">{t.text}</span>
+          {t.actions?.map((a) => (
+            <button
+              key={a.label}
+              onClick={() => { a.onClick(); onDismiss(t); }}
+              className="shrink-0 px-2 py-0.5 rounded-md text-xs font-medium bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-500/25 transition-colors focus-visible:ring-2 focus-visible:ring-indigo-500"
+            >
+              {a.label}
+            </button>
+          ))}
           {(t.tone === 'error' || t.sticky) && (
             <button
               onClick={() => onDismiss(t)}

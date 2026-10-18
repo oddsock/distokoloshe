@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Ellipsis, Users, Menu, Gavel, LayoutGrid, PanelRight, Maximize2 } from 'lucide-react';
+import { Ellipsis, Users, Menu, Gavel, LayoutGrid, PanelRight, LayoutDashboard, Maximize2 } from 'lucide-react';
 import type * as api from '../lib/api';
 import { formatCountdown, getRoomInitials, secondsUntil } from '../lib/utils';
 import { useNow } from '../hooks/useNow';
@@ -31,12 +31,13 @@ interface StageHeaderProps {
   /** Why a release vote can't start right now (shown in the list), or null */
   releaseBlockedReason: string | null;
   onVoteRelease: (punishmentId: number) => void;
-  /** Grid / Theater switch (shown once connected) */
-  layout: 'grid' | 'theater' | null;
-  /** Theater needs something to pin (a share or a camera) */
+  /** Grid / Theater / Multiview switch (shown once connected) */
+  layout: 'grid' | 'theater' | 'multiview' | null;
+  /** Theater needs something to pin (a share or a camera); multiview needs two */
   canTheater: boolean;
-  onLayout: (layout: 'grid' | 'theater') => void;
-  /** Fullscreen the pinned item (theater only) */
+  canMultiview: boolean;
+  onLayout: (layout: 'grid' | 'theater' | 'multiview') => void;
+  /** Fullscreen what's pinned (theater / multiview only) */
   canFullscreen: boolean;
   onFullscreen: () => void;
   onOpenRail: () => void;
@@ -194,6 +195,16 @@ export function StageHeader(props: StageHeaderProps) {
             className={`${segButton} ${props.layout === 'theater' ? segOn : segOff} ${props.canTheater ? '' : 'opacity-40 cursor-not-allowed'}`}
           >
             <PanelRight size={15} />
+          </button>
+          <button
+            onClick={() => { if (props.canMultiview) props.onLayout('multiview'); }}
+            aria-label="Multiview"
+            aria-pressed={props.layout === 'multiview'}
+            aria-disabled={!props.canMultiview}
+            data-tooltip={props.canMultiview ? 'Multiview — up to 4 pinned side by side' : 'Multiview — needs two shares or cameras'}
+            className={`${segButton} ${props.layout === 'multiview' ? segOn : segOff} ${props.canMultiview ? '' : 'opacity-40 cursor-not-allowed'}`}
+          >
+            <LayoutDashboard size={15} />
           </button>
         </div>
       )}

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, type MouseEvent, type ReactNode } from 'react';
-import { ConnectionState, Track, RoomEvent } from 'livekit-client';
+import { ConnectionState, Track, RoomEvent, VideoQuality } from 'livekit-client';
 import type { RemoteTrackPublication, RemoteParticipant, TrackPublication } from 'livekit-client';
 import { useLiveKitRoom, type RoomConnection } from '../hooks/useLiveKitRoom';
 import { useAudioMixer } from '../hooks/useAudioMixer';
@@ -8,7 +8,7 @@ import { useEvents } from '../hooks/useEvents';
 import { DeviceSettings } from '../components/DeviceSettings';
 import { VolumeSlider } from '../components/VolumeSlider';
 import { ParticipantTile, TileAction } from '../components/ParticipantTile';
-import { PinnedView, type PinSource } from '../components/PinnedView';
+import { PinnedStage, MAX_PINS, type Pin, type PinSource, type StagePane } from '../components/PinnedStage';
 import { TheaterLayout } from '../components/TheaterLayout';
 import type { ChatLine } from '../components/ChatBubbles';
 import { ChatPanel, type ChatEntry } from '../components/ChatPanel';
@@ -156,12 +156,15 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
 
   const isSafari = /Safari\//.test(navigator.userAgent) && !/Chrome\//.test(navigator.userAgent);
   const [safariWarnDismissed, setSafariWarnDismissed] = useState(() => localStorage.getItem('safariCodecWarnDismissed') === '1');
-  // Theater: the pinned share/camera fills the stage (null = grid)
-  const [pinned, setPinned] = useState<{ identity: string; source: PinSource } | null>(null);
+  // Pinned videos, in order: none = grid, one = theater, 2–4 = multiview
+  const [pins, setPins] = useState<Pin[]>([]);
   // Shares showing when you went back to the grid (track sids) — auto-pin leaves them be
   const declinedSharesRef = useRef(new Set<string>());
-  const [pinnedEl, setPinnedEl] = useState<HTMLDivElement | null>(null);
-  const pinnedFullscreen = useFullscreen(pinnedEl);
+  // Shares already noticed, so "X started sharing" is said once (track sids)
+  const seenSharesRef = useRef(new Set<string>());
+  const connectedAtRef = useRef(0);
+  const [stageEl, setStageEl] = useState<HTMLDivElement | null>(null);
+  const stageFullscreen = useFullscreen(stageEl);
   const [audioTrackVersion, setAudioTrackVersion] = useState(0);
   const [videoTrackVersion, setVideoTrackVersion] = useState(0);
 
@@ -868,7 +871,7 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
     async (roomId: number) => {
       const myJoinId = ++joinIdRef.current;
       setLeftSidebarOpen(false);
-      setPinned(null);
+      setPins([]);
       try {
         await disconnect();
         if (joinIdRef.current !== myJoinId) return; // superseded by newer join
@@ -964,44 +967,133 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
     ) ?? null;
   };
 
-  // Unpin when the pinned video ends. (Runs after every render: cheap, and track changes
-  // don't always change a dependency.)
+  const samePin = (a: Pin, b: Pin) => a.identity === b.identity && a.source === b.source;
+
+  // Drop panes whose video ended. (Runs after every render: cheap, and track changes don't
+  // always change a dependency.)
   useEffect(() => {
-    if (pinned && !findVideoPub(pinned.identity, pinned.source)) setPinned(null);
+    const live = pins.filter((pin) => findVideoPub(pin.identity, pin.source));
+    if (live.length !== pins.length) setPins(live);
   });
 
   // Auto-pin: with nothing pinned, someone else's share takes the stage (its sound is left
   // as it is). Shares that were showing when you went back to the grid stay in the grid.
   useEffect(() => {
-    if (pinned || connectionState !== ConnectionState.Connected) return;
+    if (pins.length > 0 || connectionState !== ConnectionState.Connected) return;
     for (const p of remoteParticipants) {
       const pub = findVideoPub(p.identity, 'screen_share');
       if (pub && !declinedSharesRef.current.has(pub.trackSid)) {
-        setPinned({ identity: p.identity, source: 'screen_share' });
+        setPins([{ identity: p.identity, source: 'screen_share' }]);
         return;
       }
     }
   });
 
+  /** Add a pane (multiview); the stage holds four at most. */
+  const addPin = (pin: Pin) => {
+    if (pins.some((x) => samePin(x, pin))) return;
+    if (pins.length >= MAX_PINS) {
+      showError(`Up to ${MAX_PINS} on the stage at once — unpin one first`);
+      return;
+    }
+    setPins([...pins, pin]);
+  };
+  // Toast actions run later — they call the newest addPin, not the one from when they were made
+  const addPinRef = useRef(addPin);
+  addPinRef.current = addPin;
+
   /** Back to the grid; every share showing now stays out of auto-pin. */
-  const unpin = () => {
+  const unpinAll = () => {
     for (const p of remoteParticipants) {
       const pub = findVideoPub(p.identity, 'screen_share');
       if (pub) declinedSharesRef.current.add(pub.trackSid);
     }
-    setPinned(null);
+    setPins([]);
   };
+  /** Close one pane; closing the last is going back to the grid. */
+  const unpin = (pin: Pin) => {
+    if (pins.length <= 1) unpinAll();
+    else setPins(pins.filter((x) => !samePin(x, pin)));
+  };
+  /** Tile clicks replace the stage; the Pin button and Ctrl/⌘-click add a pane. */
+  const pinFromTile = (identity: string) => (source: PinSource, add: boolean) => {
+    const pin = { identity, source };
+    if (add && pins.length > 0) addPin(pin);
+    else setPins([pin]);
+  };
+  const pinLabel = pins.length === 0 ? 'Pin to stage'
+    : pins.length >= MAX_PINS ? `Stage is full (${MAX_PINS})` : 'Add to stage (Ctrl/⌘-click)';
 
-  /** What the Theater button pins: a share (others' before yours), else a camera — speakers first. */
-  const theaterPick = ((): { identity: string; source: PinSource } | null => {
-    if (pinned) return pinned;
+  // "X started sharing" while something else is on the stage: offer to view it or add it.
+  // Shares already live when you connect (they arrive over the first seconds) don't count.
+  useEffect(() => {
+    if (connectionState === ConnectionState.Connected) connectedAtRef.current = Date.now();
+  }, [connectionState]);
+  useEffect(() => {
+    if (connectionState !== ConnectionState.Connected) return;
+    const settling = Date.now() - connectedAtRef.current < 3000;
+    for (const p of remoteParticipants) {
+      const pub = findVideoPub(p.identity, 'screen_share');
+      if (!pub || seenSharesRef.current.has(pub.trackSid)) continue;
+      seenSharesRef.current.add(pub.trackSid);
+      const pin: Pin = { identity: p.identity, source: 'screen_share' };
+      // An empty stage auto-pins it instead
+      if (settling || pins.length === 0 || pins.some((x) => samePin(x, pin))) continue;
+      pushToast({
+        tone: 'info',
+        icon: <Monitor size={14} />,
+        text: `${p.name || p.identity} started sharing`,
+        durationMs: 8000,
+        actions: [
+          { label: 'View', onClick: () => setPins([pin]) },
+          ...(pins.length < MAX_PINS ? [{ label: 'Add to split', onClick: () => addPinRef.current(pin) }] : []),
+        ],
+      });
+    }
+  });
+
+  // Locked stream quality turns adaptive stream off, so every video arrives at full size.
+  // While something is pinned, ask for the small layer of everything that isn't.
+  useEffect(() => {
+    if (!room || room.options.adaptiveStream) return;
+    for (const p of remoteParticipants) {
+      for (const pub of p.trackPublications.values()) {
+        if (pub.kind !== Track.Kind.Video || !pub.isSubscribed) continue;
+        const source: PinSource | null = pub.source === Track.Source.ScreenShare ? 'screen_share'
+          : pub.source === Track.Source.Camera ? 'camera' : null;
+        if (!source) continue;
+        const onStage = pins.length === 0 || pins.some((x) => x.identity === p.identity && x.source === source);
+        pub.setVideoQuality(onStage ? VideoQuality.HIGH : VideoQuality.LOW);
+      }
+    }
+  }, [room, remoteParticipants, pins, videoTrackVersion]);
+
+  /** Pinnable videos in the order the layout buttons take them: shares (others' before
+   *  yours), then cameras — current speakers first. */
+  const stageCandidates = ((): Pin[] => {
     const remoteIds = remoteParticipants.map((p) => p.identity);
     const everyone = localParticipant ? [...remoteIds, localParticipant.identity] : remoteIds;
-    const share = everyone.find((id) => findVideoPub(id, 'screen_share'));
-    if (share) return { identity: share, source: 'screen_share' };
-    const camera = [...activeSpeakers.filter((id) => remoteIds.includes(id)), ...everyone].find((id) => findVideoPub(id, 'camera'));
-    return camera ? { identity: camera, source: 'camera' } : null;
+    const cameraOrder = [...new Set([...activeSpeakers.filter((id) => remoteIds.includes(id)), ...everyone])];
+    return [
+      ...everyone.filter((id) => findVideoPub(id, 'screen_share')).map((identity) => ({ identity, source: 'screen_share' as const })),
+      ...cameraOrder.filter((id) => findVideoPub(id, 'camera')).map((identity) => ({ identity, source: 'camera' as const })),
+    ];
   })();
+  const setLayout = (layout: 'grid' | 'theater' | 'multiview') => {
+    if (layout === 'grid') {
+      if (pins.length > 0) unpinAll();
+    } else if (layout === 'theater') {
+      setPins(pins.length > 0 ? [pins[0]] : stageCandidates.slice(0, 1));
+    } else {
+      // Keep what's pinned and fill up with the next candidates
+      const next = [...pins];
+      for (const c of stageCandidates) {
+        if (next.length >= MAX_PINS) break;
+        if (!next.some((x) => samePin(x, c))) next.push(c);
+      }
+      setPins(next);
+    }
+  };
 
   const toggleMuteUser = useCallback((identity: string) => {
     const muted = !isMuted(identity);
@@ -1098,12 +1190,11 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
   const tileMenuItem = 'w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-left text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-600 transition-colors';
 
   // ── Tiles: one builder each for you and for others, used by the grid and the filmstrip.
-  // `hide` drops the source that's on the stage, so the pinned person's strip tile shows
+  // hideShare / hideCamera drop what's on the stage, so a pinned person's strip tile shows
   // their other video (or avatar) instead of the same picture twice.
-  type TileOpts = { compact?: boolean; hide?: PinSource };
-  const pinTo = (identity: string, source: PinSource) => () => setPinned({ identity, source });
+  type TileOpts = { compact?: boolean; hideShare?: boolean; hideCamera?: boolean };
 
-  const renderLocalTile = ({ compact, hide }: TileOpts = {}) => {
+  const renderLocalTile = ({ compact, hideShare, hideCamera }: TileOpts = {}) => {
     if (!localParticipant) return null;
     const id = localParticipant.identity;
     return (
@@ -1111,17 +1202,17 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
         displayName={localParticipant.name || id}
         isLocal
         speakingGlow={activeSpeakers.includes(id)}
-        cameraPub={hide === 'camera' ? null : findVideoPub(id, 'camera')}
-        screenSharePub={hide === 'screen_share' ? null : localScreenShare}
-        onPinCamera={pinTo(id, 'camera')}
-        onPinScreenShare={pinTo(id, 'screen_share')}
+        cameraPub={hideCamera ? null : findVideoPub(id, 'camera')}
+        screenSharePub={hideShare ? null : localScreenShare}
+        onPin={pinFromTile(id)}
+        pinLabel={pinLabel}
         compact={compact}
         chatLines={bubbleLines.get(id) ?? []}
         chatColor="blue"
         onViewMessages={() => showPanelTab('chat')}
         status={
           <>
-            {hide === 'screen_share' && <Monitor size={12} className="text-green-400 shrink-0" aria-label="Sharing screen" />}
+            {hideShare && <Monitor size={12} className="text-green-400 shrink-0" aria-label="Sharing screen" />}
             {deafened && <EarOff size={12} className="text-red-400 shrink-0" aria-label="Deafened" />}
             {micMuted ? <MicOff size={12} className="text-red-400 shrink-0" aria-label="Mic off" /> : <Mic size={12} className="shrink-0" />}
           </>
@@ -1130,7 +1221,7 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
     );
   };
 
-  const renderRemoteTile = (p: RemoteParticipant, { compact, hide }: TileOpts = {}) => {
+  const renderRemoteTile = (p: RemoteParticipant, { compact, hideShare, hideCamera }: TileOpts = {}) => {
     const name = p.name || p.identity;
     const isBot = isMusicOrPipeBot(p.identity);
     const userMuted = mutedUsers.has(p.identity);
@@ -1140,8 +1231,8 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
     const isMyWhisperSource = whisperSource?.username === p.identity;
     const whisperDimmed = isWhispersMode && !isMyWhisperSource;
     const soundbiteOptOut = !!parseParticipantMetadata(p.metadata).soundbiteOptOut;
-    const cameraPub = hide === 'camera' ? null : findVideoPub(p.identity, 'camera');
-    const screenSharePub = hide === 'screen_share' ? null : findVideoPub(p.identity, 'screen_share');
+    const cameraPub = hideCamera ? null : findVideoPub(p.identity, 'camera');
+    const screenSharePub = hideShare ? null : findVideoPub(p.identity, 'screen_share');
     const hasStreamAudio = Array.from(p.trackPublications.values()).some(
       (pub) => pub.source === Track.Source.ScreenShareAudio && pub.isSubscribed && pub.track,
     );
@@ -1171,8 +1262,8 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
         hasStreamAudio={hasStreamAudio}
         streamAudioMuted={streamAudioMuted}
         onToggleStreamAudio={() => toggleStreamAudioMute(p.identity)}
-        onPinCamera={pinTo(p.identity, 'camera')}
-        onPinScreenShare={pinTo(p.identity, 'screen_share')}
+        onPin={pinFromTile(p.identity)}
+        pinLabel={pinLabel}
         compact={compact}
         chatLines={bubbleLines.get(p.identity) ?? []}
         chatColor="green"
@@ -1182,7 +1273,7 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
         ) : undefined}
         status={
           <>
-            {hide === 'screen_share' && <Monitor size={12} className="text-green-400 shrink-0" aria-label="Sharing screen" />}
+            {hideShare && <Monitor size={12} className="text-green-400 shrink-0" aria-label="Sharing screen" />}
             {userMuted && <VolumeX size={12} className="text-red-400 shrink-0" aria-label="Muted for you" />}
             {!isBot && (p.isMicrophoneEnabled
               ? <Mic size={12} className="shrink-0" />
@@ -1266,43 +1357,62 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
     );
   };
 
-  // ── Theater: the pinned video on the stage, everyone in the filmstrip
-  const pinnedPub = pinned ? findVideoPub(pinned.identity, pinned.source) : null;
+  // ── Stage: what's pinned (one pane = theater, 2–4 = multiview), everyone in the filmstrip
   const dismissToastByUser = (t: Toast) => { t.onDismiss?.(); dismissToast(t.id); };
-  let theater: { main: ReactNode; strip: Array<{ key: string; node: ReactNode }> } | null = null;
-  if (pinned && pinnedPub) {
-    const isLocalPin = pinned.identity === localParticipant?.identity;
-    const pinnedRemote = isLocalPin ? undefined : remoteParticipants.find((p) => p.identity === pinned.identity);
-    const altSource: PinSource = pinned.source === 'screen_share' ? 'camera' : 'screen_share';
-    const hasStreamAudio = !!pinnedRemote && pinned.source === 'screen_share' && Array.from(pinnedRemote.trackPublications.values()).some(
-      (pub) => pub.source === Track.Source.ScreenShareAudio && pub.isSubscribed && pub.track,
-    );
+  const panes: StagePane[] = [];
+  for (const pin of pins) {
+    const publication = findVideoPub(pin.identity, pin.source);
+    if (!publication) continue;
+    const isLocalPin = pin.identity === localParticipant?.identity;
+    const remote = isLocalPin ? undefined : remoteParticipants.find((p) => p.identity === pin.identity);
+    const altPin: Pin = { identity: pin.identity, source: pin.source === 'screen_share' ? 'camera' : 'screen_share' };
+    panes.push({
+      key: `${pin.identity}:${pin.source}`,
+      publication,
+      source: pin.source,
+      name: isLocalPin ? 'You' : (remote?.name || pin.identity),
+      isLocal: isLocalPin,
+      hasStreamAudio: !!remote && pin.source === 'screen_share' && Array.from(remote.trackPublications.values()).some(
+        (pub) => pub.source === Track.Source.ScreenShareAudio && pub.isSubscribed && pub.track,
+      ),
+      streamAudioMuted: mutedStreamAudio.has(pin.identity),
+      onToggleStreamAudio: () => toggleStreamAudioMute(pin.identity),
+      onUnpin: () => unpin(pin),
+      onSolo: pins.length > 1 ? () => setPins([pin]) : undefined,
+      // One pane: the same person's other video sits in its corner to swap to
+      altPublication: pins.length === 1 ? findVideoPub(altPin.identity, altPin.source) : null,
+      onPinAlt: () => setPins([altPin]),
+    });
+  }
+
+  let stage: { main: ReactNode; strip: Array<{ key: string; node: ReactNode }> } | null = null;
+  if (panes.length > 0) {
+    // Strip: pinned people first (their pinned sources hidden), then you, then everyone else
+    const localId = localParticipant?.identity;
+    const order = [...new Set([...pins.map((x) => x.identity), ...(localId ? [localId] : []), ...remoteParticipants.map((p) => p.identity)])];
     const strip: Array<{ key: string; node: ReactNode }> = [];
-    // The pinned person first, then you, then everyone else
-    if (isLocalPin) strip.push({ key: 'local', node: renderLocalTile({ compact: true, hide: pinned.source }) });
-    else if (pinnedRemote) strip.push({ key: pinnedRemote.identity, node: renderRemoteTile(pinnedRemote, { compact: true, hide: pinned.source }) });
-    if (!isLocalPin && localParticipant) strip.push({ key: 'local', node: renderLocalTile({ compact: true }) });
-    for (const rp of remoteParticipants) {
-      if (rp.identity !== pinned.identity) strip.push({ key: rp.identity, node: renderRemoteTile(rp, { compact: true }) });
+    for (const id of order) {
+      const opts: TileOpts = {
+        compact: true,
+        hideShare: pins.some((x) => x.identity === id && x.source === 'screen_share'),
+        hideCamera: pins.some((x) => x.identity === id && x.source === 'camera'),
+      };
+      if (id === localId) {
+        strip.push({ key: 'local', node: renderLocalTile(opts) });
+      } else {
+        const rp = remoteParticipants.find((p) => p.identity === id);
+        if (rp) strip.push({ key: id, node: renderRemoteTile(rp, opts) });
+      }
     }
     const stop = (e: MouseEvent) => e.stopPropagation();
-    theater = {
+    stage = {
       strip,
       main: (
-        <PinnedView
-          publication={pinnedPub}
-          source={pinned.source}
-          name={isLocalPin ? 'You' : (pinnedRemote?.name || pinned.identity)}
-          isLocal={isLocalPin}
-          altPublication={findVideoPub(pinned.identity, altSource)}
-          onPinAlt={() => setPinned({ identity: pinned.identity, source: altSource })}
-          hasStreamAudio={hasStreamAudio}
-          streamAudioMuted={mutedStreamAudio.has(pinned.identity)}
-          onToggleStreamAudio={() => toggleStreamAudioMute(pinned.identity)}
-          onUnpin={unpin}
-          isFullscreen={pinnedFullscreen.isFullscreen}
-          onToggleFullscreen={pinnedFullscreen.toggle}
-          rootRef={setPinnedEl}
+        <PinnedStage
+          panes={panes}
+          isFullscreen={stageFullscreen.isFullscreen}
+          onToggleFullscreen={stageFullscreen.toggle}
+          rootRef={setStageEl}
           fullscreenOverlay={
             // Fullscreen hides the rest of the page — bring the toasts and the vote along
             <div onDoubleClick={stop}>
@@ -1370,27 +1480,27 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
           jailed={currentRoom?.is_jail ? [] : jailedUsers}
           releaseBlockedReason={releaseBlockedReason}
           onVoteRelease={handleStartLiftVote}
-          layout={connectionState === ConnectionState.Connected ? (theater ? 'theater' : 'grid') : null}
-          canTheater={!!theaterPick}
-          onLayout={(layout) => {
-            if (layout === 'grid') { if (pinned) unpin(); }
-            else if (theaterPick) setPinned(theaterPick);
-          }}
-          canFullscreen={!!theater}
-          onFullscreen={pinnedFullscreen.toggle}
+          layout={connectionState === ConnectionState.Connected
+            ? (panes.length === 0 ? 'grid' : panes.length === 1 ? 'theater' : 'multiview')
+            : null}
+          canTheater={stageCandidates.length > 0}
+          canMultiview={stageCandidates.length > 1}
+          onLayout={setLayout}
+          canFullscreen={panes.length > 0}
+          onFullscreen={stageFullscreen.toggle}
           onOpenRail={() => setLeftSidebarOpen(true)}
           panelOpen={panelOpen && panelTab === 'people'}
           onTogglePanel={() => togglePanelTab('people')}
         />
 
-        {!pinnedFullscreen.isFullscreen && <Toasts toasts={toasts} onDismiss={dismissToastByUser} />}
+        {!stageFullscreen.isFullscreen && <Toasts toasts={toasts} onDismiss={dismissToastByUser} />}
 
         {/* Participant area */}
         <div className="flex-1 min-h-0 flex flex-col p-4 md:p-6 pb-24 overflow-y-auto">
           {connectionState === ConnectionState.Connected && (
             <div ref={setGridEl} className="relative flex-1 min-h-[200px]">
-              {theater ? (
-                <TheaterLayout width={gridSize.width} height={gridSize.height} main={theater.main} strip={theater.strip} />
+              {stage ? (
+                <TheaterLayout width={gridSize.width} height={gridSize.height} main={stage.main} strip={stage.strip} />
               ) : (
                 <div className="absolute inset-0 overflow-y-auto">
                   <div

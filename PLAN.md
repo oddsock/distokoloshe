@@ -256,14 +256,25 @@ User chose (2026-10-18): the message box moves into the Chat tab; the bar gets a
       action and double-click — controls + cursor fade, a toast and a vote still show;
       Safari fullscreen; stream-audio mute on the pinned share.
 
-### R7 — Multiview (was phase 5)
-- [ ] `pinned: Array<{identity, source}>`, max 4, deduped; 1 = full, 2 = side by side
-      (stacked if portrait), 3–4 = 2×2.
-- [ ] Click a share = replace pins; pin button / ctrl-cmd-click = add a pane; per-pane
-      unpin / fullscreen / stream-audio mute / "make solo"; ended tracks auto-removed.
-- [ ] New share while pinned: toast "Dave started sharing" with View / Add to split.
-- [ ] Fullscreen the whole multiview container. Stretch: with `lockStreamQuality` on,
-      `setVideoDimensions()` for non-pinned publications.
+### R7 — Multiview (was phase 5) (2.3.8)
+- [x] `pins: Pin[]`, max 4 (`MAX_PINS`), deduped; 1 = full, 2 = side by side or stacked
+      (whichever makes the panes bigger), 3–4 = 2×2 (third centred). `PinnedStage`
+      replaces R6's `PinnedView`.
+- [x] Click a tile = replace pins; Pin button / Ctrl-⌘-click = add a pane (toast when
+      full); per-pane unpin / fullscreen / stream-audio mute / "Show only this"; ended
+      tracks auto-removed; strip tiles hide each person's pinned sources.
+- [x] Header switch gains Multiview (fills up to 4: shares, then speakers' cameras);
+      Theater keeps the first pane.
+- [x] New share while pinned: toast "Dave started sharing" with View / Add to split
+      (shares already live in the first 3 s after connecting don't count).
+- [x] Fullscreen the whole multiview container. Stretch done: with `lockStreamQuality`
+      on (adaptive stream off), non-pinned videos get `setVideoQuality(LOW)` while
+      something is pinned; everything goes back to HIGH in the grid.
+- [x] Released as 2.3.8. User tests: Pin button / Ctrl-⌘-click on 2, 3, 4 tiles (layouts,
+      stacked when the window is tall), fifth → toast; click a tile → it's solo again;
+      pane ✕ / "Show only this"; header Multiview with cameras only; while one share is
+      pinned someone else starts sharing → toast → View / Add to split; fullscreen with
+      4 panes; a pinned share ending drops its pane.
 
 ### R8 — Connection card & server location
 - [ ] Rich connection card on the signal bars (hover; tap on touch) keeping everything

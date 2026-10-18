@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.3.8 — Multiview (room redesign R7)
+
+- Watch up to four shares or cameras at once: use a tile's pin button (or Ctrl/⌘-click it) to add it next to what's already on the stage — two sit side by side (or stacked in a tall window), three or four in a 2×2. Clicking a tile normally still shows just that one
+- Each pane has its own buttons: unpin, "Show only this", fullscreen and stream sound
+- The header's layout switch gains Multiview, which fills the stage with what's being shared and who's on camera
+- If someone starts sharing while you're watching something else, a notice offers View or Add to split instead of taking over the stage
+- Fullscreen takes the whole multiview along
+- With "lock stream quality" on, videos that aren't on the stage are fetched at low quality while something is pinned, saving bandwidth for the ones you're watching
+
 ## 2.3.7 — Theater Mode (room redesign R6)
 
 - Theater mode: pin a screen share or camera and it fills the call area, with everyone else in a strip down the side (or along the bottom in narrow windows). Pin by clicking a tile's video or its new pin button, or use the Grid / Theater switch in the room header; ✕ or Grid goes back. This replaces the old spotlight above the grid
