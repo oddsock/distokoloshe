@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Fixed: after the server restarted you could stay connected (hearing and seeing everyone) but be missing from the room in everyone's lists until you switched rooms. When the live-events connection came back while LiveKit was still restoring its control link, the app didn't tell the server which room you were in; it now does, and also re-checks once LiveKit is fully back
+- While the connection is being restored the header says "Reconnecting…" (it showed "signalReconnecting"), and the "Reconnecting…" notice now appears in that case too
+
 ## 2.3.11 — Fullscreen in the Desktop App, Picture-in-Picture (room redesign R11a)
 
 - Desktop app: fullscreen now uses the app window's own fullscreen, with the pinned share or camera filling it, instead of the webview's element fullscreen (which the macOS webview doesn't handle dependably). Escape or the window's green button leaves it; if the window was already fullscreen it stays that way

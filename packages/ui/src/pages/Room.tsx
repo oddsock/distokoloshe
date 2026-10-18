@@ -370,15 +370,10 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
     };
   }, [currentRoom, connectionState, connect]);
 
-  // Re-sync room membership when SSE reconnects after a drop
+  // Re-sync room membership when SSE reconnects after a drop (an API restart forgets
+  // which room everyone is in)
   const handleSSEReconnect = useCallback(async () => {
-    if (currentRoom && connectionState === ConnectionState.Connected) {
-      try {
-        await api.syncRoom(currentRoom.id);
-      } catch (err) {
-        console.warn('Room sync after SSE reconnect failed:', err);
-      }
-    } else if (
+    if (
       currentRoom && (
         connectionState === ConnectionState.Disconnected ||
         connectionState === ConnectionState.Reconnecting
@@ -390,6 +385,14 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
         await connect({ wsUrl, token, e2eeKey });
       } catch (err) {
         console.warn('LiveKit reconnect after SSE reconnect failed:', err);
+      }
+    } else if (currentRoom) {
+      // Connected — or still connecting, or only LiveKit's signal link is reconnecting
+      // (media keeps flowing): just tell the server which room we're in
+      try {
+        await api.syncRoom(currentRoom.id);
+      } catch (err) {
+        console.warn('Room sync after SSE reconnect failed:', err);
       }
     }
     // After our own membership is re-established, refetch what we may have missed
@@ -406,7 +409,21 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
     }).catch(() => {});
   }, [currentRoom, connectionState, connect, loadLists]);
 
-  const handlePunishmentEnded = (data: unknown, lifted: boolean) => {
+  // LiveKit's signal link goes through the same proxy as the API, so when it had to
+  // reconnect the API may have restarted too and forgotten our room. Re-sync once LiveKit
+  // is back (harmless if nothing was lost — the server only announces joins it didn't know).
+  const prevConnectionStateRef = useRef(connectionState);
+  useEffect(() => {
+    const prev = prevConnectionStateRef.current;
+    prevConnectionStateRef.current = connectionState;
+    if (!currentRoom || connectionState !== ConnectionState.Connected) return;
+    if (prev !== ConnectionState.Reconnecting && prev !== ConnectionState.SignalReconnecting) return;
+    api.syncRoom(currentRoom.id)
+      .then(() => loadLists())
+      .catch((err) => console.warn('Room sync after LiveKit reconnect failed:', err));
+  }, [connectionState, currentRoom, loadLists]);
+
+  const handlePunishmentEnded =(data: unknown, lifted: boolean) => {
     const { punishmentId, targetUserId, sourceRoomId, sourceRoomName } = data as {
       punishmentId: number; targetUserId: number; sourceRoomId: number; sourceRoomName: string;
     };
@@ -948,7 +965,7 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
     return () => dismissToast('muted-mic');
   }, [showMutedWarning, pushToast, dismissToast]);
   useEffect(() => {
-    if (connectionState !== ConnectionState.Reconnecting) return;
+    if (connectionState !== ConnectionState.Reconnecting && connectionState !== ConnectionState.SignalReconnecting) return;
     pushToast({
       key: 'reconnecting', tone: 'warn', sticky: true, icon: <RefreshCw size={14} className="animate-spin" />,
       text: 'Reconnecting… audio and video may be interrupted',
@@ -1482,7 +1499,10 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
       <main className="relative flex-1 flex flex-col min-w-0 min-h-0">
         <StageHeader
           room={currentRoom}
-          status={connectionState === ConnectionState.Connected ? `${remoteParticipants.length + 1} in room` : connectionState}
+          status={connectionState === ConnectionState.Connected
+            ? `${remoteParticipants.length + 1} in room`
+            : connectionState === ConnectionState.Connecting ? 'Connecting…'
+              : connectionState === ConnectionState.Disconnected ? 'Disconnected' : 'Reconnecting…'}
           whispersActive={isWhispersMode}
           whisperSourceName={whisperSource?.displayName ?? null}
           canToggleWhispers={!!currentRoom && !currentRoom.is_jail && connectionState === ConnectionState.Connected}
