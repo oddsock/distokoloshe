@@ -31,6 +31,28 @@ export function parseParticipantMetadata(metadata?: string | null): Record<strin
   }
 }
 
+/**
+ * Parse a server timestamp from SQLite's datetime('now') ("YYYY-MM-DD HH:MM:SS", UTC).
+ * Swapping the space for "T" gives standard ISO — the space-separated form isn't parsed
+ * reliably across browsers (older Safari rejects it).
+ */
+export function sqliteUtcToMs(value: string): number {
+  return Date.parse(`${value.replace(' ', 'T')}Z`);
+}
+
+/** Seconds left until a server timestamp, never negative */
+export function secondsUntil(value: string, now = Date.now()): number {
+  const ms = sqliteUtcToMs(value) - now;
+  return Number.isFinite(ms) ? Math.max(0, Math.ceil(ms / 1000)) : 0;
+}
+
+/** 272 → "4:32" */
+export function formatCountdown(secs: number): string {
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
 /** Toggle dark/light theme */
 export function toggleTheme(): 'dark' | 'light' {
   const current = document.documentElement.classList.contains('dark') ? 'dark' : 'light';

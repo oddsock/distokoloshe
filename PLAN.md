@@ -18,6 +18,10 @@ dashed top bar flips stage layout, side panel, device, theme and overlay states.
 - Keep all of today's connection details (RTT, jitter, distance, loss, ICE, bitrate,
   codecs, transport, server) in a hover card.
 - Server location shown as "≈ City — estimated from the server's IP" (no triangulation).
+- Jail ends early only by a **vote to release** (user, 2026-10-18): anyone in the room
+  they were jailed from can start one; same rules as a jail vote (30 s, more than half of
+  the people in the room, starter counts as yes, one vote per room at a time). No instant
+  lift for anyone, the room creator included; the jailed person can't start one.
 
 **Workflow** (agreed 2026-10-18): one phase at a time on `main`. Each phase ends with a
 version bump (apps/desktop package.json, tauri.conf.json, Cargo.toml, Cargo.lock) + a
@@ -210,11 +214,26 @@ User chose (2026-10-18): the message box moves into the Chat tab; the bar gets a
 - [x] `ControlBar` extracted (buttons only; popovers stay in Room and anchor via
       `buttonRef`); one row with the Chat button (`accent` tone when open).
 
-### R5 — Overlays & states
-- [ ] Toast stack (top-centre of the stage) for errors, joins, soundboard plays,
-      reconnecting, muted-mic warning — replaces all inline banners.
-- [ ] Vote card docked above the control bar (countdown, tally bar, Jail / Keep).
-- [ ] Jail: header pill with countdown + toast; "Lift" only for the room creator (bug fix).
+### R5 — Overlays, states & release votes (2.3.6)
+- [x] Toast stack (`useToasts` + `Toasts`, top-centre of the stage) for errors, joins,
+      soundboard plays, vote results, jail news, and state toasts while reconnecting / while
+      the muted-mic warning holds — every inline banner is gone.
+- [x] Vote card docked above the control bar in one bottom dock (countdown, tally bar,
+      needs N of M, Jail / Keep or Release / Keep in jail).
+- [x] Jail: header pill with countdown when you're jailed (+ toast); for the room, an
+      orange pill listing who's jailed from it with **Vote to release**.
+- [x] Release votes replace the creator-only Lift (user decision, product rules above):
+      votes get `kind` ('jail' | 'lift') + `punishment_id`; `POST /api/votes {kind:'lift',
+      punishmentId}`; a passed one ends the punishment (`punishment:lifted`); the jailed
+      person is told when one starts and how it ended; a lift vote still open when the
+      sentence runs out is voided. `POST /api/punishments/:id/lift` removed.
+- [x] Countdowns parse server times as ISO (`sqliteUtcToMs`) and tick in small
+      components (`useNow`) instead of re-rendering the room every second.
+- [x] Released as 2.3.6. User tests (3 accounts for votes): error / join / soundboard
+      toasts stack top-centre and fade; muted-mic and reconnecting toasts last as long as
+      the state; vote card above the bar (narrow window too); jail someone → their header
+      pill counts down, the room's orange pill lists them; Vote to release → card →
+      passes → they're back; failed and time-ran-out-mid-vote cases; creator has no Lift.
 
 ### R6 — Theater mode (was phase 4)
 - [ ] Pinned item fills the stage; the rest in a filmstrip (side on wide stages, bottom on

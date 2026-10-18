@@ -1,13 +1,16 @@
 import db from './db.js';
-import { broadcast, broadcastToRoom } from './events.js';
+import { broadcast, broadcastToRoom, sendToUser } from './events.js';
 
 const voteTimers = new Map<number, NodeJS.Timeout>();
 const punishmentTimers = new Map<number, NodeJS.Timeout>();
 
 // ── Vote resolution (imported by votes route, called by timer or early trigger) ──
 
-interface VoteRow {
+export interface VoteRow {
   id: number;
+  kind: 'jail' | 'lift';
+  /** Lift votes: the punishment they would end */
+  punishment_id: number | null;
   source_room_id: number;
   target_user_id: number;
   initiated_by: number;
@@ -24,9 +27,31 @@ export type ResolveVoteCallback = (vote: VoteRow) => Promise<void>;
 
 let onVotePassed: ResolveVoteCallback | null = null;
 
-/** Register a callback for when a vote passes (called from votes route init) */
+/** Register a callback for when a jail vote passes (called from votes route init) */
 export function setVotePassedHandler(handler: ResolveVoteCallback): void {
   onVotePassed = handler;
+}
+
+/** Tell the room how a vote ended — and, for a lift vote, the jailed person too (they're not in the room). */
+function announceResult(vote: VoteRow, passed: boolean, voided = false): void {
+  const targetUser = db.prepare('SELECT id, username, display_name FROM users WHERE id = ?').get(vote.target_user_id) as
+    { id: number; username: string; display_name: string } | undefined;
+
+  const payload = {
+    voteId: vote.id,
+    kind: vote.kind,
+    sourceRoomId: vote.source_room_id,
+    passed,
+    voided,
+    yesCount: vote.yes_count,
+    noCount: vote.no_count,
+    eligibleCount: vote.eligible_count,
+    targetUserId: vote.target_user_id,
+    targetUsername: targetUser?.username,
+    targetDisplayName: targetUser?.display_name,
+  };
+  broadcastToRoom(vote.source_room_id, 'vote:resolved', payload);
+  if (vote.kind === 'lift') sendToUser(vote.target_user_id, 'vote:resolved', payload);
 }
 
 /** Resolve a vote — called by timer expiry or early resolution */
@@ -39,23 +64,12 @@ export function resolveVote(voteId: number): void {
 
     const passed = vote.yes_count > vote.eligible_count / 2;
     db.prepare('UPDATE votes SET resolved = 1, passed = ? WHERE id = ?').run(passed ? 1 : 0, voteId);
+    announceResult(vote, passed);
 
-    const targetUser = db.prepare('SELECT id, username, display_name FROM users WHERE id = ?').get(vote.target_user_id) as
-      { id: number; username: string; display_name: string } | undefined;
-
-    broadcastToRoom(vote.source_room_id, 'vote:resolved', {
-      voteId: vote.id,
-      sourceRoomId: vote.source_room_id,
-      passed,
-      yesCount: vote.yes_count,
-      noCount: vote.no_count,
-      eligibleCount: vote.eligible_count,
-      targetUserId: vote.target_user_id,
-      targetUsername: targetUser?.username,
-      targetDisplayName: targetUser?.display_name,
-    });
-
-    if (passed && onVotePassed) {
+    if (!passed) return;
+    if (vote.kind === 'lift') {
+      if (vote.punishment_id !== null) liftPunishment(vote.punishment_id);
+    } else if (onVotePassed) {
       onVotePassed(vote).catch((err) => {
         console.error('Vote passed handler failed:', err);
       });
@@ -112,6 +126,11 @@ export function cancelPunishmentTimer(punishmentId: number): void {
   }
 }
 
+function sourceRoomName(roomId: number): string {
+  const room = db.prepare('SELECT name FROM rooms WHERE id = ?').get(roomId) as { name: string } | undefined;
+  return room?.name ?? 'Unknown';
+}
+
 function expirePunishment(punishmentId: number): void {
   const punishment = db.prepare(
     'SELECT * FROM punishments WHERE id = ? AND active = 1',
@@ -120,14 +139,37 @@ function expirePunishment(punishmentId: number): void {
 
   db.prepare('UPDATE punishments SET active = 0 WHERE id = ?').run(punishmentId);
 
-  const sourceRoom = db.prepare('SELECT name FROM rooms WHERE id = ?').get(punishment.source_room_id) as
-    { name: string } | undefined;
+  // A lift vote still running for this sentence has nothing left to decide
+  const openLiftVotes = db.prepare('SELECT * FROM votes WHERE punishment_id = ? AND resolved = 0').all(punishmentId) as VoteRow[];
+  for (const vote of openLiftVotes) {
+    cancelVoteTimer(vote.id);
+    db.prepare('UPDATE votes SET resolved = 1 WHERE id = ?').run(vote.id);
+    announceResult(vote, false, true);
+  }
 
   broadcast('punishment:expired', {
     punishmentId: punishment.id,
     targetUserId: punishment.target_user_id,
     sourceRoomId: punishment.source_room_id,
-    sourceRoomName: sourceRoom?.name ?? 'Unknown',
+    sourceRoomName: sourceRoomName(punishment.source_room_id),
+  });
+}
+
+/** End a punishment early because a lift vote passed. The target's client rejoins on the event. */
+function liftPunishment(punishmentId: number): void {
+  const punishment = db.prepare(
+    'SELECT * FROM punishments WHERE id = ? AND active = 1',
+  ).get(punishmentId) as PunishmentRow | undefined;
+  if (!punishment) return;
+
+  db.prepare("UPDATE punishments SET active = 0, lifted_at = datetime('now') WHERE id = ?").run(punishmentId);
+  cancelPunishmentTimer(punishmentId);
+
+  broadcast('punishment:lifted', {
+    punishmentId: punishment.id,
+    targetUserId: punishment.target_user_id,
+    sourceRoomId: punishment.source_room_id,
+    sourceRoomName: sourceRoomName(punishment.source_room_id),
   });
 }
 

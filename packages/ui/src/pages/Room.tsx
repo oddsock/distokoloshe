@@ -13,8 +13,10 @@ import { ParticipantTile, TileAction } from '../components/ParticipantTile';
 import type { ChatLine } from '../components/ChatBubbles';
 import { ChatPanel, type ChatEntry } from '../components/ChatPanel';
 import { ControlBar } from '../components/ControlBar';
+import { VoteCard } from '../components/VoteCard';
+import { Toasts } from '../components/Toasts';
 import { RoomRail } from '../components/RoomRail';
-import { StageHeader } from '../components/StageHeader';
+import { StageHeader, type JailedUser } from '../components/StageHeader';
 import { SidePanel, type PanelTab } from '../components/SidePanel';
 import { PeopleList } from '../components/PeopleList';
 import { TooltipLayer } from '../components/TooltipLayer';
@@ -32,11 +34,12 @@ import { useNoiseCancellation } from '../hooks/useNoiseCancellation';
 import { useAutoUpdate } from '../hooks/useAutoUpdate';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { useElementSize } from '../hooks/useElementSize';
+import { useToasts } from '../hooks/useToasts';
 import { toggleTheme, getTheme, parseParticipantMetadata } from '../lib/utils';
 import { layoutGrid } from '../lib/gridLayout';
 import * as api from '../lib/api';
 import { playSound } from '../lib/sounds';
-import { Mic, MicOff, EarOff, Volume2, VolumeX, X, Scissors, RefreshCw, Ellipsis, Gavel } from 'lucide-react';
+import { Mic, MicOff, EarOff, Volume2, VolumeX, X, Scissors, RefreshCw, Ellipsis, Gavel, DoorOpen, UserPlus, AudioLines } from 'lucide-react';
 
 const PANEL_PREF_KEY = 'distokoloshe_side_panel';
 
@@ -67,12 +70,6 @@ const DURATION_OPTIONS = [
   { label: '30 min', secs: 1800 },
 ];
 
-function formatCountdown(secs: number): string {
-  const m = Math.floor(secs / 60);
-  const s = secs % 60;
-  return `${m}:${s.toString().padStart(2, '0')}`;
-}
-
 /** Music room radio bot + any non-Music ephemeral pipe bot. Used to
  *  suppress soundbite capture, human-only UI chrome, etc. */
 function isMusicOrPipeBot(identity: string): boolean {
@@ -97,8 +94,9 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
   const [users, setUsers] = useState<api.UserListItem[]>([]);
   const [roomMembers, setRoomMembers] = useState<Record<number, api.RoomMember[]>>({});
   const [currentRoom, setCurrentRoom] = useState<api.Room | null>(null);
-  const [error, setError] = useState<{ msg: string; roomId?: number } | null>(null);
-  const [errorFading, setErrorFading] = useState(false);
+  // Errors, joins, soundboard plays, vote results, jail news and connection states
+  const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
+  const showError = useCallback((msg: string) => { pushToast({ tone: 'error', text: msg }); }, [pushToast]);
   const [openPopover, setOpenPopover] = useState<Popover | null>(null);
   // Buttons that popovers anchor to
   const ctlRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -107,18 +105,13 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
   // Vote state
   const [activeVote, setActiveVote] = useState<(api.Vote & { yesCount: number; noCount: number }) | null>(null);
   const [myBallot, setMyBallot] = useState<boolean | null>(null);
-  const [voteCountdown, setVoteCountdown] = useState(0);
-  const [voteResult, setVoteResult] = useState<{ passed: boolean; targetDisplayName: string } | null>(null);
 
   // Punishment state
   const [activePunishment, setActivePunishment] = useState<api.Punishment | null>(null);
-  const [punishmentCountdown, setPunishmentCountdown] = useState(0);
   const [punishmentChecked, setPunishmentChecked] = useState(false);
 
-  // Jailed users (for room creator lift UI)
-  const [jailedUsers, setJailedUsers] = useState<Array<{
-    punishmentId: number; userId: number; displayName: string;
-  }>>([]);
+  // People jailed from the room I'm in (header pill → vote to release)
+  const [jailedUsers, setJailedUsers] = useState<JailedUser[]>([]);
 
   // Whisper state
   const [whisperChain, setWhisperChain] = useState<api.ChainEntry[]>([]);
@@ -201,15 +194,6 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
     mql.addEventListener('change', handler);
     return () => mql.removeEventListener('change', handler);
   }, []);
-
-  // Auto-dismiss errors after 5 seconds with fade-out
-  useEffect(() => {
-    if (!error) { setErrorFading(false); return; }
-    setErrorFading(false);
-    const fadeTimer = setTimeout(() => setErrorFading(true), 4500);
-    const clearTimer = setTimeout(() => setError(null), 5000);
-    return () => { clearTimeout(fadeTimer); clearTimeout(clearTimer); };
-  }, [error]);
 
   // Rooms drawer (phones)
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
@@ -411,6 +395,27 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
     }).catch(() => {});
   }, [currentRoom, connectionState, connect, loadLists]);
 
+  const handlePunishmentEnded = (data: unknown, lifted: boolean) => {
+    const { punishmentId, targetUserId, sourceRoomId, sourceRoomName } = data as {
+      punishmentId: number; targetUserId: number; sourceRoomId: number; sourceRoomName: string;
+    };
+    const ended = jailedUsers.find((j) => j.punishmentId === punishmentId);
+    setJailedUsers((prev) => prev.filter((j) => j.punishmentId !== punishmentId));
+    if (targetUserId === user.id) {
+      if (activePunishment?.id !== punishmentId) return;
+      pushToast({
+        tone: 'success',
+        icon: <DoorOpen size={14} />,
+        text: lifted ? `${sourceRoomName} voted to release you` : `Your jail time is up — back to ${sourceRoomName}`,
+      });
+      setActivePunishment(null);
+      handleJoinRoomRef.current?.(sourceRoomId);
+    } else if (ended && !lifted) {
+      // (A release by vote already got its "Vote passed" toast)
+      pushToast({ tone: 'info', icon: <DoorOpen size={14} />, text: `${ended.displayName}'s jail time is up` });
+    }
+  };
+
   // SSE events for real-time updates
   useEvents({ handlers: {
     'room:created': (data) => {
@@ -426,7 +431,7 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
       if (currentRoom?.id === deletedRoom.id) {
         const fallback = defaultRoom(rooms.filter((r) => r.id !== deletedRoom.id));
         if (fallback) {
-          setError({ msg: `${deletedRoom.name} was deleted — you've been moved to ${fallback.name}` });
+          pushToast({ tone: 'info', text: `${deletedRoom.name} was deleted — you've been moved to ${fallback.name}` });
           handleJoinRoomRef.current?.(fallback.id);
         }
       }
@@ -470,6 +475,7 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
       });
       if (currentRoom && roomId === currentRoom.id && joinUser.id !== user.id) {
         playSound('join');
+        pushToast({ tone: 'info', icon: <UserPlus size={14} />, text: `${joinUser.display_name} joined` });
       }
     },
     'user:room_leave': (data) => {
@@ -491,7 +497,10 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
       if (currentRoom && vote.sourceRoomId === currentRoom.id) {
         setActiveVote({ ...vote, yesCount: 1, noCount: 0 });
         setMyBallot(vote.initiatedBy.id === user.id ? true : null);
-        setVoteResult(null);
+      } else if (vote.kind === 'lift' && vote.targetUserId === user.id) {
+        // I'm in jail; the room I was jailed from is deciding
+        const from = rooms.find((r) => r.id === vote.sourceRoomId)?.name ?? 'Your room';
+        pushToast({ tone: 'info', icon: <DoorOpen size={14} />, text: `${from} is voting on releasing you` });
       }
     },
     'vote:ballot_cast': (data) => {
@@ -504,20 +513,32 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
       });
     },
     'vote:resolved': (data) => {
-      const resolved = data as {
-        voteId: number; passed: boolean; targetDisplayName: string;
-        yesCount: number; noCount: number; eligibleCount: number;
-        targetUserId: number; targetUsername: string; sourceRoomId: number;
+      const r = data as {
+        voteId: number; kind?: 'jail' | 'lift'; passed: boolean; voided?: boolean;
+        targetDisplayName?: string; targetUserId: number; sourceRoomId: number;
       };
-      setActiveVote((prev) => {
-        if (prev?.id === resolved.voteId) {
-          setVoteResult({ passed: resolved.passed, targetDisplayName: resolved.targetDisplayName });
-          setTimeout(() => setVoteResult(null), 4000);
-          return null;
-        }
-        return prev;
-      });
+      const lift = r.kind === 'lift';
+      if (lift && r.targetUserId === user.id) {
+        // Sent to me in jail. A pass arrives as punishment:lifted and moves me back.
+        if (!r.passed && !r.voided) pushToast({ tone: 'warn', text: "The vote to release you didn't pass" });
+        return;
+      }
+      if (!currentRoom || r.sourceRoomId !== currentRoom.id) return;
+      setActiveVote((prev) => (prev?.id === r.voteId ? null : prev));
       setMyBallot(null);
+      // Voided: the jail time ran out mid-vote — punishment:expired says so
+      if (r.voided) return;
+      const me = r.targetUserId === user.id;
+      const name = r.targetDisplayName ?? 'They';
+      if (lift) {
+        pushToast(r.passed
+          ? { tone: 'success', icon: <DoorOpen size={14} />, text: `Vote passed — ${name} is out of jail` }
+          : { tone: 'info', text: `Vote failed — ${name} stays in jail` });
+      } else if (!(me && r.passed)) { // being jailed gets its own toast
+        pushToast(r.passed
+          ? { tone: 'warn', icon: <Gavel size={14} />, text: `Vote passed — ${name} is going to jail` }
+          : { tone: 'info', text: `Vote failed — ${me ? 'you stay' : `${name} stays`}` });
+      }
     },
     'punishment:started': (data) => {
       const { punishment, jailConnection } = data as {
@@ -533,14 +554,24 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
           wsUrl: string;
         };
       };
-      // Track jailed user for room creator lift UI
       if (currentRoom && punishment.sourceRoomId === currentRoom.id) {
         setJailedUsers((prev) => [
           ...prev.filter((j) => j.userId !== punishment.targetUserId),
-          { punishmentId: punishment.id, userId: punishment.targetUserId, displayName: punishment.targetDisplayName },
+          {
+            punishmentId: punishment.id,
+            userId: punishment.targetUserId,
+            displayName: punishment.targetDisplayName,
+            expiresAt: punishment.expiresAt,
+          },
         ]);
       }
       if (punishment.targetUserId === user.id) {
+        const mins = Math.round(punishment.durationSecs / 60);
+        pushToast({
+          tone: 'error',
+          icon: <Gavel size={14} />,
+          text: `You were voted into jail from ${punishment.sourceRoomName} for ${mins} minute${mins === 1 ? '' : 's'}`,
+        });
         setActivePunishment({
           id: punishment.id,
           sourceRoomId: punishment.sourceRoomId,
@@ -576,36 +607,9 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
         });
       }
     },
-    'punishment:expired': (data) => {
-      const { punishmentId, targetUserId, sourceRoomId } = data as {
-        punishmentId: number; targetUserId: number; sourceRoomId: number; sourceRoomName: string;
-      };
-      setJailedUsers((prev) => prev.filter((j) => j.punishmentId !== punishmentId));
-      if (targetUserId === user.id) {
-        setActivePunishment((prev) => {
-          if (prev?.id === punishmentId) {
-            handleJoinRoomRef.current?.(sourceRoomId);
-            return null;
-          }
-          return prev;
-        });
-      }
-    },
-    'punishment:lifted': (data) => {
-      const { punishmentId, targetUserId, sourceRoomId } = data as {
-        punishmentId: number; targetUserId: number; sourceRoomId: number; sourceRoomName: string;
-      };
-      setJailedUsers((prev) => prev.filter((j) => j.punishmentId !== punishmentId));
-      if (targetUserId === user.id) {
-        setActivePunishment((prev) => {
-          if (prev?.id === punishmentId) {
-            handleJoinRoomRef.current?.(sourceRoomId);
-            return null;
-          }
-          return prev;
-        });
-      }
-    },
+    // Jail over — its time ran out (expired) or the room voted to release them (lifted)
+    'punishment:expired': (data) => handlePunishmentEnded(data, false),
+    'punishment:lifted': (data) => handlePunishmentEnded(data, true),
     'whispers:activated': (data) => {
       const { roomId, chain } = data as { roomId: number; chain: api.ChainEntry[] };
       if (currentRoom?.id === roomId) {
@@ -635,8 +639,13 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
       onClipDeleted(clipId);
     },
     'soundboard:playing': (data) => {
-      const { user: sbUser, clipName, durationMs } = data as { user: { username: string }; clipName: string; durationMs?: number };
+      const { user: sbUser, clipName, durationMs } = data as {
+        user: { id: number; username: string; display_name: string }; clipName: string; durationMs?: number;
+      };
       setSoundboardPlaying({ username: sbUser.username, clipName });
+      if (sbUser.id !== user.id) {
+        pushToast({ tone: 'info', icon: <AudioLines size={14} />, text: `${sbUser.display_name} played “${clipName}”` });
+      }
       if (soundboardTimerRef.current) clearTimeout(soundboardTimerRef.current);
       soundboardTimerRef.current = setTimeout(() => setSoundboardPlaying(null), durationMs || 10_000);
     },
@@ -793,36 +802,6 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
     };
   }, [room, attachTrack, detachTrack, startRecording, stopRecording]);
 
-  // Vote countdown timer
-  useEffect(() => {
-    if (!activeVote) {
-      setVoteCountdown(0);
-      return;
-    }
-    const update = () => {
-      const remaining = Math.max(0, Math.ceil((new Date(activeVote.expiresAt + 'Z').getTime() - Date.now()) / 1000));
-      setVoteCountdown(remaining);
-    };
-    update();
-    const interval = setInterval(update, 1000);
-    return () => clearInterval(interval);
-  }, [activeVote]);
-
-  // Punishment countdown timer
-  useEffect(() => {
-    if (!activePunishment) {
-      setPunishmentCountdown(0);
-      return;
-    }
-    const update = () => {
-      const remaining = Math.max(0, Math.ceil((new Date(activePunishment.expiresAt + 'Z').getTime() - Date.now()) / 1000));
-      setPunishmentCountdown(remaining);
-    };
-    update();
-    const interval = setInterval(update, 1000);
-    return () => clearInterval(interval);
-  }, [activePunishment]);
-
   // Whisper audio muting — mute everyone except my source in the chain.
   // Also depends on audioTrackVersion so muting is re-applied after a new
   // audio track is subscribed (the audio node doesn't exist yet when the
@@ -882,7 +861,6 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
   const handleJoinRoom = useCallback(
     async (roomId: number) => {
       const myJoinId = ++joinIdRef.current;
-      setError(null);
       setLeftSidebarOpen(false);
       setSpotlight(null);
       try {
@@ -902,13 +880,13 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
         // Clear vote/punishment state
         setActiveVote(null);
         setMyBallot(null);
-        setVoteResult(null);
         // Load active punishments for this room
         api.getRoomPunishments(roomId).then(({ punishments }) => {
           setJailedUsers(punishments.map((p) => ({
             punishmentId: p.id,
             userId: p.targetUserId,
             displayName: p.targetDisplayName,
+            expiresAt: p.expiresAt,
           })));
         }).catch(() => setJailedUsers([]));
 
@@ -923,11 +901,10 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
         if (joinIdRef.current !== myJoinId) return; // stale join, don't show error
         const roomName = rooms.find((r) => r.id === roomId)?.name;
         const base = err instanceof api.ApiError ? err.message : 'Failed to join room';
-        const msg = roomName ? `${base} (${roomName})` : base;
-        setError({ msg, roomId });
+        showError(roomName ? `${base} (${roomName})` : base);
       }
     },
-    [connect, disconnect, rooms],
+    [connect, disconnect, rooms, showError],
   );
   handleJoinRoomRef.current = handleJoinRoom;
 
@@ -938,10 +915,9 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
       const { room: newRoom } = await api.createRoom(name);
       handleJoinRoom(newRoom.id);
     } catch (err) {
-      const msg = err instanceof api.ApiError ? err.message : 'Failed to create room';
-      setError({ msg });
+      showError(err instanceof api.ApiError ? err.message : 'Failed to create room');
     }
-  }, [handleJoinRoom]);
+  }, [handleJoinRoom, showError]);
 
   const micMuted = localParticipant ? !localParticipant.isMicrophoneEnabled : true;
   const isCameraOn = localParticipant ? localParticipant.isCameraEnabled : false;
@@ -949,6 +925,25 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
     micMuted,
     connectionState === ConnectionState.Connected,
   );
+  // State toasts: shown while the state lasts (keyed, so they never stack up)
+  const dismissMutedRef = useRef(dismissMutedWarning);
+  dismissMutedRef.current = dismissMutedWarning;
+  useEffect(() => {
+    if (!showMutedWarning) return;
+    pushToast({
+      key: 'muted-mic', tone: 'error', sticky: true, icon: <MicOff size={14} />,
+      text: "You're muted — others can't hear you", onDismiss: () => dismissMutedRef.current(),
+    });
+    return () => dismissToast('muted-mic');
+  }, [showMutedWarning, pushToast, dismissToast]);
+  useEffect(() => {
+    if (connectionState !== ConnectionState.Reconnecting) return;
+    pushToast({
+      key: 'reconnecting', tone: 'warn', sticky: true, icon: <RefreshCw size={14} className="animate-spin" />,
+      text: 'Reconnecting… audio and video may be interrupted',
+    });
+    return () => dismissToast('reconnecting');
+  }, [connectionState, pushToast, dismissToast]);
 
   // Auto-dismiss spotlight when the spotlighted track disappears
   useEffect(() => {
@@ -998,20 +993,26 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
       setOpenPopover(null);
       await api.startVote(targetUserId, durationSecs);
     } catch (err) {
-      const msg = err instanceof api.ApiError ? err.message : 'Failed to start vote';
-      setError({ msg });
+      showError(err instanceof api.ApiError ? err.message : 'Failed to start vote');
     }
-  }, []);
+  }, [showError]);
+
+  const handleStartLiftVote = useCallback(async (punishmentId: number) => {
+    try {
+      await api.startLiftVote(punishmentId);
+    } catch (err) {
+      showError(err instanceof api.ApiError ? err.message : 'Failed to start vote');
+    }
+  }, [showError]);
 
   const handleCastBallot = useCallback(async (voteId: number, voteYes: boolean) => {
     try {
       await api.castBallot(voteId, voteYes);
       setMyBallot(voteYes);
     } catch (err) {
-      const msg = err instanceof api.ApiError ? err.message : 'Failed to cast vote';
-      setError({ msg });
+      showError(err instanceof api.ApiError ? err.message : 'Failed to cast vote');
     }
-  }, []);
+  }, [showError]);
 
   // Toggle whispers mode (room creator only)
   const handleToggleWhispers = useCallback(async () => {
@@ -1020,10 +1021,9 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
     try {
       await api.setRoomMode(currentRoom.id, newMode);
     } catch (err) {
-      const msg = err instanceof api.ApiError ? err.message : 'Failed to change mode';
-      setError({ msg });
+      showError(err instanceof api.ApiError ? err.message : 'Failed to change mode');
     }
-  }, [currentRoom, isWhispersMode]);
+  }, [currentRoom, isWhispersMode, showError]);
 
   const handleDeleteRoom = useCallback(async () => {
     if (!currentRoom) return;
@@ -1031,20 +1031,15 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
     try {
       await api.deleteRoom(currentRoom.id);
     } catch (err) {
-      const msg = err instanceof api.ApiError ? err.message : 'Failed to delete room';
-      setError({ msg });
+      showError(err instanceof api.ApiError ? err.message : 'Failed to delete room');
     }
-  }, [currentRoom]);
+  }, [currentRoom, showError]);
 
-  // Lift punishment (room creator only)
-  const handleLiftPunishment = useCallback(async (punishmentId: number) => {
-    try {
-      await api.liftPunishment(punishmentId);
-    } catch (err) {
-      const msg = err instanceof api.ApiError ? err.message : 'Failed to lift punishment';
-      setError({ msg });
-    }
-  }, []);
+  // Release votes need someone to vote with and a free vote slot
+  const roomHeadcount = currentRoom ? (roomMembers[currentRoom.id]?.length ?? 0) : 0;
+  const releaseBlockedReason = activeVote
+    ? 'A vote is already running in this room.'
+    : roomHeadcount < 2 ? 'A vote needs at least 2 people in the room.' : null;
 
   // Who's audibly active / has their mic off, for the rail avatars and People panel
   const speakingUsernames = new Set(activeSpeakers.filter((id) => !mutedUsers.has(id)));
@@ -1077,7 +1072,7 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
         onToggleTheme={() => setThemeState(toggleTheme())}
         onSelectRoom={(roomId) => {
           if (activePunishment && roomId !== activePunishment.jailRoomId) {
-            setError({ msg: 'You are currently jailed and cannot switch rooms' });
+            showError('You are currently jailed and cannot switch rooms');
             return;
           }
           handleJoinRoom(roomId);
@@ -1104,116 +1099,21 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
           onToggleWhispers={handleToggleWhispers}
           canDeleteRoom={!!currentRoom && !currentRoom.is_jail && currentRoom.created_by === user.id}
           onDeleteRoom={handleDeleteRoom}
+          jail={activePunishment && currentRoom?.is_jail
+            ? { expiresAt: activePunishment.expiresAt, sourceRoomName: activePunishment.sourceRoomName }
+            : null}
+          jailed={currentRoom?.is_jail ? [] : jailedUsers}
+          releaseBlockedReason={releaseBlockedReason}
+          onVoteRelease={handleStartLiftVote}
           onOpenRail={() => setLeftSidebarOpen(true)}
           panelOpen={panelOpen && panelTab === 'people'}
           onTogglePanel={() => togglePanelTab('people')}
         />
 
+        <Toasts toasts={toasts} onDismiss={(t) => { t.onDismiss?.(); dismissToast(t.id); }} />
+
         {/* Participant area */}
         <div className="flex-1 min-h-0 flex flex-col p-4 md:p-6 pb-24 overflow-y-auto">
-          {error && (!error.roomId || error.roomId === currentRoom?.id) && (
-            <div className={`mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm flex items-center transition-opacity duration-500 ${errorFading ? 'opacity-0' : 'opacity-100 animate-[fadeIn_0.2s_ease-out]'}`}>
-              <span className="flex-1">{error.msg}</span>
-              <button onClick={() => setError(null)} className="ml-2 text-red-400 hover:text-red-300">&times;</button>
-            </div>
-          )}
-
-          {/* Punishment banner */}
-          {activePunishment && (
-            <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-sm">
-              <span className="text-red-300 font-semibold">Jailed from {activePunishment.sourceRoomName}!</span>
-              <span className="text-red-400 ml-2">{formatCountdown(punishmentCountdown)} remaining</span>
-            </div>
-          )}
-
-          {/* Jailed users — any room member can lift */}
-          {jailedUsers.length > 0 && (
-            <div className="mb-4 p-3 bg-orange-500/10 border border-orange-500/30 rounded-lg text-sm">
-              <span className="text-orange-400 font-semibold text-xs uppercase">Jailed from this room</span>
-              {jailedUsers.map((j) => (
-                <div key={j.punishmentId} className="flex items-center justify-between mt-1">
-                  <span className="text-orange-300">{j.displayName}</span>
-                  <button
-                    onClick={() => handleLiftPunishment(j.punishmentId)}
-                    className="text-xs px-2 py-0.5 rounded bg-green-500/20 text-green-400 hover:bg-green-500/30 transition-colors"
-                  >
-                    Lift
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Vote result toast */}
-          {voteResult && (
-            <div className={`mb-4 p-3 rounded-lg text-sm font-medium ${
-              voteResult.passed
-                ? 'bg-red-500/20 border border-red-500/50 text-red-300'
-                : 'bg-green-500/20 border border-green-500/50 text-green-300'
-            }`}>
-              Vote {voteResult.passed ? 'passed' : 'failed'}: {voteResult.targetDisplayName}
-              {voteResult.passed ? ' has been sent to jail!' : ' stays.'}
-            </div>
-          )}
-
-          {/* Active vote banner */}
-          {activeVote && connectionState === ConnectionState.Connected && (
-            <div className="mb-4 p-4 bg-amber-500/10 border border-amber-500/30 rounded-lg">
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-sm">
-                  <span className="text-amber-400 font-semibold">Vote to punish: </span>
-                  <span className="text-amber-300">{activeVote.targetDisplayName}</span>
-                  <span className="text-zinc-500 ml-2">({formatCountdown(activeVote.durationSecs)} punishment)</span>
-                </div>
-                <span className="text-xs text-amber-400 tabular-nums">{formatCountdown(voteCountdown)} left</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="flex-1 flex items-center gap-2">
-                  <div className="flex-1 bg-zinc-700 rounded-full h-2 overflow-hidden">
-                    <div
-                      className="h-full bg-green-500 transition-all"
-                      style={{ width: `${activeVote.eligibleCount > 0 ? (activeVote.yesCount / activeVote.eligibleCount) * 100 : 0}%` }}
-                    />
-                  </div>
-                  <span className="text-xs text-zinc-400 whitespace-nowrap">
-                    {activeVote.yesCount} yes / {activeVote.noCount} no / {activeVote.eligibleCount} eligible
-                  </span>
-                </div>
-                {activeVote.targetUserId !== user.id && myBallot === null && (
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleCastBallot(activeVote.id, true)}
-                      className="px-3 py-1 text-xs rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 focus-visible:ring-2 focus-visible:ring-red-500 transition-colors"
-                    >
-                      Yes, Punish
-                    </button>
-                    <button
-                      onClick={() => handleCastBallot(activeVote.id, false)}
-                      className="px-3 py-1 text-xs rounded bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-300 dark:hover:bg-zinc-600 focus-visible:ring-2 focus-visible:ring-indigo-500 transition-colors"
-                    >
-                      No
-                    </button>
-                  </div>
-                )}
-                {myBallot !== null && (
-                  <span className="text-xs font-medium text-zinc-400">Voted {myBallot ? <span className="text-red-400">Yes</span> : <span className="text-zinc-300">No</span>}</span>
-                )}
-                {activeVote.targetUserId === user.id && (
-                  <span className="text-xs text-red-400">You are being voted on!</span>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Muted mic warning */}
-          {showMutedWarning && (
-            <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-sm flex items-center animate-[fadeIn_0.2s_ease-out]">
-              <MicOff size={16} className="text-red-400 shrink-0 mr-2" />
-              <span className="text-red-400 font-medium flex-1">You're muted — others can't hear you</span>
-              <button onClick={dismissMutedWarning} className="text-red-400/60 hover:text-red-400 ml-2 shrink-0">&times;</button>
-            </div>
-          )}
-
           {/* Spotlighted view */}
           {spotlight && (() => {
             const { identity, source } = spotlight;
@@ -1478,13 +1378,6 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
             </div>
           )}
 
-          {connectionState === ConnectionState.Reconnecting && (
-            <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-400 text-sm flex items-center gap-2 animate-[fadeIn_0.2s_ease-out]">
-              <RefreshCw size={14} className="animate-spin shrink-0" />
-              <span>Reconnecting… audio and video may be interrupted</span>
-            </div>
-          )}
-
           {connectionState === ConnectionState.Connecting && (
             <div className="flex items-center justify-center h-64">
               <p className="text-zinc-500">Connecting...</p>
@@ -1519,28 +1412,39 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
             : 'Share Screen';
           return (
             <>
-              <ControlBar
-                micMuted={micMuted}
-                onToggleMute={handleToggleMute}
-                cameraOn={isCameraOn}
-                onToggleCamera={toggleCamera}
-                deafened={deafened}
-                onToggleDeafen={handleToggleDeafen}
-                showShare={showShare}
-                sharing={isSharing}
-                shareTooltip={shareTooltip}
-                onShare={toggleShare}
-                showMusic={hasMusicBot}
-                onMusic={() => toggle('music')}
-                showPipe={showPipe}
-                onPipe={() => toggle('pipe')}
-                onSoundboard={() => toggle('soundboard')}
-                onSettings={() => toggle('settings')}
-                chatOpen={chatVisible}
-                chatUnread={chatUnread}
-                onChat={() => togglePanelTab('chat')}
-                buttonRef={setRef}
-              />
+              {/* Bottom dock: the running vote sits just above the control bar */}
+              <div className="absolute bottom-4 inset-x-4 z-30 flex flex-col items-center gap-2 pointer-events-none">
+                {activeVote && (
+                  <VoteCard
+                    vote={activeVote}
+                    currentUserId={user.id}
+                    myBallot={myBallot}
+                    onBallot={(yes) => handleCastBallot(activeVote.id, yes)}
+                  />
+                )}
+                <ControlBar
+                  micMuted={micMuted}
+                  onToggleMute={handleToggleMute}
+                  cameraOn={isCameraOn}
+                  onToggleCamera={toggleCamera}
+                  deafened={deafened}
+                  onToggleDeafen={handleToggleDeafen}
+                  showShare={showShare}
+                  sharing={isSharing}
+                  shareTooltip={shareTooltip}
+                  onShare={toggleShare}
+                  showMusic={hasMusicBot}
+                  onMusic={() => toggle('music')}
+                  showPipe={showPipe}
+                  onPipe={() => toggle('pipe')}
+                  onSoundboard={() => toggle('soundboard')}
+                  onSettings={() => toggle('settings')}
+                  chatOpen={chatVisible}
+                  chatUnread={chatUnread}
+                  onChat={() => togglePanelTab('chat')}
+                  buttonRef={setRef}
+                />
+              </div>
 
               {/* Share: stop confirmation / quality picker */}
               <Floating anchor={anchorFor('share')} open={openPopover === 'stopShare' && isSharing} zClass="z-50">

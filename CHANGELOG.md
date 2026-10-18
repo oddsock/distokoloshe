@@ -1,7 +1,11 @@
 # Changelog
 
-## Unreleased
+## 2.3.6 — Toasts & Votes to Release (room redesign R5)
 
+- Notices are now small toasts at the top of the call area instead of banners that pushed the video down: errors, someone joining, soundboard plays, vote results, jail news, "Reconnecting…" and "You're muted" (the last two stay until the situation clears)
+- A running vote is a card just above the control bar with a countdown, a tally and what it needs to pass
+- Anyone can now vote to release someone from jail: the people jailed from your room are listed in an orange pill in the room header, each with "Vote to release". It works like a jail vote — 30 seconds, more than half the people in the room must agree. The room creator's instant "Lift" is gone (it only ever worked for the creator anyway); the jailed person is told when a vote starts and how it went
+- While you're in jail, the header shows how long is left and which room you'll go back to
 - Browsers pick up a rebuilt web app on the next load — the page itself is no longer cached, so it can't keep pointing at the previous build
 - Images in the Chat tab turn into an "Image expired" placeholder once the server has deleted them (about a minute after sending), instead of a thumbnail that opened a broken link
 - Fixed: after opening the app you could be "not in a room" as far as the server was concerned — chat failed with "You must be in a room", others didn't see you in the member list, and votes/Whispers/soundboard notices were affected — until you rejoined. The live-events connection now picks up a room you joined just before it connected (regression from 2.3.0)

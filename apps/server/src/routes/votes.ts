@@ -12,6 +12,7 @@ import {
   resolveVote,
   setVotePassedHandler,
   startPunishmentTimer,
+  type VoteRow,
 } from '../timers.js';
 
 const router = Router();
@@ -34,23 +35,79 @@ interface UserRow {
   display_name: string;
 }
 
-interface VoteRow {
+interface PunishmentRow {
   id: number;
-  source_room_id: number;
   target_user_id: number;
-  initiated_by: number;
+  source_room_id: number;
   duration_secs: number;
-  started_at: string;
-  expires_at: string;
-  resolved: number;
-  passed: number;
-  eligible_count: number;
-  yes_count: number;
-  no_count: number;
 }
 
-// ── POST /api/votes — Start a vote ──
+function hasOpenVote(roomId: number): boolean {
+  return !!db.prepare('SELECT id FROM votes WHERE source_room_id = ? AND resolved = 0').get(roomId);
+}
+
+/** People in the room who can vote (everyone but the target), snapshotted at the start. */
+function eligibleVoters(roomId: number, targetUserId: number): number {
+  return (getRoomMembers()[roomId] || []).filter((id) => id !== targetUserId).length;
+}
+
+/**
+ * Create a vote with the initiator's ballot counted as yes, start its 30 s window and
+ * announce it to the room. A lift vote is also sent to the jailed person, who isn't there.
+ */
+function openVote(req: Request, res: Response, v: {
+  kind: 'jail' | 'lift'; roomId: number; targetUserId: number; durationSecs: number;
+  eligibleCount: number; punishmentId: number | null;
+}): void {
+  const callerId = req.user!.sub;
+  const result = db.prepare(`
+    INSERT INTO votes (kind, punishment_id, source_room_id, target_user_id, initiated_by, duration_secs, expires_at, eligible_count, yes_count)
+    VALUES (?, ?, ?, ?, ?, ?, datetime('now', ?), ?, 1)
+  `).run(v.kind, v.punishmentId, v.roomId, v.targetUserId, callerId, v.durationSecs, `+${VOTE_WINDOW_SECS} seconds`, v.eligibleCount);
+
+  const voteId = result.lastInsertRowid as number;
+  db.prepare('INSERT INTO vote_ballots (vote_id, user_id, vote_yes) VALUES (?, ?, 1)').run(voteId, callerId);
+  startVoteTimer(voteId, VOTE_WINDOW_SECS * 1000);
+
+  const targetUser = db.prepare('SELECT id, username, display_name FROM users WHERE id = ?').get(v.targetUserId) as UserRow;
+  const vote = db.prepare('SELECT * FROM votes WHERE id = ?').get(voteId) as VoteRow;
+
+  const announced = {
+    id: vote.id,
+    kind: vote.kind,
+    punishmentId: vote.punishment_id,
+    sourceRoomId: vote.source_room_id,
+    targetUserId: vote.target_user_id,
+    targetUsername: targetUser.username,
+    targetDisplayName: targetUser.display_name,
+    initiatedBy: {
+      id: callerId,
+      username: req.user!.username,
+      displayName: req.user!.display_name,
+    },
+    durationSecs: vote.duration_secs,
+    eligibleCount: vote.eligible_count,
+    expiresAt: vote.expires_at,
+  };
+  broadcastToRoom(vote.source_room_id, 'vote:started', { vote: announced });
+  if (vote.kind === 'lift') sendToUser(vote.target_user_id, 'vote:started', { vote: announced });
+
+  res.status(201).json({ vote: announced });
+}
+
+// ── POST /api/votes — Start a vote: jail someone in your room, or release ('lift') someone
+// jailed from it. Anyone in the room can start either; the same majority rule applies.
 router.post('/', requireAuth, (req: Request, res: Response) => {
+  const { kind = 'jail' } = req.body;
+  if (kind === 'lift') {
+    startLiftVote(req, res);
+    return;
+  }
+  if (kind !== 'jail') {
+    res.status(400).json({ error: 'kind must be "jail" or "lift"' });
+    return;
+  }
+
   const { targetUserId, durationSecs } = req.body;
   const callerId = req.user!.sub;
 
@@ -90,11 +147,7 @@ router.post('/', requireAuth, (req: Request, res: Response) => {
     return;
   }
 
-  // Check no active vote in this room
-  const activeVote = db.prepare(
-    'SELECT id FROM votes WHERE source_room_id = ? AND resolved = 0',
-  ).get(callerRoomId);
-  if (activeVote) {
+  if (hasOpenVote(callerRoomId)) {
     res.status(409).json({ error: 'A vote is already in progress in this room' });
     return;
   }
@@ -108,62 +161,60 @@ router.post('/', requireAuth, (req: Request, res: Response) => {
     return;
   }
 
-  // Snapshot eligible voters (room members minus target)
-  const roomMembers = getRoomMembers();
-  const memberIds = roomMembers[callerRoomId] || [];
-  const eligibleCount = memberIds.filter((id) => id !== targetUserId).length;
-
+  const eligibleCount = eligibleVoters(callerRoomId, targetUserId);
   if (eligibleCount < 2) {
     res.status(400).json({ error: 'Need at least 3 people in the room to start a vote' });
     return;
   }
 
-  // Create the vote
-  const result = db.prepare(`
-    INSERT INTO votes (source_room_id, target_user_id, initiated_by, duration_secs, expires_at, eligible_count, yes_count)
-    VALUES (?, ?, ?, ?, datetime('now', ?), ?, 1)
-  `).run(callerRoomId, targetUserId, callerId, durationSecs, `+${VOTE_WINDOW_SECS} seconds`, eligibleCount);
-
-  const voteId = result.lastInsertRowid as number;
-
-  // Auto-record initiator's ballot as yes
-  db.prepare('INSERT INTO vote_ballots (vote_id, user_id, vote_yes) VALUES (?, ?, 1)').run(voteId, callerId);
-
-  // Start 30s timer
-  startVoteTimer(voteId, VOTE_WINDOW_SECS * 1000);
-
-  const targetUser = db.prepare('SELECT id, username, display_name FROM users WHERE id = ?').get(targetUserId) as UserRow;
-  const vote = db.prepare('SELECT * FROM votes WHERE id = ?').get(voteId) as VoteRow;
-
-  broadcastToRoom(callerRoomId, 'vote:started', {
-    vote: {
-      id: vote.id,
-      sourceRoomId: vote.source_room_id,
-      targetUserId: vote.target_user_id,
-      targetUsername: targetUser.username,
-      targetDisplayName: targetUser.display_name,
-      initiatedBy: {
-        id: req.user!.sub,
-        username: req.user!.username,
-        displayName: req.user!.display_name,
-      },
-      durationSecs: vote.duration_secs,
-      eligibleCount: vote.eligible_count,
-      expiresAt: vote.expires_at,
-    },
-  });
-
-  res.status(201).json({
-    vote: {
-      id: vote.id,
-      sourceRoomId: vote.source_room_id,
-      targetUserId: vote.target_user_id,
-      durationSecs: vote.duration_secs,
-      eligibleCount: vote.eligible_count,
-      expiresAt: vote.expires_at,
-    },
+  openVote(req, res, {
+    kind: 'jail', roomId: callerRoomId, targetUserId, durationSecs, eligibleCount, punishmentId: null,
   });
 });
+
+function startLiftVote(req: Request, res: Response): void {
+  const { punishmentId } = req.body;
+  if (!Number.isInteger(punishmentId)) {
+    res.status(400).json({ error: 'punishmentId is required' });
+    return;
+  }
+
+  const punishment = db.prepare(
+    "SELECT * FROM punishments WHERE id = ? AND active = 1 AND expires_at > datetime('now')",
+  ).get(punishmentId) as PunishmentRow | undefined;
+  if (!punishment) {
+    res.status(404).json({ error: 'They are no longer in jail' });
+    return;
+  }
+
+  // Only the room they were jailed from decides
+  const callerRoomId = getUserRoomId(req.user!.sub);
+  if (callerRoomId !== punishment.source_room_id) {
+    res.status(403).json({ error: 'Only people in the room they were jailed from can vote to release them' });
+    return;
+  }
+
+  if (hasOpenVote(callerRoomId)) {
+    res.status(409).json({ error: 'A vote is already in progress in this room' });
+    return;
+  }
+
+  // The jailed person isn't in the room, so this is everyone present
+  const eligibleCount = eligibleVoters(callerRoomId, punishment.target_user_id);
+  if (eligibleCount < 2) {
+    res.status(400).json({ error: 'Need at least 2 people in the room to vote' });
+    return;
+  }
+
+  openVote(req, res, {
+    kind: 'lift',
+    roomId: callerRoomId,
+    targetUserId: punishment.target_user_id,
+    durationSecs: punishment.duration_secs,
+    eligibleCount,
+    punishmentId: punishment.id,
+  });
+}
 
 // ── POST /api/votes/:id/ballot — Cast a ballot ──
 router.post('/:id/ballot', requireAuth, (req: Request, res: Response) => {
@@ -242,7 +293,7 @@ router.post('/:id/ballot', requireAuth, (req: Request, res: Response) => {
   });
 });
 
-// ── Vote passed handler — create jail room and punish target ──
+// ── Jail vote passed — create jail room and punish target ──
 setVotePassedHandler(async (vote) => {
   const sourceRoom = db.prepare('SELECT * FROM rooms WHERE id = ?').get(vote.source_room_id) as RoomRow;
   const targetUser = db.prepare('SELECT id, username, display_name FROM users WHERE id = ?').get(vote.target_user_id) as UserRow;

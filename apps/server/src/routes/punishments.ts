@@ -1,8 +1,6 @@
 import { Router, Request, Response } from 'express';
 import db from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
-import { broadcast } from '../events.js';
-import { cancelPunishmentTimer } from '../timers.js';
 
 const router = Router();
 
@@ -17,13 +15,8 @@ interface PunishmentRow {
   active: number;
 }
 
-interface RoomRow {
-  id: number;
-  name: string;
-  created_by: number | null;
-}
-
-// GET /api/punishments/active — Get active punishments for the authenticated user
+// GET /api/punishments/active — Get active punishments for the authenticated user.
+// (Ending one early is a vote — POST /api/votes with kind 'lift'.)
 router.get('/active', requireAuth, (req: Request, res: Response) => {
   const punishments = db.prepare(`
     SELECT p.*, sr.name as source_room_name, jr.name as jail_room_name
@@ -44,51 +37,6 @@ router.get('/active', requireAuth, (req: Request, res: Response) => {
       expiresAt: p.expires_at,
     })),
   });
-});
-
-// POST /api/punishments/:id/lift — Lift a punishment early (room creator only)
-router.post('/:id/lift', requireAuth, (req: Request, res: Response) => {
-  const punishmentId = parseInt(req.params.id, 10);
-  if (isNaN(punishmentId)) {
-    res.status(400).json({ error: 'Invalid punishment ID' });
-    return;
-  }
-
-  const punishment = db.prepare(
-    'SELECT * FROM punishments WHERE id = ? AND active = 1',
-  ).get(punishmentId) as PunishmentRow | undefined;
-  if (!punishment) {
-    res.status(404).json({ error: 'Active punishment not found' });
-    return;
-  }
-
-  const sourceRoom = db.prepare('SELECT * FROM rooms WHERE id = ?').get(punishment.source_room_id) as RoomRow | undefined;
-
-  if (!sourceRoom || sourceRoom.created_by !== req.user!.sub) {
-    res.status(403).json({ error: 'Only the room creator can lift punishments' });
-    return;
-  }
-
-  // Lift the punishment
-  db.prepare(
-    "UPDATE punishments SET active = 0, lifted_by = ?, lifted_at = datetime('now') WHERE id = ?",
-  ).run(req.user!.sub, punishmentId);
-
-  cancelPunishmentTimer(punishmentId);
-
-  broadcast('punishment:lifted', {
-    punishmentId: punishment.id,
-    targetUserId: punishment.target_user_id,
-    sourceRoomId: punishment.source_room_id,
-    sourceRoomName: sourceRoom?.name ?? 'Unknown',
-    liftedBy: {
-      id: req.user!.sub,
-      username: req.user!.username,
-      displayName: req.user!.display_name,
-    },
-  });
-
-  res.json({ lifted: true });
 });
 
 export default router;

@@ -41,7 +41,7 @@ Reference for maintaining consistent styling across all components. When adding 
 | **Indigo** | Primary actions, focus rings, active states | `bg-indigo-600`, `text-indigo-500` / `dark:text-indigo-400` |
 | **Red** | Danger, muted state, destructive actions | `bg-red-500/20 text-red-400` |
 | **Green** | Success, camera-on, online, confirm | `bg-green-500/20 text-green-400` |
-| **Amber** | Warnings, error banners | `bg-amber-50 dark:bg-zinc-800 text-amber-700 dark:text-amber-200` |
+| **Amber** | Warnings, votes | `border-amber-500/40 text-amber-600 dark:text-amber-400` |
 | **Orange** | Jail/punishment indicators | `bg-orange-500/10 text-orange-400` |
 | **Purple** | Whisper mode indicators | `bg-purple-500/20 text-purple-400` |
 | **Blue** | Active speaker glow | `bg-blue-400` |
@@ -237,37 +237,43 @@ Use `mb-1.5` when followed by grouped sub-elements (e.g. hotkey rows).
 
 ---
 
-## Error/Toast Banners
+## Toasts, Vote Card & Jail
 
-### Standard Error Banner
+No inline banners — nothing above the grid pushes the layout around.
 
-```
-mb-4 p-3 rounded-lg text-sm flex items-center
-bg-amber-50 dark:bg-zinc-800
-border border-amber-500/40
-text-amber-700 dark:text-amber-200
-```
+### Toasts — `useToasts` + `Toasts`
 
-**Auto-dismiss timing:**
-- Visible: 4.5 seconds
-- Fade-out: `transition-opacity duration-500` then `opacity-0`
-- Remove from DOM: 5 seconds total
+One stack, top-centre of the stage just under the header (`absolute top-[4.25rem]
+inset-x-4 z-30`, `aria-live="polite"`), frosted (`bg-white/85 dark:bg-zinc-800/85
+backdrop-blur-xl border rounded-xl shadow-lg text-[13px]`), `fadeSlideIn` on entry.
 
-**Close button:**
-```
-ml-2 text-amber-500 dark:text-amber-400
-hover:text-amber-700 dark:hover:text-amber-200
-```
+- Tones: `info` (neutral border), `success` (green), `warn` (amber), `error` (red) —
+  the tone sets border and text colour together, so never add a second border class.
+- Timing: info/success 4 s, warn 5 s, error 6 s; at most 4 shown (oldest non-sticky goes).
+- **State toasts** (`sticky` + `key`) last as long as the state: "Reconnecting…", "You're
+  muted". Push in an effect while the state holds and `dismiss(key)` in its cleanup.
+- Errors and sticky toasts get an ✕; `onDismiss` runs when the person closes one.
+- Use them for errors, joins, soundboard plays (others' only), vote results, jail news.
 
-### Vote Result Toast
+### Vote Card — `VoteCard`
 
-- Passed: `bg-red-500/20 border border-red-500/50 text-red-300`
-- Failed: `bg-green-500/20 border border-green-500/50 text-green-300`
-- Auto-dismiss: 4 seconds
+Docked above the control bar in the same bottom dock (`absolute bottom-4 inset-x-4 z-30
+flex flex-col items-center gap-2 pointer-events-none`; children `pointer-events-auto`),
+so a wrapped bar pushes it up instead of overlapping. `max-w-[460px]`, amber border.
+Countdown (mono, tabular), tally bar (yes from the left, no from the right), "needs N of M",
+then the two ballots. "Yes" is the action and takes its colour: **Jail** red / Keep plain
+for a jail vote; **Release** green / Keep in jail plain for a release vote.
 
-### Banner Pattern
+### Jail
 
-All banners follow: `mb-4 p-3 bg-{color} border border-{color} rounded-lg text-sm`
+- In jail: header pill `Jailed · 4:32 left` (`bg-red-500/15 text-red-600`) plus "Back in
+  X when it ends" from `lg`.
+- People jailed from this room: orange header pill (`Gavel`, "Jordan in jail" / "2 in
+  jail") opening a list with each countdown and **Vote to release** (anyone in the room —
+  there is no instant lift). When a vote can't start, the list says why.
+- Countdowns tick in their own small component (`useNow`) so the header doesn't re-render.
+  Parse server times with `sqliteUtcToMs` / `secondsUntil` (ISO form; SQLite's
+  space-separated timestamps aren't parsed reliably everywhere).
 
 ---
 
@@ -382,9 +388,9 @@ Full-bleed 16:9 media (`rounded-xl overflow-hidden`), no card padding or footer:
 
 ### Control Bar
 
-Docked to the stage: `absolute bottom-4 left-1/2 -translate-x-1/2 z-30
-w-[calc(100%-2rem)] max-w-2xl` inside `<main class="relative">`, so it's centred on the
-stage, not the window. One row of `ControlButton`s (`p-2.5 rounded-lg`, tones: neutral /
+Docked to the stage: the room's bottom dock (`absolute bottom-4 inset-x-4 z-30 flex-col
+items-center`, under the vote card) inside `<main class="relative">`, so it's centred on
+the stage, not the window. `ControlBar` itself has no positioning. One row of `ControlButton`s (`p-2.5 rounded-lg`, tones: neutral /
 danger / success). Never hide buttons to save space — the full row fits at every width the
 side panels allow; `flex-wrap` is only a fallback. Chat is a button here (tone `accent`
 while the Chat tab is showing, unread badge otherwise) — typing happens in the Chat tab.
@@ -397,7 +403,7 @@ The participant area reserves `pb-24` beneath the bar.
 | Layer | Z-Index | Usage |
 |-------|---------|-------|
 | In-card overlays | `z-10` | PIP video, whisper badges |
-| Control bar, backdrops | `z-30` | Floating bar, mobile overlays |
+| Control bar, toasts, backdrops | `z-30` | Bottom dock (bar + vote card), toast stack, mobile overlays |
 | Sidebars (mobile) | `z-40` | Slide-in panels |
 | All popovers/menus | `z-50` | Settings, dropdowns |
 | Full-screen modals | `z-[60]` | Portal modals (clip trimmer, etc.) |

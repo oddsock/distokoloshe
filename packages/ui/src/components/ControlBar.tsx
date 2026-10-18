@@ -29,14 +29,14 @@ interface ControlBarProps {
 }
 
 /**
- * Bottom control bar, docked to the stage (centred on it, not the window). Every button
- * always shows — at every width the side panels allow the row fits; wrapping is only a
- * last-resort fallback.
+ * Bottom control bar. The room docks it to the stage (centred on it, not the window),
+ * under the vote card when one is running. Every button always shows — at every width the
+ * side panels allow the row fits; wrapping is only a last-resort fallback.
  */
 export function ControlBar(props: ControlBarProps) {
   const { micMuted, cameraOn, deafened, sharing, buttonRef } = props;
   return (
-    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 max-w-[calc(100%-2rem)] bg-white/80 dark:bg-zinc-800/80 backdrop-blur-xl rounded-2xl px-3 py-2 shadow-lg border border-zinc-200/50 dark:border-zinc-700/50">
+    <div className="pointer-events-auto max-w-full bg-white/80 dark:bg-zinc-800/80 backdrop-blur-xl rounded-2xl px-3 py-2 shadow-lg border border-zinc-200/50 dark:border-zinc-700/50">
       <div className="flex flex-wrap items-center justify-center gap-2 md:gap-3">
         <ControlButton
           tone={micMuted ? 'danger' : 'neutral'}

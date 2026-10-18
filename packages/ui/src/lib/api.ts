@@ -202,9 +202,13 @@ export function listRoomMembers() {
   return request<{ members: Record<string, RoomMember[]> }>('/rooms/members');
 }
 
-// Votes
+// Votes — jail someone in your room, or release ('lift') someone jailed from it
 export interface Vote {
   id: number;
+  /** Missing from older servers: treat as 'jail' */
+  kind?: 'jail' | 'lift';
+  /** Lift votes: the punishment that would end */
+  punishmentId?: number | null;
   sourceRoomId: number;
   targetUserId: number;
   targetUsername: string;
@@ -219,6 +223,13 @@ export function startVote(targetUserId: number, durationSecs: number) {
   return request<{ vote: Vote }>('/votes', {
     method: 'POST',
     body: JSON.stringify({ targetUserId, durationSecs }),
+  });
+}
+
+export function startLiftVote(punishmentId: number) {
+  return request<{ vote: Vote }>('/votes', {
+    method: 'POST',
+    body: JSON.stringify({ kind: 'lift', punishmentId }),
   });
 }
 
@@ -242,10 +253,6 @@ export interface Punishment {
 
 export function getActivePunishments() {
   return request<{ punishments: Punishment[] }>('/punishments/active');
-}
-
-export function liftPunishment(punishmentId: number) {
-  return request<{ lifted: boolean }>(`/punishments/${punishmentId}/lift`, { method: 'POST' });
 }
 
 export interface RoomPunishment {

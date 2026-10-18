@@ -97,6 +97,10 @@ try { db.exec("ALTER TABLE rooms ADD COLUMN mode TEXT DEFAULT 'normal'"); } catc
 try { db.exec('ALTER TABLE rooms ADD COLUMN is_jail INTEGER NOT NULL DEFAULT 0'); } catch {}
 try { db.exec('ALTER TABLE rooms ADD COLUMN jail_source_room_id INTEGER REFERENCES rooms(id)'); } catch {}
 
+// A vote either jails someone or releases them early ('lift', pointing at the punishment)
+try { db.exec("ALTER TABLE votes ADD COLUMN kind TEXT NOT NULL DEFAULT 'jail'"); } catch {}
+try { db.exec('ALTER TABLE votes ADD COLUMN punishment_id INTEGER REFERENCES punishments(id)'); } catch {}
+
 // Per-room random E2EE key (see livekit.ts). NULL for rooms created before this column;
 // those are seeded with the legacy derived key on first use.
 try { db.exec('ALTER TABLE rooms ADD COLUMN e2ee_key TEXT'); } catch {}
