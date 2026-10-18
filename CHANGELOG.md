@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Quieter web logs: the container healthcheck uses a new `/healthz` endpoint over plain HTTP instead of following the HTTPS redirect (which logged a 301, a page load and two "unknown process exited" notices every 30 seconds), and the browser's `/favicon.ico` probe no longer logs an error
+
 ## 2.3.10 — Settings Window (room redesign R9)
 
 - Settings is now a proper window with sections — Audio, Video & sharing, Hotkeys, Notifications, Privacy, Connection, App & updates — instead of one long scrolling popover. On phones it fills the screen. Open it from the gear in the control bar or the new gear next to your name
