@@ -208,22 +208,25 @@ The SQLite database in `data/api/` persists across rebuilds.
 
 ## Features
 
-- **Voice & video rooms** — Create voice or video rooms. Auto-joins your last room on login. Click any participant's camera to spotlight/maximize it (same as screen shares)
+- **Voice & video rooms** — Create voice or video rooms. You're always in a room: it rejoins your last one on login (or the default room). Tiles grow and shrink to fill the call area; a People panel lists who's here, elsewhere and offline, with per-person volume and mute-for-me
+- **Theater & multiview** — Pin a screen share or camera to fill the stage with everyone else in a strip, or pin up to four side by side (Ctrl/⌘-click or the pin button). Someone else's share pins itself when nothing is pinned. Fullscreen with auto-hiding controls (window fullscreen in the desktop app), and picture-in-picture in Chrome, Edge and Safari
 - **Screen sharing** — Quality picker (720p/1080p/1080p60/native), browser-aware codec selection (AV1 on Firefox, VP9 on Chromium, VP8/H.264 on Safari), optional audio capture
 - **Media encryption** — AES-GCM via LiveKit Encoded Transforms, so the media relay only ever forwards ciphertext. Each room has its own random key, replaced whenever the room empties. Works in Chrome, Firefox and Safari; see [Security](#security) for what it does and doesn't protect against
 - **Per-user volume control** — Individual volume sliders (0-200%) with persistent settings per participant. Audio routed through Web Audio API for proper stereo upmix across all platforms
+- **Chat** — Text and images (pasted or attached, re-encoded in the browser, with upload progress). Messages appear as bubbles on the sender's tile and in a Chat tab holding everything since you joined the room. Nothing is stored: images are deleted from the server after a minute, and the history clears when you switch rooms
 - **Soundboard** — Upload audio clips (max 10 seconds) to play to the room. Inline clip trimmer with waveform visualization, draggable start/end handles, preview playback with animated scrubber, and trim-to-WAV before upload. Per-clip preview (local-only) and room playback with volume control
-- **Democratic moderation** — Vote to jail disruptive users. 30-second voting window, quorum of 3, simple majority. Passed votes auto-create a timed jail room and kick the target from LiveKit. Anyone in the room can start a vote to release them early (same rules)
+- **Democratic moderation** — Vote to jail disruptive users. 30-second voting window, quorum of 3, simple majority, shown as a vote card above the controls. Passed votes auto-create a timed jail room and kick the target from LiveKit. Anyone in the room can start a vote to release them early (same rules)
 - **Whispers mode** — Room mode that shuffles participants into a random chain (Fisher-Yates). Chain updates live as users join/leave
 - **Music bot** — DJ Tokoloshe streams internet radio into the `Music` room (created automatically) via a Python LiveKit bot. HTTP API for playback control, now-playing display with marquee scroll, E2EE compatible. Use your own stations by putting a `STATIONS` list (same shape as `apps/music/stations.py`) in `apps/music/stations_local.py` — it's gitignored, so pulls never touch it; rebuild the `music` container after editing
 - **Sound notifications** — 4 synthesized sound packs (Mystical Chimes, Mischievous Pops, Retro Arcade, Digital Whispers) with 8 events each. All generated via Web Audio API oscillators — no audio files
 - **Real-time presence** — SSE-based online/offline status, room membership, vote/punishment/whispers events (13 event types)
-- **Connection quality** — Live signal strength indicator with RTT (round-trip time) and jitter stats, server region display
+- **Connection quality** — Live signal bars with a connection card: round-trip time, jitter, estimated distance, packet loss, ICE type, bitrate, codecs, transport, and the server's location (from `SERVER_CITY`, or estimated from the server's public IP)
+- **Notices** — Errors, joins, soundboard plays, vote results and jail news appear as toasts over the call area, never shifting the layout
 - **Desktop client** — Tauri v2 app (Windows/Linux/macOS) sharing UI code with web via `@distokoloshe/ui`. Configurable server URL, window state persistence, global shortcuts (OS-level mute/deafen with modifier keys), and self-hosted auto-updater with ed25519 signed updates
 - **Noise cancellation** — Real-time background noise removal via WASM AudioWorklet. Choose between RNNoise (ML neural network, best voice isolation) or Speex DSP (lighter CPU). Toggle and engine preference persist across sessions
 - **Soundbites** — Save the last 10 seconds of any participant's audio as a WAV file. Client-side ring buffer recording (~1.9 MB/participant), fully E2EE compatible. Participants can opt out via settings
 - **Light/dark theme** — Toggle with persistent preference
-- **Device selection** — Choose microphone, speaker, and camera from settings
+- **Settings window** — Audio (devices, mic meter, speaker test, noise cancellation), video & sharing, hotkeys, notification sounds, privacy, connection and app sections; full-screen on phones
 
 ## Project Structure
 

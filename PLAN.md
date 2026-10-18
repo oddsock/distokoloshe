@@ -326,16 +326,86 @@ desktop panels collapsing — ask whether phones may use a "⋯" overflow or sho
       Escape, the green button, a window already fullscreen; web — PiP on a pinned share,
       unpin while in PiP closes it.
 
-### R11b — Desktop pop-out windows (was phase 6)
-- [ ] Pop-out `WebviewWindow` per pane: its own LiveKit client, video-only (no mic, no
-      audio playback). Needs its **own LiveKit identity** (same identity would kick the
-      main window) — and the slice-6 jail webhook must map that identity back to the user
-      so a jailed user can't watch their source room through a pop-out. Join endpoint
-      gets a viewer/pop-out flag that skips presence and applies the punishment check.
-- [ ] Always-on-top toggle, remembers size/position, closes when the share ends, "pop back in".
-- [ ] Web: Document Picture-in-Picture (Chromium) / `requestPictureInPicture()` where available.
+### R11b — Desktop pop-out windows — skipped for now (user, 2026-10-18)
+If picked up: pop-out `WebviewWindow` per pane with its own LiveKit client, video-only (no
+mic, no audio playback). Needs its **own LiveKit identity** (the same identity would kick
+the main window) — and the jail webhook must map that identity back to the user so a
+jailed user can't watch their source room through a pop-out; the join endpoint gets a
+viewer/pop-out flag that skips presence and applies the punishment check. Always-on-top
+toggle, remembers size/position, closes when the share ends, "pop back in". (The web
+picture-in-picture part was done in R11a.)
 
-### R12 — Verification & release (was phase 7)
-- [ ] Manual matrix: Chrome↔Chrome, Chrome↔Firefox, Safari viewer, mobile, E2EE room,
-      each quality preset, `lockStreamQuality` on/off, narrow windows (responsive rules).
-- [ ] CHANGELOG + version bump; desktop release via the tag flow.
+### R12 — Verification & release (2.4.0)
+- [x] README features, CHANGELOG (2.4.0 = the redesign, plus the reconnect fixes), version
+      bump, tag → desktop release.
+- [ ] **Release test pass** — one checklist for the redesign and the 2.3.0 review fixes
+      (FIXES.md's end-pass list, updated: it was never run). Three browser profiles with
+      three accounts cover everything marked (3); mics muted.
+
+Setup: `git pull && docker compose build --pull && docker compose --profile production up -d`
+
+Server & security
+- [ ] `docker compose ps` all healthy; `logs web` quiet (no 301/"unknown process" every
+      30 s, no favicon error, no `?token=`); `docker compose exec web nginx -t` ok
+- [ ] `curl -sI https://<domain>/api/health` → CSP, nosniff, HSTS;
+      `/api/livekit/webhook` and `/api/music/room-key` → 404 from outside;
+      `/api/rooms` has no `e2ee_key`
+- [ ] `docker compose restart api` while in a room → back in the member list within a few
+      seconds of the API being up, chat works, no reload (Safari too)
+- [ ] `stop api` + reload → retrying; `start api` → back in
+- [ ] Without `SERVER_CITY`: signal-bar card shows "≈ City — estimated from the server's
+      IP"; restart api → no new lookup in `logs api`
+
+Room & layout
+- [ ] Rail: rooms with avatars + speaking ring; icon rail at 768–1023 px; drawer on phones
+- [ ] People panel (default open from 1080 px, remembered); overlay below; mute-for-me,
+      per-person volume
+- [ ] Grid fits 1 / 2 / 3 / 5 / 8 tiles without scrolling; resizing reflows
+- [ ] Control bar never hides buttons at any width the panels allow
+- [ ] Room ⋯ menu: Whispers on/off; delete room as creator → everyone moved to General
+
+Stage (needs shares / cameras)
+- [ ] A remote share auto-pins; strip at the side (wide) / bottom (narrow)
+- [ ] Click a tile → solo; Pin / Ctrl-⌘-click → add panes (2 side-by-side or stacked,
+      3–4 in 2×2, fifth → "Stage is full"); pane ✕ / Show only this; Grid / Theater /
+      Multiview switch
+- [ ] Back to Grid → that share stays put; a new share pins itself; with something pinned
+      a new share shows the View / Add to split toast
+- [ ] Fullscreen: header button, pane button, double-click; controls + cursor fade after
+      2 s; a toast and a vote still show; Escape; Safari
+- [ ] Desktop app fullscreen: window goes fullscreen; Escape and the green button leave
+- [ ] Picture in picture on a pinned share (Chrome / Safari)
+- [ ] Each share quality preset; `lock stream quality` on → strip videos come in small
+      while something's pinned (webrtc-internals), full size in the grid
+
+Chat
+- [ ] Bubbles stay inside tiles, "+N more" opens the Chat tab; history clears on room switch
+- [ ] Large screenshot arrives; small GIF animated; Enter ×3 while uploading → one message
+      with progress; thumbnail → full size; after ~1 min "Image expired"; SVG refused
+- [ ] Rate-limit error shows in the composer
+
+Votes & jail (3)
+- [ ] Vote to jail → card above the bar; only the target moves; their header counts down;
+      the room's orange pill lists them; other clients' event stream has no `jailConnection`
+- [ ] Vote to release → passes → they're back; fails → stays; time runs out mid-vote →
+      card disappears quietly; no instant Lift for the creator
+- [ ] `restart api` during a sentence → still active afterwards
+- [ ] `docker compose exec -T music python - <jailed-user> "<room>" < infra/scripts/check-jail-kick.py` → `KICKED`
+- [ ] Delete a room after a vote → works, its `Jail: …` room goes too; refused mid-vote/jail
+- [ ] Whispers with 3 people; one switches rooms → chain shrinks
+
+Settings, sound & music
+- [ ] Settings window: every tab; device switch; mic meter; test speaker; rebind a hotkey
+      (Esc cancels, dialog stays open); noise cancellation; sound pack; soundbite opt-out;
+      theme; Escape / backdrop close
+- [ ] Soundboard: stereo clip on both sides, 10 s upload, old clips play; others' plays toast
+- [ ] Music room: `logs music` shows `E2EE configured`; radio, skip, pause, station change;
+      `curl -X POST 127.0.0.1:3001/skip` → 403; queueing `http://127.0.0.1:3000/` refused
+- [ ] E2EE: two windows in one room hear each other; empty a room ~40 s →
+      `logs api | grep "rotated E2EE"`
+
+Browsers & desktop
+- [ ] Chrome↔Chrome, Chrome↔Firefox, Safari viewer: audio, camera, share both ways
+- [ ] macOS app: install, `xattr -cr /Applications/disTokoloshe.app`, auto-update from
+      2.3.x, pipe a local file and a direct audio URL, right-click → Inspect
+- [ ] Windows / Linux installers start and join a room

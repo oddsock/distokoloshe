@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 2.4.0 — Room Redesign
+
+The room redesign is complete (2.3.1–2.3.11 shipped it step by step): a rooms rail with who's where, a People and Chat side panel, tiles that fit the call area, theater and multiview for shares and cameras, toasts instead of banners, votes to release from jail, a connection card with the server's location, and a settings window. This release adds:
 
 - Fixed: after the server restarted you could stay connected (hearing and seeing everyone) but be missing from the room in everyone's lists until you switched rooms, or for a long time. When the live-events connection came back while LiveKit was still restoring its control link, the app didn't tell the server which room you were in; it now does, and also re-checks once LiveKit is fully back. And since Safari can keep a dead live-events connection "open" for a long while, the app's heartbeat now asks the server whether it still knows the connection and reopens it straight away when it doesn't (checking every 2 s while the server is unreachable) — so you're back in the list about as soon as the server is up
 - While the connection is being restored the header says "Reconnecting…" (it showed "signalReconnecting"), and the "Reconnecting…" notice now appears in that case too

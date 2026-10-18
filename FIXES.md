@@ -21,6 +21,9 @@ freshness + the YouTube JS-runtime issue), #21 (lockfiles + `npm ci`).
 
 ## End-pass checklist (run once, on `fix/11-deps`)
 
+> Superseded: never run as a separate pass — folded, updated for the redesign, into the
+> **Release test pass** in PLAN.md (R12, 2.4.0).
+
 Setup: `git fetch origin && git checkout fix/11-deps && docker compose build --pull &&
 docker compose --profile production up -d`. Details for each line are in the slice
 sections below.
