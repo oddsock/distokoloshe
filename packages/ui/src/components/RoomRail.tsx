@@ -1,4 +1,4 @@
-import { Sun, Moon, LogOut, Download, Lock, ShieldAlert, Plus } from 'lucide-react';
+import { Sun, Moon, LogOut, Download, Lock, ShieldAlert, Plus, Settings } from 'lucide-react';
 import type * as api from '../lib/api';
 import type { ConnectionStats } from '../hooks/useConnectionStats';
 import { useMediaQuery } from '../hooks/useMediaQuery';
@@ -27,6 +27,7 @@ interface RoomRailProps {
   connected: boolean;
   e2eeEnabled: boolean;
   onLogout: () => void;
+  onOpenSettings: () => void;
 }
 
 /**
@@ -193,6 +194,14 @@ export function RoomRail(props: RoomRailProps) {
               ? <span data-tooltip="End-to-end encrypted" className="shrink-0 flex items-center"><Lock size={13} className="text-green-400" /></span>
               : <span data-tooltip="Transport encryption only — E2EE not available in this browser" className="shrink-0 flex items-center"><ShieldAlert size={13} className="text-amber-400" /></span>
           )}
+          <button
+            onClick={props.onOpenSettings}
+            className="text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors shrink-0 focus-visible:ring-2 focus-visible:ring-indigo-500 rounded"
+            aria-label="Settings"
+            data-tooltip="Settings"
+          >
+            <Settings size={14} />
+          </button>
           <button
             onClick={props.onLogout}
             className="text-zinc-500 hover:text-red-400 transition-colors shrink-0 focus-visible:ring-2 focus-visible:ring-indigo-500 rounded"

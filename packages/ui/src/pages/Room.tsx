@@ -5,7 +5,7 @@ import { useLiveKitRoom, type RoomConnection } from '../hooks/useLiveKitRoom';
 import { useAudioMixer } from '../hooks/useAudioMixer';
 import { useScreenShare, QUALITY_PRESETS, type ShareQuality } from '../hooks/useScreenShare';
 import { useEvents } from '../hooks/useEvents';
-import { DeviceSettings } from '../components/DeviceSettings';
+import { SettingsDialog } from '../components/SettingsDialog';
 import { VolumeSlider } from '../components/VolumeSlider';
 import { ParticipantTile, TileAction } from '../components/ParticipantTile';
 import { PinnedStage, MAX_PINS, type Pin, type PinSource, type StagePane } from '../components/PinnedStage';
@@ -88,7 +88,7 @@ function getPipeTitle(metadata?: string | null): string | null {
 /** All floating popovers anchored to the control bar / tiles. Only one can be
  *  open at a time; any document click outside closes it. */
 type Popover =
-  | 'settings' | 'soundboard' | 'music' | 'pipe' | 'quality' | 'stopShare'
+  | 'soundboard' | 'music' | 'pipe' | 'quality' | 'stopShare'
   | { durationPickerFor: number } | { volumeFor: string } | { tileMenuFor: string };
 
 export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
@@ -100,6 +100,7 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
   const showError = useCallback((msg: string) => { pushToast({ tone: 'error', text: msg }); }, [pushToast]);
   const [openPopover, setOpenPopover] = useState<Popover | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   // Buttons that popovers anchor to
   const ctlRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const [theme, setThemeState] = useState<'dark' | 'light'>(getTheme);
@@ -1438,6 +1439,17 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
   return (
     <div className="h-screen overflow-hidden bg-zinc-100 dark:bg-zinc-900 text-zinc-900 dark:text-white flex">
       <TooltipLayer />
+      <SettingsDialog
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        room={connectionState === ConnectionState.Connected ? room : null}
+        hotkeyBindings={hotkeyBindings}
+        onHotkeyChange={setHotkeyBindings}
+        noiseCancellation={{ enabled: ncEnabled, setEnabled: setNcEnabled, engine: ncEngine, setEngine: setNcEngine, supported: ncSupported }}
+        autoUpdate={autoUpdate}
+        theme={theme}
+        onToggleTheme={() => setThemeState(toggleTheme())}
+      />
       <RoomRail
         rooms={visibleRooms}
         currentRoomId={currentRoom?.id ?? null}
@@ -1462,6 +1474,7 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
         connected={connectionState === ConnectionState.Connected}
         e2eeEnabled={e2eeEnabled}
         onLogout={onLogout}
+        onOpenSettings={() => setSettingsOpen(true)}
       />
 
       {/* Main content */}
@@ -1535,7 +1548,7 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
           const showPipe = pipe.available && !!currentRoom && !hasMusicBot;
           const anchorFor = (key: string) => ctlRefs.current[key] ?? null;
           const setRef = (key: string) => (el: HTMLButtonElement | null) => { ctlRefs.current[key] = el; };
-          const toggle = (key: 'settings' | 'soundboard' | 'music' | 'pipe') =>
+          const toggle = (key: 'soundboard' | 'music' | 'pipe') =>
             setOpenPopover(openPopover === key ? null : key);
           const toggleShare = () => {
             if (isSharing) setOpenPopover(openPopover === 'stopShare' ? null : 'stopShare');
@@ -1576,7 +1589,7 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
                   showPipe={showPipe}
                   onPipe={() => toggle('pipe')}
                   onSoundboard={() => toggle('soundboard')}
-                  onSettings={() => toggle('settings')}
+                  onSettings={() => { setOpenPopover(null); setSettingsOpen(true); }}
                   chatOpen={chatVisible}
                   chatUnread={chatUnread}
                   onChat={() => togglePanelTab('chat')}
@@ -1677,9 +1690,6 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
                 />
               </Floating>
 
-              <Floating anchor={anchorFor('settings')} open={openPopover === 'settings'} zClass="z-50">
-                <DeviceSettings room={room} hotkeyBindings={hotkeyBindings} onHotkeyChange={setHotkeyBindings} noiseCancellation={{ enabled: ncEnabled, setEnabled: setNcEnabled, engine: ncEngine, setEngine: setNcEngine, supported: ncSupported }} autoUpdate={autoUpdate} />
-              </Floating>
             </>
           );
         })()}

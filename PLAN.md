@@ -291,9 +291,19 @@ User chose (2026-10-18): the message box moves into the Chat tab; the bar gets a
       "Server location: …"); restart the api → no new lookup (cached); with SERVER_CITY
       set it shows just that city; SERVER_GEO=off → no server row.
 
-### R9 — Settings dialog
-- [ ] Modal with tabs: Audio, Video & sharing, Hotkeys, Notifications, Privacy,
-      Connection, App & updates — moves `DeviceSettings` sections; full-screen sheet on mobile.
+### R9 — Settings dialog (2.3.10)
+- [x] Modal with tabs: Audio, Video & sharing, Hotkeys, Notifications, Privacy,
+      Connection, App & updates — `DeviceSettings` split into `SettingsPanels` and removed;
+      full-screen sheet on phones. Opened from the bar's gear and a new gear in the rail's
+      user card (the settings popover is gone). Theme switch also lives under App.
+- [x] Fixes on the way: device pickers show the device actually in use (they used to show
+      the first in the list); Safari without output selection says so instead of an empty
+      list; rebinding a hotkey no longer also fires the in-page hotkeys (Tauri's system-wide
+      shortcuts still can — they're registered with the OS).
+- [x] Released as 2.3.10. User tests: open from the bar and from the rail; every tab;
+      switch mic / speaker / camera; mic meter moves; test speaker; rebind a hotkey (Esc
+      cancels without closing); noise cancellation toggle + engine; sound pack + preview;
+      soundbite opt-out; lock quality; theme; phone layout; Tab/Escape/backdrop.
 
 ### R10 — Mobile
 - [ ] One-row bar: mic, camera, deafen, chat, "⋯" (share, soundboard, music, settings).

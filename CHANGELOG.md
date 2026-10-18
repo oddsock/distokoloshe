@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.3.10 — Settings Window (room redesign R9)
+
+- Settings is now a proper window with sections — Audio, Video & sharing, Hotkeys, Notifications, Privacy, Connection, App & updates — instead of one long scrolling popover. On phones it fills the screen. Open it from the gear in the control bar or the new gear next to your name
+- Microphone, speaker and camera pickers now show the device you're actually using
+- In browsers that can't choose a speaker (Safari), the settings say so instead of showing an empty list
+- Fixed: pressing keys while setting a new hotkey could also set off your current hotkeys (e.g. toggle mute) in the app window. The desktop app's system-wide shortcuts can still fire while you rebind
+- The light/dark switch is also under App & updates
+
 ## 2.3.9 — Connection Card (room redesign R8)
 
 - Hovering (or tapping, or tabbing to) the signal bars now opens a proper connection card: quality, round-trip time, jitter, estimated distance, packet loss, connection type, send rate, codecs, transport and server — in light and dark mode

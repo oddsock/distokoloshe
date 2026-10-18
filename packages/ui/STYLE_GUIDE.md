@@ -606,6 +606,24 @@ border-l-4 border-r-4 border-t-4 border-transparent border-t-zinc-700
 
 ---
 
+## Settings Dialog — `SettingsDialog`, `SettingsPanels`
+
+Opened from the control bar's gear and the gear in the rail's user card. A portal modal
+(`z-[60]`, `bg-black/50` backdrop): `w-[min(760px,100%)] h-[min(600px,100%)] rounded-2xl`
+with a `w-52` tab column (icon + label, active `bg-indigo-500/15 text-indigo-600`) beside
+the content; below `sm` it's a full-screen sheet with the tabs as a scrolling row under
+the title (safe-area padded). Tabs: Audio, Video & sharing, Hotkeys, Notifications,
+Privacy, Connection, App & updates; the last one is remembered.
+
+- Only the active tab is mounted (the Audio tab's mic meter runs only while it's shown).
+- Settings are `Group` (small uppercase heading) → `Row` (name + hint left, control right)
+  using `Toggle` (`role="switch"`), `Segmented` (`role="radiogroup"`) or a full-width select.
+- Escape and the backdrop close it; Tab is kept inside; focus returns to the opener.
+  Arrow keys move between tabs. Hotkey rebinding listens in the capture phase on `window`
+  so the press (and Escape) never reaches the dialog or the global hotkeys.
+- Device pickers start on the device in use (`room.getActiveDevice`) and are disabled when
+  not in a room.
+
 ## Full-Screen Modal (Portal)
 
 Used for complex interactions that need to escape popover/panel containers (e.g. clip trimmer).

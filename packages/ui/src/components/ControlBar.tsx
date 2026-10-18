@@ -1,7 +1,7 @@
 import { Mic, MicOff, Camera, CameraOff, Ear, EarOff, Monitor, MonitorOff, Music, AudioLines, Settings, MessageSquare } from 'lucide-react';
 import { ControlButton } from './ControlButton';
 
-export type ControlKey = 'share' | 'music' | 'pipe' | 'soundboard' | 'settings';
+export type ControlKey = 'share' | 'music' | 'pipe' | 'soundboard';
 
 interface ControlBarProps {
   micMuted: boolean;
@@ -81,7 +81,7 @@ export function ControlBar(props: ControlBarProps) {
         <ControlButton ref={buttonRef('soundboard')} label="Open soundboard" tooltip="Soundboard" onClick={props.onSoundboard}>
           <AudioLines size={18} />
         </ControlButton>
-        <ControlButton ref={buttonRef('settings')} label="Open settings" tooltip="Settings" onClick={props.onSettings}>
+        <ControlButton label="Open settings" tooltip="Settings" aria-haspopup="dialog" onClick={props.onSettings}>
           <Settings size={18} />
         </ControlButton>
         <ControlButton
