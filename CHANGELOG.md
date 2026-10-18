@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Fixed: after the server restarted you could stay connected (hearing and seeing everyone) but be missing from the room in everyone's lists until you switched rooms. When the live-events connection came back while LiveKit was still restoring its control link, the app didn't tell the server which room you were in; it now does, and also re-checks once LiveKit is fully back
+- Fixed: after the server restarted you could stay connected (hearing and seeing everyone) but be missing from the room in everyone's lists until you switched rooms, or for a long time. When the live-events connection came back while LiveKit was still restoring its control link, the app didn't tell the server which room you were in; it now does, and also re-checks once LiveKit is fully back. And since Safari can keep a dead live-events connection "open" for a long while, the app's heartbeat now asks the server whether it still knows the connection and reopens it straight away when it doesn't (checking every 2 s while the server is unreachable) — so you're back in the list about as soon as the server is up
 - While the connection is being restored the header says "Reconnecting…" (it showed "signalReconnecting"), and the "Reconnecting…" notice now appears in that case too
 
 ## 2.3.11 — Fullscreen in the Desktop App, Picture-in-Picture (room redesign R11a)

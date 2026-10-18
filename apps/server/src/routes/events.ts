@@ -1,11 +1,12 @@
 import { Router, Request, Response } from 'express';
+import crypto from 'crypto';
 import db from '../db.js';
 import { requireAuth, requireEventsAuth, issueEventsTicket } from '../middleware/auth.js';
 import {
   addClient, removeClient, broadcast,
   isUserOnline, isUserInRoom, canAddClient,
   scheduleDisconnect, cancelPendingDisconnect, setUserRoom, getUserRoomId,
-  updateHeartbeat, forgetUserRoom,
+  updateHeartbeat, forgetUserRoom, hasStream,
 } from '../events.js';
 import { broadcastRoomLeave } from '../presence.js';
 import { releasePipeIfOwnedBy } from './music.js';
@@ -36,12 +37,14 @@ router.get('/', requireEventsAuth, (req: Request, res: Response) => {
     'X-Accel-Buffering': 'no', // Disable nginx buffering for SSE
   });
 
-  // Send initial keepalive
+  // Send initial keepalive, then the stream's id (see hasStream)
+  const streamId = crypto.randomUUID();
   res.write(':ok\n\n');
+  res.write(`event: hello\ndata: ${JSON.stringify({ streamId })}\n\n`);
 
   // Track this connection
   const wasOnline = isUserOnline(userId);
-  addClient(userId, res);
+  addClient(userId, res, streamId);
 
   // Check if this user has a pending disconnect (SSE reconnected within grace period)
   const pending = cancelPendingDisconnect(userId);
@@ -107,10 +110,12 @@ router.get('/', requireEventsAuth, (req: Request, res: Response) => {
   });
 });
 
-// POST /api/events/ping — Heartbeat from client; keeps presence detection fresh
+// POST /api/events/ping?stream=<id> — Heartbeat from client; keeps presence detection
+// fresh, and tells the client whether its event stream is still connected here
 router.post('/ping', requireAuth, (req: Request, res: Response) => {
   updateHeartbeat(req.user!.sub);
-  res.json({ ok: true });
+  const streamId = typeof req.query.stream === 'string' ? req.query.stream : null;
+  res.json({ ok: true, stream: streamId ? hasStream(streamId) : null });
 });
 
 // POST /api/events/leave — Explicit leave signal (skips grace period)

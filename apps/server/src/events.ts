@@ -27,6 +27,8 @@ interface SSEClient {
   userId: number;
   res: Response;
   roomId: number | null;
+  /** Sent to the client in the stream's first event; its heartbeat asks whether we still know it */
+  streamId: string;
 }
 
 const clients: SSEClient[] = [];
@@ -76,8 +78,17 @@ export function canAddClient(userId: number): { allowed: boolean; reason?: strin
 // first), and the stream must then pick the room up. Cleared when they leave or go offline.
 const joinedRoom = new Map<number, number>();
 
-export function addClient(userId: number, res: Response): void {
-  clients.push({ userId, res, roomId: joinedRoom.get(userId) ?? null });
+export function addClient(userId: number, res: Response, streamId: string): void {
+  clients.push({ userId, res, roomId: joinedRoom.get(userId) ?? null, streamId });
+}
+
+/**
+ * Whether this stream is still connected here. A client whose EventSource still looks
+ * open but isn't known (we restarted, or the connection died without the browser
+ * noticing) reopens it straight away instead of waiting for its browser to give up.
+ */
+export function hasStream(streamId: string): boolean {
+  return clients.some((c) => c.streamId === streamId);
 }
 
 /** Drop the remembered room once the user has gone offline for good. */
