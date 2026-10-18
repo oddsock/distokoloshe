@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Fixed: after opening the app you could be "not in a room" as far as the server was concerned — chat failed with "You must be in a room", others didn't see you in the member list, and votes/Whispers/soundboard notices were affected — until you rejoined. The live-events connection now picks up a room you joined just before it connected (regression from 2.3.0)
+
 ## 2.3.5 — Chat Tab (room redesign R4)
 
 - New Chat tab in the side panel with every message since you joined the room — it clears when you switch rooms and is never stored on the server. Images stay viewable in the history (the full-size version is only kept for about a minute)

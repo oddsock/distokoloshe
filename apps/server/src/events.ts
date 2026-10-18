@@ -71,8 +71,18 @@ export function canAddClient(userId: number): { allowed: boolean; reason?: strin
   return { allowed: true };
 }
 
+// The room each user last joined, kept even while they have no SSE connection: on page
+// load the join can complete before the event stream connects (it fetches a ticket
+// first), and the stream must then pick the room up. Cleared when they leave or go offline.
+const joinedRoom = new Map<number, number>();
+
 export function addClient(userId: number, res: Response): void {
-  clients.push({ userId, res, roomId: null });
+  clients.push({ userId, res, roomId: joinedRoom.get(userId) ?? null });
+}
+
+/** Drop the remembered room once the user has gone offline for good. */
+export function forgetUserRoom(userId: number): void {
+  joinedRoom.delete(userId);
 }
 
 export function removeClient(res: Response): { userId: number; roomId: number | null } | null {
@@ -89,6 +99,8 @@ export function isUserOnline(userId: number): boolean {
 }
 
 export function setUserRoom(userId: number, roomId: number | null): void {
+  if (roomId === null) joinedRoom.delete(userId);
+  else joinedRoom.set(userId, roomId);
   for (const client of clients) {
     if (client.userId === userId) {
       client.roomId = roomId;

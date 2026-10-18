@@ -5,7 +5,7 @@ import {
   addClient, removeClient, broadcast,
   isUserOnline, isUserInRoom, canAddClient,
   scheduleDisconnect, cancelPendingDisconnect, setUserRoom, getUserRoomId,
-  updateHeartbeat,
+  updateHeartbeat, forgetUserRoom,
 } from '../events.js';
 import { broadcastRoomLeave } from '../presence.js';
 import { releasePipeIfOwnedBy } from './music.js';
@@ -100,6 +100,7 @@ router.get('/', requireEventsAuth, (req: Request, res: Response) => {
           'SELECT id, username, display_name FROM users WHERE id = ?',
         ).get(userId) as { id: number; username: string; display_name: string };
         broadcast('user:offline', { user });
+        forgetUserRoom(userId);
         void releasePipeIfOwnedBy(userId);
       }
     });
@@ -136,6 +137,7 @@ router.post('/leave', requireAuth, (req: Request, res: Response) => {
       'SELECT id, username, display_name FROM users WHERE id = ?',
     ).get(userId) as { id: number; username: string; display_name: string };
     broadcast('user:offline', { user });
+    forgetUserRoom(userId);
   }
 
   db.prepare("UPDATE users SET last_seen = datetime('now') WHERE id = ?").run(userId);
