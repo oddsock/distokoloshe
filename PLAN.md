@@ -276,13 +276,20 @@ User chose (2026-10-18): the message box moves into the Chat tab; the bar gets a
       pinned someone else starts sharing → toast → View / Add to split; fullscreen with
       4 panes; a pinned share ending drops its pane.
 
-### R8 — Connection card & server location
-- [ ] Rich connection card on the signal bars (hover; tap on touch) keeping everything
-      today's tooltip shows.
-- [ ] Server location "≈ City — estimated from the server's IP": the API finds its public
-      IP (resolve `DOMAIN`, or LiveKit's STUN result), geolocates it once and caches it,
-      re-checking when the IP changes; `SERVER_CITY` still overrides. Decide at this
-      phase: local GeoIP database (no third-party call) vs a one-off lookup service.
+### R8 — Connection card & server location (2.3.9)
+- [x] Rich connection card on the signal bars (hover, keyboard focus, tap on touch)
+      keeping everything the old tooltip showed, light and dark.
+- [x] Server location "≈ City — estimated from the server's IP". User chose (2026-10-18)
+      the **one-off lookup** over a local GeoIP database: `serverLocation.ts` resolves
+      `DOMAIN` (now passed to the api container) for the public IP, asks ipinfo.io for that
+      IP's city only when it differs from the cached one (`server_meta` table; without
+      DOMAIN it asks for its own IP at most daily), re-checks every 6 h. Only the server's
+      own IP is sent. `SERVER_CITY` still overrides (shown without "≈"); `SERVER_GEO=off`
+      disables the lookup. `/api/server-info` → `{ city, estimated }`.
+- [x] Released as 2.3.9. User tests: hover / tab to / tap the signal bars; with no
+      SERVER_CITY the card shows "≈ <city> — estimated from the server's IP" (api log:
+      "Server location: …"); restart the api → no new lookup (cached); with SERVER_CITY
+      set it shows just that city; SERVER_GEO=off → no server row.
 
 ### R9 — Settings dialog
 - [ ] Modal with tabs: Audio, Video & sharing, Hotkeys, Notifications, Privacy,

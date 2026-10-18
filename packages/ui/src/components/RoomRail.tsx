@@ -3,7 +3,7 @@ import type * as api from '../lib/api';
 import type { ConnectionStats } from '../hooks/useConnectionStats';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { avatarColor, getRoomInitials } from '../lib/utils';
-import { SignalStrength } from './SignalStrength';
+import { SignalStrength, type ServerLocation } from './SignalStrength';
 
 const MAX_AVATARS = 5;
 
@@ -22,7 +22,7 @@ interface RoomRailProps {
   mobileOpen: boolean;
   onMobileClose: () => void;
   connectionStats: ConnectionStats;
-  serverCity: string | null;
+  serverLocation: ServerLocation | null;
   connecting: boolean;
   connected: boolean;
   e2eeEnabled: boolean;
@@ -187,7 +187,7 @@ export function RoomRail(props: RoomRailProps) {
               <p className="text-xs text-zinc-500 truncate">@{user.username}</p>
             </div>
           )}
-          <SignalStrength stats={props.connectionStats} serverCity={props.serverCity} connecting={props.connecting} />
+          <SignalStrength stats={props.connectionStats} serverLocation={props.serverLocation} connecting={props.connecting} />
           {props.connected && (
             props.e2eeEnabled
               ? <span data-tooltip="End-to-end encrypted" className="shrink-0 flex items-center"><Lock size={13} className="text-green-400" /></span>

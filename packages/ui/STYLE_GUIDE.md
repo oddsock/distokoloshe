@@ -487,6 +487,15 @@ Each bar: `w-[3px] rounded-sm transition-colors duration-100`
 | Bad | `bg-red-500` |
 | Inactive | `bg-zinc-600` |
 
+**Connection card** (`SignalStrength`, on `<Floating>`): opens on hover, keyboard focus
+(`:focus-visible` only) and tap on touch. `w-72 rounded-xl border bg-white
+dark:bg-zinc-800 shadow-xl`; header = small bars + tier label in the tier's colour; then a
+`dl` grid (`grid-cols-[auto_1fr]`, labels `text-zinc-500`, values right-aligned
+`tabular-nums`): RTT, jitter, distance, loss (green / yellow / red), ICE, send bitrate,
+codecs — a rule — transport and server. The server reads "≈ Cape Town" plus "estimated
+from the server's IP" when it came from the IP lookup, and just the city when it's
+`SERVER_CITY`. Keep every detail the card shows; add rows rather than replacing them.
+
 ### Mic Level Meter
 
 Container: `h-2 bg-zinc-200 dark:bg-zinc-700 rounded-full overflow-hidden`

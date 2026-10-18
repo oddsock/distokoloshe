@@ -12,6 +12,7 @@ for (const key of REQUIRED_ENV) {
 
 import './db.js'; // Initialize database on startup
 import { restoreTimers } from './timers.js';
+import { getServerLocation, startServerLocation } from './serverLocation.js';
 import authRoutes from './routes/auth.js';
 import roomRoutes from './routes/rooms.js';
 import userRoutes from './routes/users.js';
@@ -48,8 +49,9 @@ app.get('/api/ping', (_req, res) => {
   res.json({ t: Date.now() });
 });
 
+// city: SERVER_CITY, or estimated from the server's public IP (estimated: true)
 app.get('/api/server-info', (_req, res) => {
-  res.json({ city: process.env.SERVER_CITY || null });
+  res.json(getServerLocation());
 });
 
 app.use('/api/auth', authRoutes);
@@ -66,6 +68,9 @@ app.use('/api/livekit', livekitWebhookRoutes);
 
 // Restore active vote/punishment timers from DB (handles API restarts)
 restoreTimers();
+
+// Server location for the connection card (SERVER_CITY, or a one-off lookup of our own IP)
+startServerLocation();
 
 // Start GitHub Release auto-sync (if GITHUB_REPO is set)
 startUpdateSync();

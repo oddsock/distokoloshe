@@ -18,6 +18,7 @@ import { Toasts } from '../components/Toasts';
 import { RoomRail } from '../components/RoomRail';
 import { StageHeader, type JailedUser } from '../components/StageHeader';
 import { SidePanel, type PanelTab } from '../components/SidePanel';
+import type { ServerLocation } from '../components/SignalStrength';
 import { PeopleList } from '../components/PeopleList';
 import { TooltipLayer } from '../components/TooltipLayer';
 import { Floating } from '../components/Floating';
@@ -170,7 +171,7 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
 
   // Connection stats (RTT / jitter)
   const connectionStats = useConnectionStats(room);
-  const [serverCity, setServerCity] = useState<string | null>(null);
+  const [serverLocation, setServerLocation] = useState<ServerLocation | null>(null);
 
   // Global hotkeys
   const handleToggleMute = useCallback(() => {
@@ -278,10 +279,10 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
     };
   }, []);
 
-  // Fetch server city once on mount
+  // Where the server is (SERVER_CITY, or estimated from its IP) — once on mount
   useEffect(() => {
-    fetch(`${api.getBaseUrl()}/api/server-info`).then((r) => r.json()).then((d) => {
-      if (d.city) setServerCity(d.city);
+    fetch(`${api.getBaseUrl()}/api/server-info`).then((r) => r.json()).then((d: { city?: string | null; estimated?: boolean }) => {
+      if (d.city) setServerLocation({ city: d.city, estimated: !!d.estimated });
     }).catch(() => {});
   }, []);
 
@@ -1456,7 +1457,7 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
         mobileOpen={leftSidebarOpen}
         onMobileClose={() => setLeftSidebarOpen(false)}
         connectionStats={connectionStats}
-        serverCity={serverCity}
+        serverLocation={serverLocation}
         connecting={connectionState === ConnectionState.Connecting || (connectionState === ConnectionState.Connected && connectionStats.rttMs === null)}
         connected={connectionState === ConnectionState.Connected}
         e2eeEnabled={e2eeEnabled}

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.3.9 — Connection Card (room redesign R8)
+
+- Hovering (or tapping, or tabbing to) the signal bars now opens a proper connection card: quality, round-trip time, jitter, estimated distance, packet loss, connection type, send rate, codecs, transport and server — in light and dark mode
+- The server's location is filled in automatically: without `SERVER_CITY` set, the server looks up the city of its own public IP once and shows it as "≈ City — estimated from the server's IP". Only the server's IP is sent (to ipinfo.io), the answer is remembered, and it's only looked up again if the IP changes. `SERVER_CITY` still wins, and `SERVER_GEO=off` turns the lookup off
+- Self-hosters: the API container now receives `DOMAIN` from `.env` (used to notice IP changes) — no action needed if you use the bundled `compose.yml`
+
 ## 2.3.8 — Multiview (room redesign R7)
 
 - Watch up to four shares or cameras at once: use a tile's pin button (or Ctrl/⌘-click it) to add it next to what's already on the stage — two sit side by side (or stacked in a tall window), three or four in a 2×2. Clicking a tile normally still shows just that one

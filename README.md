@@ -200,7 +200,8 @@ The SQLite database in `data/api/` persists across rebuilds.
 | `WEB_PORT` | No | `3080` | Host port for HTTP |
 | `WEB_TLS_PORT` | No | `3443` | Host port for HTTPS / HTTP/3 |
 | `LK_PORT` | No | `7881` | LiveKit WebSocket port |
-| `SERVER_CITY` | No | — | Server location label (shown in connection quality UI) |
+| `SERVER_CITY` | No | — | Server location shown in the connection card. Without it the city is estimated from the server's public IP (one lookup via ipinfo.io, cached, repeated only when the IP changes) |
+| `SERVER_GEO` | No | — | Set to `off` to skip that IP location lookup |
 | `MUSIC_ROOM_NAME` | No | `Music` | Room the music bot joins (created automatically at API startup) |
 | `GITHUB_REPO` | No | — | GitHub repo for auto-update sync (e.g., `user/distokoloshe`) |
 | `GITHUB_TOKEN` | No | — | GitHub token (only needed for private repos) |
