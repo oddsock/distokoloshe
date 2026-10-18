@@ -339,7 +339,8 @@ button open their tab, or close the panel if that tab is already showing.
   `bg-green-600/90`. Each line disappears after 15 s.
 - **Chat tab** (`ChatPanel`): every message since joining, grouped by sender (3-min gap),
   sticks to the newest unless scrolled up; client-side only, cleared on room switch.
-  Thumbnails are copied to blob URLs on arrival — the server keeps chat images for 60 s.
+  The server deletes chat images 60 s after upload, so an image entry swaps to an
+  "Image expired" placeholder (`ImageOff`, no link) 55 s after it arrived.
 - **Composer** (`ChatComposer`): attach or paste one image + up to 200 chars; upload
   progress on the thumbnail, errors (upload or send) shown above the input.
 - Unread count on the Chat tab and the bar's Chat button while the tab isn't visible.

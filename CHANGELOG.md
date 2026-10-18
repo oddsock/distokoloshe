@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Images in the Chat tab turn into an "Image expired" placeholder once the server has deleted them (about a minute after sending), instead of a thumbnail that opened a broken link
 - Fixed: after opening the app you could be "not in a room" as far as the server was concerned — chat failed with "You must be in a room", others didn't see you in the member list, and votes/Whispers/soundboard notices were affected — until you rejoined. The live-events connection now picks up a room you joined just before it connected (regression from 2.3.0)
 
 ## 2.3.5 — Chat Tab (room redesign R4)

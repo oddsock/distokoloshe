@@ -202,8 +202,9 @@ User chose (2026-10-18): the message box moves into the Chat tab; the bar gets a
       merged-bubble stacks that climbed out of the tile). "Your source" moved into the name tag.
 - [x] Chat tab (`ChatPanel`): every message since joining, client-side only, cleared on
       room switch (any route — join, jail, deletion), grouped by sender, sticks to the
-      newest; thumbnails copied to blob URLs on arrival so history images outlive the
-      server's 60 s; unread badge on the tab and the bar button.
+      newest; unread badge on the tab and the bar button. After testing (user): images
+      swap to an "Image expired" placeholder 55 s after arrival instead of keeping a
+      cached thumbnail that linked to a deleted full-size image (blob caching removed).
 - [x] `ChatComposer` in the Chat tab: existing image flow + attach button; send errors
       (e.g. rate limit) now shown instead of swallowed; IME-Enter guard kept.
 - [x] `ControlBar` extracted (buttons only; popovers stay in Room and anchor via

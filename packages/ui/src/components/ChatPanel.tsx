@@ -1,4 +1,5 @@
-import { useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { ImageOff } from 'lucide-react';
 import { avatarColor } from '../lib/utils';
 import { ChatImage, type ChatLine } from './ChatBubbles';
 import { ChatComposer } from './ChatComposer';
@@ -7,6 +8,8 @@ export interface ChatEntry extends ChatLine {
   userId: number;
   displayName: string;
   ts: number;
+  /** When the server will have deleted the image (local clock) */
+  imageExpiresAt?: number;
 }
 
 interface ChatPanelProps {
@@ -41,6 +44,18 @@ export function ChatPanel({ entries, currentUserId, roomName, connected, visible
   const scrollRef = useRef<HTMLDivElement>(null);
   // Follow new messages unless the reader has scrolled up
   const stickToBottom = useRef(true);
+
+  // Re-render when the next image expires, so it swaps to the "expired" placeholder
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const next = entries.reduce<number | null>(
+      (min, e) => (e.imageExpiresAt && e.imageExpiresAt > now && (min === null || e.imageExpiresAt < min) ? e.imageExpiresAt : min),
+      null,
+    );
+    if (next === null) return;
+    const id = setTimeout(() => setNow(Date.now()), next - Date.now() + 50);
+    return () => clearTimeout(id);
+  }, [entries, now]);
 
   useLayoutEffect(() => {
     const el = scrollRef.current;
@@ -77,8 +92,8 @@ export function ChatPanel({ entries, currentUserId, roomName, connected, visible
                 </p>
                 {group.map((e) => (
                   <div key={e.id} className="text-sm text-zinc-700 dark:text-zinc-300 break-words">
-                    {e.imageUrl && (
-                      <a href={e.imageUrl} target="_blank" rel="noopener noreferrer" className="inline-block mt-1" data-tooltip="Open full size (for about a minute)">
+                    {e.imageUrl && (e.imageExpiresAt === undefined || now < e.imageExpiresAt ? (
+                      <a href={e.imageUrl} target="_blank" rel="noopener noreferrer" className="inline-block mt-1" data-tooltip="Open full size">
                         <ChatImage
                           key={e.thumbUrl ?? e.imageUrl}
                           src={e.thumbUrl ?? e.imageUrl}
@@ -86,7 +101,11 @@ export function ChatPanel({ entries, currentUserId, roomName, connected, visible
                           placeholderClassName="h-24 w-40 rounded-lg"
                         />
                       </a>
-                    )}
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 mt-1 px-2.5 py-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-700/60 text-xs text-zinc-500 dark:text-zinc-400">
+                        <ImageOff size={14} /> Image expired
+                      </span>
+                    ))}
                     {e.text && <p className="select-text">{e.text}</p>}
                   </div>
                 ))}

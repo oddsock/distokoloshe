@@ -153,14 +153,12 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
   const soundboardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Chat. Tile bubbles: each participant's recent lines, each expiring after 15 s.
   // History for the Chat tab: everything since joining this room — client-side only,
-  // cleared on room switch. Thumbnails are copied into blob URLs on arrival, because the
-  // server drops chat images after 60 s.
+  // cleared on room switch. Images in it show as expired once the server has dropped them.
   const [bubbleLines, setBubbleLines] = useState<Map<string, ChatLine[]>>(new Map());
   const [chatHistory, setChatHistory] = useState<ChatEntry[]>([]);
   const [chatUnread, setChatUnread] = useState(0);
   const chatIdRef = useRef(0);
   const chatTimersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
-  const chatBlobUrlsRef = useRef<string[]>([]);
 
   const isSafari = /Safari\//.test(navigator.userAgent) && !/Chrome\//.test(navigator.userAgent);
   const [safariWarnDismissed, setSafariWarnDismissed] = useState(() => localStorage.getItem('safariCodecWarnDismissed') === '1');
@@ -310,8 +308,6 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
   const clearChat = useCallback(() => {
     chatTimersRef.current.forEach(clearTimeout);
     chatTimersRef.current.clear();
-    chatBlobUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
-    chatBlobUrlsRef.current = [];
     setBubbleLines(new Map());
     setChatHistory([]);
     setChatUnread(0);
@@ -671,20 +667,15 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
         });
       }, 15_000));
 
-      // Chat tab history
+      // Chat tab history. The server deletes chat images 60 s after upload; we see the
+      // message slightly later, so treat it as gone 55 s after it arrived.
       setChatHistory((prev) => [...prev, {
-        ...line, userId: chatUser.id, displayName: chatUser.display_name, ts: ts ?? Date.now(),
+        ...line,
+        userId: chatUser.id,
+        displayName: chatUser.display_name,
+        ts: ts ?? Date.now(),
+        imageExpiresAt: imageUrl ? Date.now() + 55_000 : undefined,
       }].slice(-300));
-      if (thumbUrl) {
-        fetch(thumbUrl)
-          .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(`HTTP ${r.status}`))))
-          .then((blob) => {
-            const local = URL.createObjectURL(blob);
-            chatBlobUrlsRef.current.push(local);
-            setChatHistory((prev) => prev.map((e) => (e.id === line.id ? { ...e, thumbUrl: local } : e)));
-          })
-          .catch(() => { /* history falls back to the server copy while it lasts */ });
-      }
     },
     'music:status': (data) => {
       setMusicStatus(data as api.MusicStatus);
