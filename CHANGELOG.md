@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.3.5 — Chat Tab (room redesign R4)
+
+- New Chat tab in the side panel with every message since you joined the room — it clears when you switch rooms and is never stored on the server. Images stay viewable in the history (the full-size version is only kept for about a minute)
+- The message box moved into the Chat tab, with an attach-image button as well as paste; the control bar is now a single row with a Chat button that shows how many messages you've missed
+- Chat bubbles on tiles stay inside the tile: the latest two messages, each up to two lines, with "+N more · view messages" to open the Chat tab
+- If a message can't be sent (for example "Slow down — too many messages"), you now see why instead of it silently disappearing
+
 ## 2.3.4 — Tiles That Fit (room redesign R3)
 
 - Video tiles now grow and shrink to fill the call area — no more scrolling to find people; with a lot of people the grid scrolls once tiles would get too small

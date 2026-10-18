@@ -171,9 +171,8 @@ Responsive rules (apply in every phase):
 - [x] Folding reverted after testing (shipped with R3): buttons folded, then snapped back
       once the rail/panel collapsed and the stage widened. No "⋯"; the row always shows
       everything (wraps only as a fallback). `useElementWidth` removed.
-- [ ] Moved to R4: extracting the whole `ControlBar` (and `Stage`) out of Room.tsx — with
-      the chat input still inside it the component needs ~40 props; it gets far smaller
-      once chat moves to the side panel.
+- [x] Done in R4: `ControlBar` extracted once chat left the bar. (`Stage` extraction
+      folds into R6, which reworks the stage for theater mode.)
 - [x] Released as 2.3.3. User tests: bar centred on the stage with the People panel open;
       narrow the window → buttons fold into "⋯" (two steps), the menu lists exactly what
       folded, each item opens its popover next to "⋯"; every popover stays on screen at the
@@ -196,14 +195,19 @@ Responsive rules (apply in every phase):
       hover / keyboard / touch, volume popover + People slider, ⋯ → mute for me, vote to
       jail picker, stream-audio mute on a share with audio.
 
-### R4 — Chat
-- [ ] Tile bubbles: max 2, each clamped to 2 lines, older one faded, "+N more · view
-      messages" opens the Chat tab; bubbles can't leave the tile.
-- [ ] Chat tab: every message since joining (client-side only, cleared on room switch),
-      grouped by sender, image thumbnails → full size, unread badge on the tab and the
-      control-bar button.
-- [ ] Composer in the Chat tab with the existing image flow (resize, thumbnail, progress,
-      retry, paste).
+### R4 — Chat (2.3.5)
+User chose (2026-10-18): the message box moves into the Chat tab; the bar gets a Chat button.
+- [x] Tile bubbles inside the tile: last 2 lines, each 2-line clamped, older faded,
+      "+N more · view messages" opens the Chat tab; lines expire after 15 s (replaces the
+      merged-bubble stacks that climbed out of the tile). "Your source" moved into the name tag.
+- [x] Chat tab (`ChatPanel`): every message since joining, client-side only, cleared on
+      room switch (any route — join, jail, deletion), grouped by sender, sticks to the
+      newest; thumbnails copied to blob URLs on arrival so history images outlive the
+      server's 60 s; unread badge on the tab and the bar button.
+- [x] `ChatComposer` in the Chat tab: existing image flow + attach button; send errors
+      (e.g. rate limit) now shown instead of swallowed; IME-Enter guard kept.
+- [x] `ControlBar` extracted (buttons only; popovers stay in Room and anchor via
+      `buttonRef`); one row with the Chat button (`accent` tone when open).
 
 ### R5 — Overlays & states
 - [ ] Toast stack (top-centre of the stage) for errors, joins, soundboard plays,

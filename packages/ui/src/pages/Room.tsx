@@ -10,14 +10,15 @@ import { VolumeSlider } from '../components/VolumeSlider';
 import { ScreenShareView } from '../components/ScreenShareView';
 import { VideoTrackView } from '../components/VideoTrackView';
 import { ParticipantTile, TileAction } from '../components/ParticipantTile';
-import type { ChatLine, ChatMsg } from '../components/ChatBubbles';
+import type { ChatLine } from '../components/ChatBubbles';
+import { ChatPanel, type ChatEntry } from '../components/ChatPanel';
+import { ControlBar } from '../components/ControlBar';
 import { RoomRail } from '../components/RoomRail';
 import { StageHeader } from '../components/StageHeader';
-import { SidePanel } from '../components/SidePanel';
+import { SidePanel, type PanelTab } from '../components/SidePanel';
 import { PeopleList } from '../components/PeopleList';
 import { TooltipLayer } from '../components/TooltipLayer';
 import { Floating } from '../components/Floating';
-import { ControlButton } from '../components/ControlButton';
 import { Soundboard } from '../components/Soundboard';
 import { MusicControls } from '../components/MusicControls';
 import { PipePanel } from '../components/PipePanel';
@@ -34,9 +35,8 @@ import { useElementSize } from '../hooks/useElementSize';
 import { toggleTheme, getTheme, parseParticipantMetadata } from '../lib/utils';
 import { layoutGrid } from '../lib/gridLayout';
 import * as api from '../lib/api';
-import { resizeImage } from '../lib/imageResize';
 import { playSound } from '../lib/sounds';
-import { Mic, MicOff, Camera, CameraOff, Ear, EarOff, Monitor, MonitorOff, Volume2, VolumeX, Settings, AudioLines, Music, X, Scissors, RefreshCw, Loader2, Ellipsis, Gavel } from 'lucide-react';
+import { Mic, MicOff, EarOff, Volume2, VolumeX, X, Scissors, RefreshCw, Ellipsis, Gavel } from 'lucide-react';
 
 const PANEL_PREF_KEY = 'distokoloshe_side_panel';
 
@@ -151,19 +151,16 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
   const { clips, playingId, previewingId, volume: sbVolume, setVolume: setSbVolume, playClip, stopPlaying, previewClip, stopPreview, uploadClip, deleteClip, onClipCreated, onClipDeleted } = useSoundboard(room);
   const [soundboardPlaying, setSoundboardPlaying] = useState<{ username: string; clipName: string } | null>(null);
   const soundboardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Chat speech bubbles (ephemeral)
-  const [chatBubbles, setChatBubbles] = useState<Map<string, ChatMsg[]>>(new Map());
+  // Chat. Tile bubbles: each participant's recent lines, each expiring after 15 s.
+  // History for the Chat tab: everything since joining this room — client-side only,
+  // cleared on room switch. Thumbnails are copied into blob URLs on arrival, because the
+  // server drops chat images after 60 s.
+  const [bubbleLines, setBubbleLines] = useState<Map<string, ChatLine[]>>(new Map());
+  const [chatHistory, setChatHistory] = useState<ChatEntry[]>([]);
+  const [chatUnread, setChatUnread] = useState(0);
   const chatIdRef = useRef(0);
   const chatTimersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
-  const [chatInput, setChatInput] = useState('');
-  const [chatPendingImage, setChatPendingImage] = useState<Blob | null>(null);
-  const [chatImagePreview, setChatImagePreview] = useState<string | null>(null);
-  const [chatUpload, setChatUpload] = useState<
-    { phase: 'preparing' } | { phase: 'uploading'; pct: number } | { phase: 'error'; message: string } | null
-  >(null);
-  // Synchronous guard: repeat Enter presses during an upload must not start more sends.
-  const chatSendingRef = useRef(false);
-  const chatBusy = chatUpload?.phase === 'preparing' || chatUpload?.phase === 'uploading';
+  const chatBlobUrlsRef = useRef<string[]>([]);
 
   const isSafari = /Safari\//.test(navigator.userAgent) && !/Chrome\//.test(navigator.userAgent);
   const [safariWarnDismissed, setSafariWarnDismissed] = useState(() => localStorage.getItem('safariCodecWarnDismissed') === '1');
@@ -198,67 +195,6 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
     enabled: connectionState === ConnectionState.Connected,
   });
 
-  const clearChatImage = useCallback(() => {
-    setChatPendingImage(null);
-    setChatUpload(null);
-    setChatImagePreview((prev) => {
-      if (prev) URL.revokeObjectURL(prev);
-      return null;
-    });
-  }, []);
-
-  // Chat send handler
-  const handleChatSend = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (chatSendingRef.current) return;
-    const text = chatInput.trim();
-    if (!text && !chatPendingImage) return;
-
-    let imageId: string | undefined;
-    if (chatPendingImage) {
-      chatSendingRef.current = true;
-      try {
-        setChatUpload({ phase: 'preparing' });
-        // Server caps chat images at 4MB. Re-encoding also strips EXIF/GPS
-        // metadata; GIFs under the cap pass through untouched so they stay animated.
-        const isGif = chatPendingImage.type === 'image/gif';
-        const full = isGif && chatPendingImage.size <= 4_000_000
-          ? chatPendingImage
-          : await resizeImage(chatPendingImage, 3840, 4_000_000);
-        // Small preview for the bubble, so nobody downloads the full image just to see it.
-        const thumb = isGif && chatPendingImage.size <= 200_000
-          ? chatPendingImage
-          : await resizeImage(chatPendingImage, 480, 200_000);
-        setChatUpload({ phase: 'uploading', pct: 0 });
-        const res = await api.uploadChatImage(full, thumb, (pct) => setChatUpload({ phase: 'uploading', pct }));
-        imageId = res.imageId;
-      } catch (err) {
-        // Keep the image and text so the user can retry (Enter) or remove the image.
-        setChatUpload({ phase: 'error', message: err instanceof api.ApiError ? err.message : 'Image upload failed' });
-        return;
-      } finally {
-        chatSendingRef.current = false;
-      }
-      clearChatImage();
-    }
-    api.sendChatMessage(text || undefined, imageId).catch(() => {});
-    setChatInput('');
-  }, [chatInput, chatPendingImage, clearChatImage]);
-
-  const handleChatPaste = useCallback((e: React.ClipboardEvent) => {
-    if (chatSendingRef.current) return;
-    const file = Array.from(e.clipboardData?.files || []).find(f => f.type.startsWith('image/'));
-    if (file) {
-      e.preventDefault();
-      setChatPendingImage(file);
-      setChatUpload(null);
-      setChatImagePreview((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return URL.createObjectURL(file);
-      });
-    }
-  }, []);
-
   // Mobile detection (JS-based, responds to orientation changes)
   const [isMobile, setIsMobile] = useState(() => window.matchMedia('(max-width: 767px)').matches);
   useEffect(() => {
@@ -291,14 +227,26 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
     // back restores the saved preference.
     setPanelOpen(panelOverlay ? false : readPanelPref());
   }, [panelOverlay]);
-  const togglePanel = useCallback(() => {
-    setPanelOpen((open) => {
-      if (!panelOverlay) {
-        try { localStorage.setItem(PANEL_PREF_KEY, open ? 'closed' : 'open'); } catch { /* private mode */ }
-      }
-      return !open;
-    });
+  const [panelTab, setPanelTab] = useState<PanelTab>('people');
+  const setPanelVisible = useCallback((open: boolean) => {
+    setPanelOpen(open);
+    if (!panelOverlay) {
+      try { localStorage.setItem(PANEL_PREF_KEY, open ? 'open' : 'closed'); } catch { /* private mode */ }
+    }
   }, [panelOverlay]);
+  const showPanelTab = useCallback((tab: PanelTab) => {
+    setPanelTab(tab);
+    setPanelVisible(true);
+  }, [setPanelVisible]);
+  /** Header People button / bar Chat button: open that tab, or close if it's already showing */
+  const togglePanelTab = useCallback((tab: PanelTab) => {
+    if (panelOpen && panelTab === tab) setPanelVisible(false);
+    else showPanelTab(tab);
+  }, [panelOpen, panelTab, setPanelVisible, showPanelTab]);
+  const chatVisible = panelOpen && panelTab === 'chat';
+  useEffect(() => {
+    if (chatVisible) setChatUnread(0);
+  }, [chatVisible]);
 
   // Ref for handleJoinRoom so SSE handlers can access latest version
   const handleJoinRoomRef = useRef<(roomId: number) => Promise<void>>();
@@ -357,6 +305,21 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
       setRoomMembers(parsed);
     }).catch(() => {});
   }, []);
+
+  // Chat belongs to the room you're in: switching rooms clears bubbles and history
+  const clearChat = useCallback(() => {
+    chatTimersRef.current.forEach(clearTimeout);
+    chatTimersRef.current.clear();
+    chatBlobUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    chatBlobUrlsRef.current = [];
+    setBubbleLines(new Map());
+    setChatHistory([]);
+    setChatUnread(0);
+  }, []);
+  useEffect(() => clearChat, [clearChat]);
+  useEffect(() => {
+    clearChat();
+  }, [currentRoom?.id, clearChat]);
 
   // Load initial data
   useEffect(() => {
@@ -682,64 +645,46 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
       soundboardTimerRef.current = setTimeout(() => setSoundboardPlaying(null), durationMs || 10_000);
     },
     'chat:message': (data) => {
-      const { user: chatUser, text, imageId } = data as { user: { id: number; username: string }; text?: string; imageId?: string };
+      const { user: chatUser, text, imageId, ts } = data as {
+        user: { id: number; username: string; display_name: string }; text?: string; imageId?: string; ts?: number;
+      };
       const identity = chatUser.username;
-      const now = Date.now();
       const imageUrl = imageId ? `${api.getBaseUrl()}/api/chat/image/${imageId}` : undefined;
       const thumbUrl = imageUrl ? `${imageUrl}/thumb` : undefined;
-      const newLine: ChatLine = { text: text || undefined, imageUrl, thumbUrl };
+      const line: ChatLine = { id: ++chatIdRef.current, text: text || undefined, imageUrl, thumbUrl };
 
-      // Play sound for messages from others
-      if (chatUser.id !== user.id) playSound('chatMessage');
+      if (chatUser.id !== user.id) {
+        playSound('chatMessage');
+        if (!chatVisible) setChatUnread((n) => n + 1);
+      }
 
-      setChatBubbles(prev => {
-        const next = new Map(prev);
-        const existing = next.get(identity) || [];
-        const newest = existing[0];
+      // Tile bubble, gone after 15 s
+      setBubbleLines((prev) => new Map(prev).set(identity, [...(prev.get(identity) ?? []), line].slice(-10)));
+      chatTimersRef.current.set(line.id, setTimeout(() => {
+        chatTimersRef.current.delete(line.id);
+        setBubbleLines((prev) => {
+          const remaining = (prev.get(identity) ?? []).filter((l) => l.id !== line.id);
+          const next = new Map(prev);
+          if (remaining.length === 0) next.delete(identity);
+          else next.set(identity, remaining);
+          return next;
+        });
+      }, 15_000));
 
-        // Merge into newest bubble if within 3 seconds
-        if (newest && now - newest.ts < 3_000) {
-          const merged = { ...newest, lines: [...newest.lines, newLine], ts: now };
-          // Reset dismiss timer for merged bubble
-          const oldTimer = chatTimersRef.current.get(newest.id);
-          if (oldTimer) clearTimeout(oldTimer);
-          const timer = setTimeout(() => {
-            chatTimersRef.current.delete(merged.id);
-            setChatBubbles(p => {
-              const n = new Map(p);
-              const msgs = n.get(identity);
-              if (msgs) {
-                const filtered = msgs.filter(m => m.id !== merged.id);
-                if (filtered.length === 0) n.delete(identity);
-                else n.set(identity, filtered);
-              }
-              return n;
-            });
-          }, 15_000);
-          chatTimersRef.current.set(merged.id, timer);
-          next.set(identity, [merged, ...existing.slice(1)].slice(0, 3));
-        } else {
-          // New bubble
-          const msgId = ++chatIdRef.current;
-          const bubble: ChatMsg = { id: msgId, lines: [newLine], ts: now };
-          const timer = setTimeout(() => {
-            chatTimersRef.current.delete(msgId);
-            setChatBubbles(p => {
-              const n = new Map(p);
-              const msgs = n.get(identity);
-              if (msgs) {
-                const filtered = msgs.filter(m => m.id !== msgId);
-                if (filtered.length === 0) n.delete(identity);
-                else n.set(identity, filtered);
-              }
-              return n;
-            });
-          }, 15_000);
-          chatTimersRef.current.set(msgId, timer);
-          next.set(identity, [bubble, ...existing].slice(0, 3));
-        }
-        return next;
-      });
+      // Chat tab history
+      setChatHistory((prev) => [...prev, {
+        ...line, userId: chatUser.id, displayName: chatUser.display_name, ts: ts ?? Date.now(),
+      }].slice(-300));
+      if (thumbUrl) {
+        fetch(thumbUrl)
+          .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(`HTTP ${r.status}`))))
+          .then((blob) => {
+            const local = URL.createObjectURL(blob);
+            chatBlobUrlsRef.current.push(local);
+            setChatHistory((prev) => prev.map((e) => (e.id === line.id ? { ...e, thumbUrl: local } : e)));
+          })
+          .catch(() => { /* history falls back to the server copy while it lasts */ });
+      }
     },
     'music:status': (data) => {
       setMusicStatus(data as api.MusicStatus);
@@ -1169,12 +1114,12 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
           canDeleteRoom={!!currentRoom && !currentRoom.is_jail && currentRoom.created_by === user.id}
           onDeleteRoom={handleDeleteRoom}
           onOpenRail={() => setLeftSidebarOpen(true)}
-          panelOpen={panelOpen}
-          onTogglePanel={togglePanel}
+          panelOpen={panelOpen && panelTab === 'people'}
+          onTogglePanel={() => togglePanelTab('people')}
         />
 
         {/* Participant area */}
-        <div className="flex-1 min-h-0 flex flex-col p-4 md:p-6 pb-32 overflow-y-auto">
+        <div className="flex-1 min-h-0 flex flex-col p-4 md:p-6 pb-24 overflow-y-auto">
           {error && (!error.roomId || error.roomId === currentRoom?.id) && (
             <div className={`mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm flex items-center transition-opacity duration-500 ${errorFading ? 'opacity-0' : 'opacity-100 animate-[fadeIn_0.2s_ease-out]'}`}>
               <span className="flex-1">{error.msg}</span>
@@ -1387,8 +1332,9 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
                       screenSharePub={localScreenShare}
                       onSpotlightCamera={() => setSpotlight({ identity: localParticipant.identity, source: 'camera' })}
                       onSpotlightScreenShare={() => setSpotlight({ identity: localParticipant.identity, source: 'screen_share' })}
-                      chatMessages={chatBubbles.get(localParticipant.identity) || []}
+                      chatLines={bubbleLines.get(localParticipant.identity) ?? []}
                       chatColor="blue"
+                      onViewMessages={() => showPanelTab('chat')}
                       status={
                         <>
                           {deafened && <EarOff size={12} className="text-red-400 shrink-0" aria-label="Deafened" />}
@@ -1446,8 +1392,9 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
                         onToggleStreamAudio={() => toggleStreamAudioMute(p.identity)}
                         onSpotlightCamera={() => setSpotlight({ identity: p.identity, source: 'camera' })}
                         onSpotlightScreenShare={() => setSpotlight({ identity: p.identity, source: 'screen_share' })}
-                        chatMessages={chatBubbles.get(p.identity) || []}
+                        chatLines={bubbleLines.get(p.identity) ?? []}
                         chatColor="green"
+                        onViewMessages={() => showPanelTab('chat')}
                         nameSuffix={playingSB ? (
                           <span className="text-[10px] text-amber-300 truncate shrink-0">🔊 {soundboardPlaying.clipName}</span>
                         ) : undefined}
@@ -1560,9 +1507,7 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
           )}
         </div>
 
-        {/* Control bar — docked to the stage (centred on it, not the window). Every button
-            always shows: at every width the side panels allow, the full row fits; wrapping is
-            only a last-resort fallback. */}
+        {/* Control bar (docked to the stage) + its popovers, anchored to its buttons */}
         {connectionState === ConnectionState.Connected && room && (() => {
           const showShare = !isMobile;
           const showPipe = pipe.available && !!currentRoom && !hasMusicBot;
@@ -1583,93 +1528,28 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
             : 'Share Screen';
           return (
             <>
-              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 w-[calc(100%-2rem)] max-w-2xl bg-white/80 dark:bg-zinc-800/80 backdrop-blur-xl rounded-2xl px-4 py-2.5 shadow-lg border border-zinc-200/50 dark:border-zinc-700/50 flex flex-col gap-2">
-                {/* Chat input (moves into the Chat tab in R4) */}
-                {chatUpload?.phase === 'error' && (
-                  <p className="text-xs text-red-500 px-1" role="alert">{chatUpload.message} — press Enter to retry</p>
-                )}
-                <form onSubmit={handleChatSend} className="w-full flex gap-2 items-center">
-                  {chatImagePreview && (
-                    <div className="relative shrink-0">
-                      <img src={chatImagePreview} className={`h-8 w-8 rounded object-cover ${chatUpload?.phase === 'error' ? 'ring-2 ring-red-500' : ''}`} alt="" />
-                      {chatBusy ? (
-                        <div className="absolute inset-0 rounded bg-black/55 flex items-center justify-center text-[9px] font-semibold text-white" aria-live="polite">
-                          {chatUpload?.phase === 'uploading'
-                            ? `${chatUpload.pct}%`
-                            : <Loader2 size={14} className="animate-spin" aria-label="Preparing image" />}
-                        </div>
-                      ) : (
-                        <button type="button" onClick={clearChatImage} aria-label="Remove image"
-                          className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center leading-none">&times;</button>
-                      )}
-                    </div>
-                  )}
-                  <input
-                    type="text"
-                    value={chatInput}
-                    readOnly={chatBusy}
-                    onChange={(e) => setChatInput(e.target.value.slice(0, 200))}
-                    onPaste={handleChatPaste}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                        e.preventDefault();
-                        handleChatSend(e as unknown as React.FormEvent);
-                      }
-                    }}
-                    placeholder={chatBusy ? 'Sending image…' : 'Send a message…'}
-                    maxLength={200}
-                    className={`flex-1 min-w-0 px-3 py-1.5 rounded-lg text-sm ${chatBusy ? 'opacity-60' : ''} bg-zinc-100 dark:bg-zinc-700 text-zinc-900 dark:text-white border border-zinc-300 dark:border-zinc-600 focus:border-indigo-500 outline-none placeholder-zinc-400 dark:placeholder-zinc-500`}
-                  />
-                </form>
-                <div className="flex flex-wrap items-center justify-center gap-2 md:gap-3">
-                  <ControlButton
-                    tone={micMuted ? 'danger' : 'neutral'}
-                    label={micMuted ? 'Unmute microphone' : 'Mute microphone'}
-                    tooltip={micMuted ? 'Unmute' : 'Mute'}
-                    onClick={handleToggleMute}
-                  >
-                    {micMuted ? <MicOff size={18} /> : <Mic size={18} />}
-                  </ControlButton>
-                  <ControlButton
-                    tone={isCameraOn ? 'success' : 'neutral'}
-                    label={isCameraOn ? 'Turn camera off' : 'Turn camera on'}
-                    tooltip={isCameraOn ? 'Camera Off' : 'Camera On'}
-                    onClick={toggleCamera}
-                  >
-                    {isCameraOn ? <Camera size={18} /> : <CameraOff size={18} />}
-                  </ControlButton>
-                  <ControlButton tone={deafened ? 'danger' : 'neutral'} label={deafened ? 'Undeafen' : 'Deafen'} onClick={handleToggleDeafen}>
-                    {deafened ? <EarOff size={18} /> : <Ear size={18} />}
-                  </ControlButton>
-                  {showShare && (
-                    <ControlButton
-                      ref={setRef('share')}
-                      tone={isSharing ? 'success' : 'neutral'}
-                      label={isSharing ? 'Stop screen share' : 'Share screen'}
-                      tooltip={shareTooltip}
-                      onClick={toggleShare}
-                    >
-                      {isSharing ? <Monitor size={18} /> : <MonitorOff size={18} />}
-                    </ControlButton>
-                  )}
-                  {hasMusicBot && (
-                    <ControlButton ref={setRef('music')} label="Open music controls" tooltip="Music" onClick={() => toggle('music')}>
-                      <Music size={18} />
-                    </ControlButton>
-                  )}
-                  {showPipe && (
-                    <ControlButton ref={setRef('pipe')} label="Pipe audio to this room" tooltip="Pipe audio" onClick={() => toggle('pipe')}>
-                      <Music size={18} />
-                    </ControlButton>
-                  )}
-                  <ControlButton ref={setRef('soundboard')} label="Open soundboard" tooltip="Soundboard" onClick={() => toggle('soundboard')}>
-                    <AudioLines size={18} />
-                  </ControlButton>
-                  <ControlButton ref={setRef('settings')} label="Open settings" tooltip="Settings" onClick={() => toggle('settings')}>
-                    <Settings size={18} />
-                  </ControlButton>
-                </div>
-              </div>
+              <ControlBar
+                micMuted={micMuted}
+                onToggleMute={handleToggleMute}
+                cameraOn={isCameraOn}
+                onToggleCamera={toggleCamera}
+                deafened={deafened}
+                onToggleDeafen={handleToggleDeafen}
+                showShare={showShare}
+                sharing={isSharing}
+                shareTooltip={shareTooltip}
+                onShare={toggleShare}
+                showMusic={hasMusicBot}
+                onMusic={() => toggle('music')}
+                showPipe={showPipe}
+                onPipe={() => toggle('pipe')}
+                onSoundboard={() => toggle('soundboard')}
+                onSettings={() => toggle('settings')}
+                chatOpen={chatVisible}
+                chatUnread={chatUnread}
+                onChat={() => togglePanelTab('chat')}
+                buttonRef={setRef}
+              />
 
               {/* Share: stop confirmation / quality picker */}
               <Floating anchor={anchorFor('share')} open={openPopover === 'stopShare' && isSharing} zClass="z-50">
@@ -1772,22 +1652,39 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
         })()}
       </main>
 
-      {/* Side panel — People */}
-      <SidePanel open={panelOpen} onClose={togglePanel} overlay={panelOverlay}>
-        <PeopleList
-          users={users}
-          currentUserId={user.id}
-          currentRoomId={currentRoom?.id ?? null}
-          roomMembers={roomMembers}
-          rooms={rooms}
-          speaking={speakingUsernames}
-          micOff={micOffUsernames}
-          mutedForMe={mutedUsers}
-          onToggleMute={toggleMuteUser}
-          getVolume={getVolume}
-          onVolumeChange={setVolume}
-        />
-      </SidePanel>
+      {/* Side panel — People / Chat */}
+      <SidePanel
+        open={panelOpen}
+        onClose={() => setPanelVisible(false)}
+        overlay={panelOverlay}
+        tab={panelTab}
+        onTabChange={setPanelTab}
+        chatUnread={chatUnread}
+        chat={
+          <ChatPanel
+            entries={chatHistory}
+            currentUserId={user.id}
+            roomName={currentRoom?.name ?? null}
+            connected={connectionState === ConnectionState.Connected}
+            visible={chatVisible}
+          />
+        }
+        people={
+          <PeopleList
+            users={users}
+            currentUserId={user.id}
+            currentRoomId={currentRoom?.id ?? null}
+            roomMembers={roomMembers}
+            rooms={rooms}
+            speaking={speakingUsernames}
+            micOff={micOffUsernames}
+            mutedForMe={mutedUsers}
+            onToggleMute={toggleMuteUser}
+            getVolume={getVolume}
+            onVolumeChange={setVolume}
+          />
+        }
+      />
     </div>
   );
 }

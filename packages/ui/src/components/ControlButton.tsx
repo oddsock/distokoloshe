@@ -1,15 +1,16 @@
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
 
-type Tone = 'neutral' | 'danger' | 'success';
+type Tone = 'neutral' | 'danger' | 'success' | 'accent';
 
 const TONES: Record<Tone, string> = {
   neutral: 'bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600',
   danger: 'bg-red-500/20 text-red-400 hover:bg-red-500/30',
   success: 'bg-green-500/20 text-green-400 hover:bg-green-500/30',
+  accent: 'bg-indigo-500/20 text-indigo-500 dark:text-indigo-400 hover:bg-indigo-500/30',
 };
 
 interface ControlButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> {
-  /** neutral = off/idle, danger = muted/deafened, success = camera/share on */
+  /** neutral = off/idle, danger = muted/deafened, success = camera/share on, accent = panel open */
   tone?: Tone;
   /** Accessible name (aria-label) */
   label: string;

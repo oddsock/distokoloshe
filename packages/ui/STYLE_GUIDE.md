@@ -321,12 +321,28 @@ Three widths, chosen with `useMediaQuery`:
 
 User card (bottom): avatar, name/@username, `SignalStrength`, E2EE lock, log out.
 
-### Side Panel (People) — `SidePanel` + `PeopleList`
+### Side Panel (People / Chat) — `SidePanel`, `PeopleList`, `ChatPanel`
 
 `w-72 max-w-[85vw]`. From 1080px it's a column beside the stage and opens by default
 (choice remembered in `localStorage`); below 1080px it's an overlay drawer
 (`fixed inset-y-0 right-0 z-40 shadow-2xl` + `bg-black/40` backdrop) that starts closed.
-Sections: In this room / Elsewhere / Offline. Toggled from the stage header's People button.
+Tabs: **People** (default; In this room / Elsewhere / Offline, with per-person volume and
+mute-for-me) and **Chat**. Both tabs stay mounted while the panel is open (inactive one
+`hidden`) so a draft survives a tab switch. The header's People button and the bar's Chat
+button open their tab, or close the panel if that tab is already showing.
+
+### Chat
+
+- **Tile bubbles** (`ChatBubbles`): inside the tile, top-left (`right-[38%]` leaves room for
+  the actions); at most the last 2 lines, each `line-clamp-2`, older one `opacity-70`; a
+  `+N more · view messages` chip opens the Chat tab. Own messages `bg-blue-600/90`, others
+  `bg-green-600/90`. Each line disappears after 15 s.
+- **Chat tab** (`ChatPanel`): every message since joining, grouped by sender (3-min gap),
+  sticks to the newest unless scrolled up; client-side only, cleared on room switch.
+  Thumbnails are copied to blob URLs on arrival — the server keeps chat images for 60 s.
+- **Composer** (`ChatComposer`): attach or paste one image + up to 200 chars; upload
+  progress on the thumbnail, errors (upload or send) shown above the input.
+- Unread count on the Chat tab and the bar's Chat button while the tab isn't visible.
 
 ### Avatars
 
@@ -369,8 +385,9 @@ Docked to the stage: `absolute bottom-4 left-1/2 -translate-x-1/2 z-30
 w-[calc(100%-2rem)] max-w-2xl` inside `<main class="relative">`, so it's centred on the
 stage, not the window. One row of `ControlButton`s (`p-2.5 rounded-lg`, tones: neutral /
 danger / success). Never hide buttons to save space — the full row fits at every width the
-side panels allow; `flex-wrap` is only a fallback. The participant area reserves `pb-32`
-beneath it.
+side panels allow; `flex-wrap` is only a fallback. Chat is a button here (tone `accent`
+while the Chat tab is showing, unread badge otherwise) — typing happens in the Chat tab.
+The participant area reserves `pb-24` beneath the bar.
 
 ---
 

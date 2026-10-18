@@ -2,7 +2,7 @@ import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import type { TrackPublication } from 'livekit-client';
 import { Music, Volume2, VolumeX } from 'lucide-react';
 import { VideoTrackView } from './VideoTrackView';
-import { ChatBubbles, type ChatMsg } from './ChatBubbles';
+import { ChatBubbles, type ChatLine } from './ChatBubbles';
 
 interface TileActionProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> {
   label: string;
@@ -49,8 +49,11 @@ interface ParticipantTileProps {
   onToggleStreamAudio?: () => void;
   onSpotlightCamera?: () => void;
   onSpotlightScreenShare?: () => void;
-  chatMessages: ChatMsg[];
+  /** Recent chat lines shown as bubbles inside the tile */
+  chatLines: ChatLine[];
   chatColor: 'blue' | 'green';
+  /** "+N more" on the bubbles opens the Chat tab */
+  onViewMessages?: () => void;
   /** Icons in the name tag (mic state, deafened, muted for me) */
   status?: ReactNode;
   /** Shown after the name (e.g. soundboard "now playing") */
@@ -79,8 +82,9 @@ export function ParticipantTile({
   onToggleStreamAudio,
   onSpotlightCamera,
   onSpotlightScreenShare,
-  chatMessages,
+  chatLines,
   chatColor,
+  onViewMessages,
   status,
   nameSuffix,
   actions,
@@ -95,7 +99,6 @@ export function ParticipantTile({
 
   return (
     <div className="relative min-w-0">
-      <ChatBubbles messages={chatMessages} color={chatColor} />
       <div
         className={`@container group relative aspect-video rounded-xl overflow-hidden bg-zinc-200 dark:bg-zinc-800 ring-2 transition-[box-shadow,opacity] ${
           speakingGlow
@@ -134,11 +137,7 @@ export function ParticipantTile({
           )}
         </div>
 
-        {isMyWhisperSource && (
-          <span className="absolute top-2 left-2 text-[10px] bg-purple-500/40 text-purple-100 px-1.5 py-0.5 rounded z-10">
-            Your source
-          </span>
-        )}
+        <ChatBubbles lines={chatLines} color={chatColor} onViewMore={onViewMessages} />
 
         {/* Camera PIP — only when a share is also occupying the main area */}
         {hasBoth && (
@@ -156,6 +155,7 @@ export function ParticipantTile({
         <div className="absolute left-2 bottom-2 z-10 max-w-[calc(100%-1rem)] flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-black/55 backdrop-blur-sm text-white text-xs @max-[200px]:text-[10px] font-medium pointer-events-none">
           {status}
           <span className="truncate">{displayName}{isLocal ? ' (you)' : ''}</span>
+          {isMyWhisperSource && <span className="shrink-0 text-[10px] bg-purple-500/70 px-1 rounded">your source</span>}
           {nameSuffix}
         </div>
 
