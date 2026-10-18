@@ -58,6 +58,19 @@ function defaultRoom(rooms: api.Room[]): api.Room | undefined {
   return rooms.filter((r) => !r.is_jail).sort((a, b) => a.id - b.id)[0];
 }
 
+/** Room membership with `member` moved into `roomId` (out of whichever room they were in). */
+function withMemberIn(
+  members: Record<number, api.RoomMember[]>, member: api.RoomMember, roomId: number,
+): Record<number, api.RoomMember[]> {
+  const next: Record<number, api.RoomMember[]> = {};
+  for (const [rid, list] of Object.entries(members)) {
+    const rest = list.filter((m) => m.id !== member.id);
+    if (rest.length > 0) next[Number(rid)] = rest;
+  }
+  next[roomId] = [...(next[roomId] ?? []), member];
+  return next;
+}
+
 interface RoomPageProps {
   user: api.User;
   onLogout: () => void;
@@ -492,15 +505,7 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
     },
     'user:room_join': (data) => {
       const { user: joinUser, roomId } = data as { user: api.RoomMember; roomId: number };
-      setRoomMembers((prev) => {
-        const next = { ...prev };
-        for (const rid of Object.keys(next)) {
-          next[Number(rid)] = next[Number(rid)].filter((m) => m.id !== joinUser.id);
-          if (next[Number(rid)].length === 0) delete next[Number(rid)];
-        }
-        next[roomId] = [...(next[roomId] || []), joinUser];
-        return next;
-      });
+      setRoomMembers((prev) => withMemberIn(prev, joinUser, roomId));
       if (currentRoom && roomId === currentRoom.id && joinUser.id !== user.id) {
         playSound('join');
         pushToast({ tone: 'info', icon: <UserPlus size={14} />, text: `${joinUser.display_name} joined` });
@@ -717,7 +722,7 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
     'music:status': (data) => {
       setMusicStatus(data as api.MusicStatus);
     },
-  }, onReconnect: handleSSEReconnect, onUnauthorized: onSessionExpired ?? onLogout });
+  }, onConnect: loadLists, onReconnect: handleSSEReconnect, onUnauthorized: onSessionExpired ?? onLogout });
 
   // Stop any active client-piped audio when the Room unmounts (logout, refresh).
   // The Tauri window-close handler covers app exit; this covers in-app teardown.
@@ -897,6 +902,11 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
         const res = await api.joinRoom(roomId);
         if (joinIdRef.current !== myJoinId) return;
         setCurrentRoom(res.room);
+        // List ourselves in the room now rather than waiting for our own room_join event,
+        // which never arrives if the event stream wasn't open yet (often so on page load)
+        setRoomMembers((prev) => withMemberIn(
+          prev, { id: user.id, username: user.username, display_name: user.display_name }, res.room.id,
+        ));
         // Handle whisper state for the new room
         if (res.room.mode === 'whispers') {
           setIsWhispersMode(true);
@@ -932,7 +942,7 @@ export function RoomPage({ user, onLogout, onSessionExpired }: RoomPageProps) {
         showError(roomName ? `${base} (${roomName})` : base);
       }
     },
-    [connect, disconnect, rooms, showError],
+    [connect, disconnect, rooms, showError, user],
   );
   handleJoinRoomRef.current = handleJoinRoom;
 

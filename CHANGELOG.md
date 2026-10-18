@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Fixed: after reloading the page you could sometimes be missing from your own lists — not under "In this room" and not shown in your room on the rail — even though you were connected and everyone else saw you there. When your room join finished before the live-events connection opened (a coin toss on page load), the app never heard about its own join. It now shows you in the room as soon as the join succeeds, and refreshes rooms, people and who's where once the live-events connection opens
+
 ## 2.4.0 — Room Redesign
 
 The room redesign is complete (2.3.1–2.3.11 shipped it step by step): a rooms rail with who's where, a People and Chat side panel, tiles that fit the call area, theater and multiview for shares and cameras, toasts instead of banners, votes to release from jail, a connection card with the server's location, and a settings window. This release adds:

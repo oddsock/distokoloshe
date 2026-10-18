@@ -5,6 +5,8 @@ type EventHandler = (data: unknown) => void;
 
 interface UseEventsOptions {
   handlers: Record<string, EventHandler>;
+  /** The stream opened for the first time (events sent before that never reached us). */
+  onConnect?: () => void;
   onReconnect?: () => void;
   /** The server rejected our login (expired or revoked token). */
   onUnauthorized?: () => void;
@@ -16,9 +18,12 @@ const HEARTBEAT_MS = 8_000;
 // While the API can't be reached (restarting), check again sooner so we're back quickly
 const HEARTBEAT_RETRY_MS = 2_000;
 
-export function useEvents({ handlers, onReconnect, onUnauthorized }: UseEventsOptions) {
+export function useEvents({ handlers, onConnect, onReconnect, onUnauthorized }: UseEventsOptions) {
   const handlersRef = useRef(handlers);
   handlersRef.current = handlers;
+
+  const onConnectRef = useRef(onConnect);
+  onConnectRef.current = onConnect;
 
   const onReconnectRef = useRef(onReconnect);
   onReconnectRef.current = onReconnect;
@@ -110,6 +115,10 @@ export function useEvents({ handlers, onReconnect, onUnauthorized }: UseEventsOp
         if (hasConnectedBefore) {
           // Reconnected after a drop — caller re-syncs state it may have missed
           onReconnectRef.current?.();
+        } else {
+          // The stream opens a ticket round trip after the page loaded its state, so
+          // events in between (e.g. our own room join on page load) were missed
+          onConnectRef.current?.();
         }
         hasConnectedBefore = true;
       };
